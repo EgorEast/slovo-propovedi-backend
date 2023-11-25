@@ -4,7 +4,7 @@ import { UpdateSectionDto } from './dto/update-section.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SectionEntity } from './entities/section.entity';
 import { Repository } from 'typeorm';
-import { UpdateSection } from './interfacies/interface';
+import { AllSectionsResponse, UpdateSection } from './interfacies/interface';
 
 @Injectable()
 export class SectionService {
@@ -13,7 +13,9 @@ export class SectionService {
     private sectionRepository: Repository<SectionEntity>,
   ) {}
 
-  async createSectionItem(createSectionDto: CreateSectionDto) {
+  async createSectionItem(
+    createSectionDto: CreateSectionDto,
+  ): Promise<SectionEntity> {
     try {
       return await this.sectionRepository.save(createSectionDto);
     } catch (error) {
@@ -24,9 +26,13 @@ export class SectionService {
     }
   }
 
-  async findAllSectionItems() {
+  async findAllSectionItems(): Promise<AllSectionsResponse> {
     try {
-      return await this.sectionRepository.findAndCount();
+      const [result, count] = await this.sectionRepository.findAndCount();
+      return {
+        sections: result,
+        count: count,
+      };
     } catch (error) {
       throw new HttpException(
         'from:findAllSectionItems ' + error.message,
@@ -35,7 +41,7 @@ export class SectionService {
     }
   }
 
-  async findOneSectionItem(id: string) {
+  async findOneSectionItem(id: string): Promise<SectionEntity> {
     try {
       return await this.sectionRepository.findOne({ where: { id } });
     } catch (error) {
@@ -46,7 +52,10 @@ export class SectionService {
     }
   }
 
-  async update(id: string, updateSectionDto: UpdateSectionDto) {
+  async update(
+    id: string,
+    updateSectionDto: UpdateSectionDto,
+  ): Promise<{ status: 'success' }> {
     try {
       const updateFields: UpdateSection = {};
 
@@ -57,7 +66,7 @@ export class SectionService {
         updateFields.description = updateSectionDto.description;
       }
       await this.sectionRepository.update(id, updateFields);
-      return {};
+      return { status: 'success' };
     } catch (error) {
       throw new HttpException(
         'from:update ' + error.message,
@@ -68,7 +77,8 @@ export class SectionService {
 
   async remove(id: string) {
     try {
-      return await this.sectionRepository.delete(id);
+      await this.sectionRepository.delete(id);
+      return { status: 'success' };
     } catch (error) {
       throw new HttpException(
         'from:remove ' + error.message,

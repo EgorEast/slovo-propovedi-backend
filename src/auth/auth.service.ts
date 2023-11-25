@@ -1,6 +1,12 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
+import { ApiProperty } from '@nestjs/swagger';
+
+export class AuthResponse {
+  @ApiProperty()
+  access_token: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -9,7 +15,7 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async signIn(email: string, pass: string) {
+  async signIn(email: string, pass: string): Promise<AuthResponse> {
     const user = await this.usersService.findOneByEmail(email);
     if (user?.password !== pass) {
       throw new UnauthorizedException();

@@ -8,17 +8,25 @@ import {
   UseGuards,
   Get,
 } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { AuthResponse, AuthService } from './auth.service';
 import { SignInRequestDto } from './dto/sign-in-request.dto';
 import { AuthGuard } from './guard/auth.guard';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 @Controller('auth')
+@ApiTags('Auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
 
-  @HttpCode(HttpStatus.OK)
   @Post('login')
-  signIn(@Body() signInDto: SignInRequestDto) {
+  @ApiOperation({
+    summary: 'login to admin panel',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    type: AuthResponse,
+  })
+  signIn(@Body() signInDto: SignInRequestDto): Promise<AuthResponse> {
     return this.authService.signIn(signInDto.email, signInDto.password);
   }
 
