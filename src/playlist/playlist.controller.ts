@@ -14,6 +14,10 @@ import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PlaylistEntity } from './entities/playlist.entity';
 import { DeleteResult } from 'typeorm';
+import {
+  AllPlaylistsResponse,
+  StatusPlaylistResponse,
+} from './interfaces/interface';
 
 @Controller('playlists')
 @ApiTags('Playlists')
@@ -35,25 +39,53 @@ export class PlaylistController {
   }
 
   @Get()
-  async findAll(): Promise<[PlaylistEntity[], number]> {
+  @ApiOperation({
+    summary: 'Get all playlists',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    type: AllPlaylistsResponse,
+  })
+  async findAll(): Promise<AllPlaylistsResponse> {
     return await this.playlistService.findAll();
   }
 
   @Get(':id')
+  @ApiOperation({
+    summary: 'Get one playlist by id',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    type: PlaylistEntity,
+  })
   async findOne(@Param('id') id: string): Promise<PlaylistEntity> {
     return await this.playlistService.findOne(id);
   }
 
   @Patch(':id')
+  @ApiOperation({
+    summary: 'Update one playlist by id',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    type: StatusPlaylistResponse,
+  })
   async update(
     @Param('id') id: string,
     @Body() updatePlaylistDto: UpdatePlaylistDto,
-  ): Promise<{ status: 'success' }> {
+  ): Promise<StatusPlaylistResponse> {
     return await this.playlistService.update(id, updatePlaylistDto);
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string): Promise<DeleteResult> {
+  @ApiOperation({
+    summary: 'Delete one playlist by id',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    type: StatusPlaylistResponse,
+  })
+  async remove(@Param('id') id: string): Promise<StatusPlaylistResponse> {
     return await this.playlistService.remove(id);
   }
 }

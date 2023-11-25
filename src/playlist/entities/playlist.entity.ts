@@ -19,6 +19,7 @@ export class PlaylistEntity {
   @IsString()
   description: string;
 
+  @ApiProperty({ type: () => SectionEntity, isArray: true })
   @ManyToMany(() => SectionEntity, (section) => section.playlists)
   @IsOptional()
   sections: SectionEntity[];

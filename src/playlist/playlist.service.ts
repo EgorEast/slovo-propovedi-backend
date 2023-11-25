@@ -4,7 +4,11 @@ import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PlaylistEntity } from './entities/playlist.entity';
 import { Repository } from 'typeorm';
-import { UpdatePlaylist } from './interfaces/interface';
+import {
+  AllPlaylistsResponse,
+  StatusPlaylistResponse,
+  UpdatePlaylist,
+} from './interfaces/interface';
 
 @Injectable()
 export class PlaylistService {
@@ -24,9 +28,13 @@ export class PlaylistService {
     }
   }
 
-  async findAll(): Promise<[PlaylistEntity[], number]> {
+  async findAll(): Promise<AllPlaylistsResponse> {
     try {
-      return await this.playlistRepository.findAndCount();
+      const [playlists, count] = await this.playlistRepository.findAndCount();
+      return {
+        playlists,
+        count,
+      };
     } catch (error) {
       throw new HttpException(
         'from:findAllPlaylistItems ' + error.message,
@@ -35,7 +43,7 @@ export class PlaylistService {
     }
   }
 
-  async findOne(id: string) {
+  async findOne(id: string): Promise<PlaylistEntity> {
     try {
       return await this.playlistRepository.findOne({ where: { id } });
     } catch (error) {
@@ -49,7 +57,7 @@ export class PlaylistService {
   async update(
     id: string,
     updatePlaylistDto: UpdatePlaylistDto,
-  ): Promise<{ status: 'success' }> {
+  ): Promise<StatusPlaylistResponse> {
     try {
       const updateFields: UpdatePlaylist = {};
 
@@ -69,9 +77,10 @@ export class PlaylistService {
     }
   }
 
-  async remove(id: string) {
+  async remove(id: string): Promise<StatusPlaylistResponse> {
     try {
-      return await this.playlistRepository.delete(id);
+      await this.playlistRepository.delete(id);
+      return { status: 'success' };
     } catch (error) {
       throw new HttpException(
         'from:remove ' + error.message,
