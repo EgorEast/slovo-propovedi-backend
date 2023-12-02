@@ -8,6 +8,7 @@ import { UsersModule } from './users/users.module';
 import { PlaylistModule } from './playlist/playlist.module';
 import { MinioService } from './minio/minio.service';
 import { ConfigModule } from '@nestjs/config';
+import { SermonModule } from './sermon/sermon.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -18,6 +19,7 @@ import { ConfigModule } from '@nestjs/config';
     UsersModule,
     PlaylistModule,
     TypeOrmModule,
+    SermonModule,
   ],
   controllers: [AppController],
   providers: [AppService, MinioService],
