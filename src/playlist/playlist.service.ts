@@ -1,4 +1,10 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  forwardRef,
+} from '@nestjs/common';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,17 +15,25 @@ import {
   StatusPlaylistResponse,
   UpdatePlaylist,
 } from './interfaces/interface';
+import { SermonService } from 'src/sermon/sermon.service';
 
 @Injectable()
 export class PlaylistService {
   constructor(
+    @Inject(forwardRef(() => SermonService))
+    private sermonService: SermonService,
     @InjectRepository(PlaylistEntity)
     private playlistRepository: Repository<PlaylistEntity>,
   ) {}
 
   async create(createPlaylistDto: CreatePlaylistDto): Promise<PlaylistEntity> {
     try {
-      return await this.playlistRepository.save(createPlaylistDto);
+      const playlist = this.playlistRepository.create({
+        title: createPlaylistDto.title,
+        description: createPlaylistDto.description,
+      });
+      return this.playlistRepository.save(playlist);
+      // throw new HttpException('Проповедь не найдена', HttpStatus.BAD_REQUEST);
     } catch (error) {
       throw new HttpException(
         'from:createPlaylist ' + error.message,
@@ -45,7 +59,10 @@ export class PlaylistService {
 
   async findOne(id: string): Promise<PlaylistEntity> {
     try {
-      return await this.playlistRepository.findOne({ where: { id } });
+      return await this.playlistRepository.findOne({
+        where: { id },
+        relations: ['sermons'],
+      });
     } catch (error) {
       throw new HttpException(
         'from:findOnePlaylistItem ' + error.message,
@@ -57,18 +74,35 @@ export class PlaylistService {
   async update(
     id: string,
     updatePlaylistDto: UpdatePlaylistDto,
-  ): Promise<StatusPlaylistResponse> {
+  ): Promise<PlaylistEntity> {
     try {
-      const updateFields: UpdatePlaylist = {};
+      const playlist = await this.playlistRepository.findOne({
+        where: { id },
+        relations: ['sermons'],
+      });
+
+      if (!playlist) {
+        throw new Error('Playlist not found');
+      }
 
       if (updatePlaylistDto.title) {
-        updateFields.title = updatePlaylistDto.title;
+        playlist.title = updatePlaylistDto.title;
       }
       if (updatePlaylistDto.description) {
-        updateFields.description = updatePlaylistDto.description;
+        playlist.description = updatePlaylistDto.description;
       }
-      await this.playlistRepository.update(id, updateFields);
-      return { status: 'success' };
+
+      if (updatePlaylistDto.sermonsIds && updatePlaylistDto.sermonsIds.length) {
+        const sermons = await this.sermonService.findByIds(
+          updatePlaylistDto.sermonsIds,
+        );
+        if (!sermons) {
+          throw new Error('Sermons not found');
+        }
+        playlist.sermons = sermons;
+      }
+
+      return await this.playlistRepository.save(playlist);
     } catch (error) {
       throw new HttpException(
         'from:update ' + error.message,

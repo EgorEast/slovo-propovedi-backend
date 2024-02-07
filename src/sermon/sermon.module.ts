@@ -8,5 +8,6 @@ import { SermonEntity } from './entities/sermon.entity';
   imports: [TypeOrmModule.forFeature([SermonEntity])],
   controllers: [SermonController],
   providers: [SermonService],
+  exports: [SermonService],
 })
 export class SermonModule {}

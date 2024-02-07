@@ -7,10 +7,14 @@ export class UpdatePlaylistDto extends PartialType(CreatePlaylistDto) {
   @ApiProperty()
   @IsString()
   @IsOptional()
-  title: string;
+  title?: string;
 
   @ApiProperty()
   @IsString()
   @IsOptional()
-  description: string;
+  description?: string;
+
+  @ApiProperty()
+  @IsOptional()
+  sermonsIds?: string[];
 }

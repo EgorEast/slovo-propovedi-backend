@@ -13,7 +13,6 @@ import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PlaylistEntity } from './entities/playlist.entity';
-import { DeleteResult } from 'typeorm';
 import {
   AllPlaylistsResponse,
   StatusPlaylistResponse,
@@ -68,12 +67,12 @@ export class PlaylistController {
   })
   @ApiResponse({
     status: HttpStatus.OK,
-    type: StatusPlaylistResponse,
+    type: PlaylistEntity,
   })
   async update(
     @Param('id') id: string,
     @Body() updatePlaylistDto: UpdatePlaylistDto,
-  ): Promise<StatusPlaylistResponse> {
+  ): Promise<PlaylistEntity> {
     return await this.playlistService.update(id, updatePlaylistDto);
   }
 

@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { SermonEntity } from '../entities/sermon.entity';
+import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
 
 export interface UpdateSermon {
   title?: string;

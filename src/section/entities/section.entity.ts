@@ -2,6 +2,7 @@ import {
   Column,
   Entity,
   JoinColumn,
+  JoinTable,
   ManyToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
@@ -25,9 +26,8 @@ export class SectionEntity {
   @IsString()
   description: string;
 
-  @ApiProperty({ type: PlaylistEntity, isArray: true })
-  @ManyToMany(() => PlaylistEntity, (playlist) => playlist.sections)
-  @JoinColumn()
-  @IsOptional()
-  playlists: PlaylistEntity[];
+  // @ApiProperty({ type: () => PlaylistEntity, isArray: true })
+  // @ManyToMany(() => PlaylistEntity, (playlist) => playlist.sections)
+  // @JoinTable()
+  // playlists: PlaylistEntity[];
 }

@@ -1,8 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
-import { SectionEntity } from 'src/section/entities/section.entity';
+import { IsString } from 'class-validator';
 import { SermonEntity } from 'src/sermon/entities/sermon.entity';
-import { Column, Entity, ManyToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinTable,
+  ManyToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 @Entity('playlist')
 export class PlaylistEntity {
@@ -16,17 +21,18 @@ export class PlaylistEntity {
   title: string;
 
   @ApiProperty()
-  @Column({ name: 'description', type: 'varchar', nullable: true })
+  @Column({ name: 'description', type: 'varchar' })
   @IsString()
   description: string;
 
-  @ApiProperty({ type: () => SectionEntity, isArray: true })
-  @ManyToMany(() => SectionEntity, (section) => section.playlists)
-  @IsOptional()
-  sections: SectionEntity[];
+  // @ApiProperty({ type: () => SectionEntity, isArray: true })
+  // @ManyToMany(() => SectionEntity, (section) => section.playlists)
+  // sections: SectionEntity[];
 
   @ApiProperty({ type: () => SermonEntity, isArray: true })
-  @ManyToMany(() => SermonEntity, (sermon) => sermon.playlists)
-  @IsOptional()
+  @ManyToMany(() => SermonEntity, (sermon) => sermon.playlists, {
+    cascade: true,
+  })
+  @JoinTable()
   sermons: SermonEntity[];
 }

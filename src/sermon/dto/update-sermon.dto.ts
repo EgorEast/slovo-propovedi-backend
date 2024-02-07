@@ -7,25 +7,29 @@ export class UpdateSermonDto extends PartialType(CreateSermonDto) {
   @ApiProperty()
   @IsString()
   @IsOptional()
-  title: string;
+  title?: string;
 
   @ApiProperty()
   @IsString()
   @IsOptional()
-  description: string;
+  description?: string;
 
   @ApiProperty()
   @IsString()
   @IsOptional()
-  textFileUrl: string;
+  textFileUrl?: string;
 
   @ApiProperty()
   @IsString()
   @IsOptional()
-  audioUrl: string;
+  audioUrl?: string;
 
   @ApiProperty()
   @IsString()
   @IsOptional()
-  youtubeUrl: string;
+  youtubeUrl?: string;
+
+  @ApiProperty()
+  @IsOptional()
+  playlist?: string;
 }

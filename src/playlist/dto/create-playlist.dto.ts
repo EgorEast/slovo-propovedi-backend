@@ -11,4 +11,8 @@ export class CreatePlaylistDto {
   @IsString()
   @IsOptional()
   description: string;
+
+  @ApiProperty()
+  @IsOptional()
+  sermonsIds?: string[];
 }

@@ -1,13 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsOptional, IsString } from 'class-validator';
 import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
-import {
-  Column,
-  Entity,
-  JoinColumn,
-  ManyToMany,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+import { Column, Entity, ManyToMany, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('sermon')
 export class SermonEntity {
@@ -26,22 +20,26 @@ export class SermonEntity {
   description: string;
 
   @ApiProperty()
-  @Column({ name: 'text-file-url', type: 'varchar' })
+  @Column({ name: 'text-file-url', type: 'varchar', nullable: true })
   @IsString()
-  textFileUrl: string;
+  @IsOptional()
+  textFileUrl?: string;
 
   @ApiProperty()
-  @Column({ name: 'audio-url', type: 'varchar' })
+  @Column({ name: 'audio-url', type: 'varchar', nullable: true })
   @IsString()
-  audioUrl: string;
+  @IsOptional()
+  audioUrl?: string;
 
   @ApiProperty()
-  @Column({ name: 'youtube-url', type: 'varchar' })
+  @Column({ name: 'youtube-url', type: 'varchar', nullable: true })
   @IsString()
-  youtubeUrl: string;
+  @IsOptional()
+  youtubeUrl?: string;
 
-  @ApiProperty({ type: PlaylistEntity, isArray: true })
-  @ManyToMany(() => PlaylistEntity, (playlist) => playlist.sermons)
-  @JoinColumn()
+  @ApiProperty({ type: () => PlaylistEntity, isArray: true })
+  @ManyToMany(() => PlaylistEntity, (playlist) => playlist.sermons, {
+    cascade: true,
+  })
   playlists: PlaylistEntity[];
 }

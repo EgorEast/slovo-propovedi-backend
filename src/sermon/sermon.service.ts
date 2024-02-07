@@ -1,14 +1,21 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  forwardRef,
+} from '@nestjs/common';
 import { CreateSermonDto } from './dto/create-sermon.dto';
 import { UpdateSermonDto } from './dto/update-sermon.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SermonEntity } from './entities/sermon.entity';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   AllSermonsResponse,
   StatusSermonResponse,
   UpdateSermon,
 } from './interfaces/interface';
+import { PlaylistService } from 'src/playlist/playlist.service';
 
 @Injectable()
 export class SermonService {
@@ -19,7 +26,11 @@ export class SermonService {
 
   async create(createSermonDto: CreateSermonDto): Promise<SermonEntity> {
     try {
-      return await this.sermonRepository.save(createSermonDto);
+      const sermon = this.sermonRepository.create({
+        title: createSermonDto.title,
+        description: createSermonDto.description,
+      });
+      return await this.sermonRepository.save(sermon);
     } catch (error) {
       throw new HttpException(
         'from:createSermon ' + error.message,
@@ -54,6 +65,20 @@ export class SermonService {
     }
   }
 
+  async findByIds(ids: string[]): Promise<SermonEntity[]> {
+    try {
+      if (!ids.length) {
+        throw new Error('ids in empty');
+      }
+      return await this.sermonRepository.find({ where: { id: In(ids) } });
+    } catch (error) {
+      throw new HttpException(
+        'from:findOneSermonItem ' + error.message,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   async update(
     id: string,
     updateSermonDto: UpdateSermonDto,
@@ -67,6 +92,7 @@ export class SermonService {
       if (updateSermonDto.description) {
         updateFields.description = updateSermonDto.description;
       }
+
       await this.sermonRepository.update(id, updateFields);
       return { status: 'success' };
     } catch (error) {

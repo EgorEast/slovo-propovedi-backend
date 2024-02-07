@@ -13,7 +13,6 @@ import { CreateSermonDto } from './dto/create-sermon.dto';
 import { UpdateSermonDto } from './dto/update-sermon.dto';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SermonEntity } from './entities/sermon.entity';
-import { DeleteResult } from 'typeorm';
 import {
   AllSermonsResponse,
   StatusSermonResponse,
