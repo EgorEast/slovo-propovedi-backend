@@ -15,7 +15,6 @@ import {
   StatusSermonResponse,
   UpdateSermon,
 } from './interfaces/interface';
-import { PlaylistService } from 'src/playlist/playlist.service';
 
 @Injectable()
 export class SermonService {
@@ -29,6 +28,9 @@ export class SermonService {
       const sermon = this.sermonRepository.create({
         title: createSermonDto.title,
         description: createSermonDto.description,
+        audioUrl: createSermonDto.audioUrl,
+        youtubeUrl: createSermonDto.youtubeUrl,
+        textFileUrl: createSermonDto.textFileUrl,
       });
       return await this.sermonRepository.save(sermon);
     } catch (error) {
@@ -73,7 +75,7 @@ export class SermonService {
       return await this.sermonRepository.find({ where: { id: In(ids) } });
     } catch (error) {
       throw new HttpException(
-        'from:findOneSermonItem ' + error.message,
+        'from:findByIds sermon ' + error.message,
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -91,6 +93,15 @@ export class SermonService {
       }
       if (updateSermonDto.description) {
         updateFields.description = updateSermonDto.description;
+      }
+      if (updateSermonDto.audioUrl) {
+        updateFields.audioUrl = updateSermonDto.audioUrl;
+      }
+      if (updateSermonDto.textFileUrl) {
+        updateFields.textFileUrl = updateSermonDto.textFileUrl;
+      }
+      if (updateSermonDto.youtubeUrl) {
+        updateFields.youtubeUrl = updateSermonDto.youtubeUrl;
       }
 
       await this.sermonRepository.update(id, updateFields);

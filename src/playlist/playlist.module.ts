@@ -6,12 +6,9 @@ import { PlaylistEntity } from './entities/playlist.entity';
 import { SermonModule } from 'src/sermon/sermon.module';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([PlaylistEntity]),
-    forwardRef(() => SermonModule),
-  ],
-
+  imports: [TypeOrmModule.forFeature([PlaylistEntity]), SermonModule],
   controllers: [PlaylistController],
   providers: [PlaylistService],
+  exports: [PlaylistService],
 })
 export class PlaylistModule {}

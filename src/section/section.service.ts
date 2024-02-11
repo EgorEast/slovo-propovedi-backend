@@ -3,12 +3,14 @@ import { CreateSectionDto } from './dto/create-section.dto';
 import { UpdateSectionDto } from './dto/update-section.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SectionEntity } from './entities/section.entity';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { AllSectionsResponse, UpdateSection } from './interfacies/interface';
+import { PlaylistService } from 'src/playlist/playlist.service';
 
 @Injectable()
 export class SectionService {
   constructor(
+    private playlistService: PlaylistService,
     @InjectRepository(SectionEntity)
     private sectionRepository: Repository<SectionEntity>,
   ) {}
@@ -21,6 +23,20 @@ export class SectionService {
     } catch (error) {
       throw new HttpException(
         'from:createSectionItem ' + error.message,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  async findByIds(ids: string[]): Promise<SectionEntity[]> {
+    try {
+      if (!ids.length) {
+        throw new Error('ids in empty');
+      }
+      return await this.sectionRepository.find({ where: { id: In(ids) } });
+    } catch (error) {
+      throw new HttpException(
+        'from:findByIds section ' + error.message,
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -55,18 +71,38 @@ export class SectionService {
   async update(
     id: string,
     updateSectionDto: UpdateSectionDto,
-  ): Promise<{ status: 'success' }> {
+  ): Promise<SectionEntity> {
     try {
-      const updateFields: UpdateSection = {};
+      const section = await this.sectionRepository.findOne({
+        where: { id },
+        relations: ['playlists'],
+      });
+
+      if (!section) {
+        throw new Error('Section not found');
+      }
 
       if (updateSectionDto.title) {
-        updateFields.title = updateSectionDto.title;
+        section.title = updateSectionDto.title;
       }
       if (updateSectionDto.description) {
-        updateFields.description = updateSectionDto.description;
+        section.description = updateSectionDto.description;
       }
-      await this.sectionRepository.update(id, updateFields);
-      return { status: 'success' };
+
+      if (
+        updateSectionDto.playlistsIds &&
+        updateSectionDto.playlistsIds.length
+      ) {
+        const playlists = await this.playlistService.findByIds(
+          updateSectionDto.playlistsIds,
+        );
+        if (!playlists) {
+          throw new Error('Playlists not found');
+        }
+        section.playlists = playlists;
+      }
+
+      return await this.sectionRepository.save(section);
     } catch (error) {
       throw new HttpException(
         'from:update ' + error.message,

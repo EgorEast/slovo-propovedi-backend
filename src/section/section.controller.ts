@@ -13,7 +13,7 @@ import { CreateSectionDto } from './dto/create-section.dto';
 import { UpdateSectionDto } from './dto/update-section.dto';
 import { SectionEntity } from './entities/section.entity';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { DeleteResult } from 'typeorm';
+
 import {
   AllSectionsResponse,
   StatusSectionsResponse,
@@ -73,7 +73,7 @@ export class SectionController {
   async update(
     @Param('id') id: string,
     @Body() updateSectionDto: UpdateSectionDto,
-  ): Promise<StatusSectionsResponse> {
+  ): Promise<SectionEntity> {
     return await this.sectionService.update(id, updateSectionDto);
   }
 

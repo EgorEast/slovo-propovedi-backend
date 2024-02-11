@@ -39,7 +39,7 @@ export class SermonEntity {
 
   @ApiProperty({ type: () => PlaylistEntity, isArray: true })
   @ManyToMany(() => PlaylistEntity, (playlist) => playlist.sermons, {
-    cascade: true,
+    onDelete: 'CASCADE',
   })
   playlists: PlaylistEntity[];
 }

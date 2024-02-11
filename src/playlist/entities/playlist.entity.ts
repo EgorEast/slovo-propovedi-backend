@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString } from 'class-validator';
+import { SectionEntity } from 'src/section/entities/section.entity';
 import { SermonEntity } from 'src/sermon/entities/sermon.entity';
 import {
   Column,
@@ -25,13 +26,15 @@ export class PlaylistEntity {
   @IsString()
   description: string;
 
-  // @ApiProperty({ type: () => SectionEntity, isArray: true })
-  // @ManyToMany(() => SectionEntity, (section) => section.playlists)
-  // sections: SectionEntity[];
+  @ApiProperty({ type: () => SectionEntity, isArray: true })
+  @ManyToMany(() => SectionEntity, (section) => section.playlists, {
+    onDelete: 'CASCADE',
+  })
+  sections: SectionEntity[];
 
   @ApiProperty({ type: () => SermonEntity, isArray: true })
   @ManyToMany(() => SermonEntity, (sermon) => sermon.playlists, {
-    cascade: true,
+    onDelete: 'CASCADE',
   })
   @JoinTable()
   sermons: SermonEntity[];

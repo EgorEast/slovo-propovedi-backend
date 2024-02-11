@@ -26,8 +26,10 @@ export class SectionEntity {
   @IsString()
   description: string;
 
-  // @ApiProperty({ type: () => PlaylistEntity, isArray: true })
-  // @ManyToMany(() => PlaylistEntity, (playlist) => playlist.sections)
-  // @JoinTable()
-  // playlists: PlaylistEntity[];
+  @ApiProperty({ type: () => PlaylistEntity, isArray: true })
+  @ManyToMany(() => PlaylistEntity, (playlist) => playlist.sections, {
+    onDelete: 'CASCADE',
+  })
+  @JoinTable()
+  playlists: PlaylistEntity[];
 }

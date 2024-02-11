@@ -1,6 +1,6 @@
 import { PartialType } from '@nestjs/mapped-types';
 import { CreateSectionDto } from './create-section.dto';
-import { IsOptional, IsString } from 'class-validator';
+import { IsArray, IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateSectionDto extends PartialType(CreateSectionDto) {
@@ -13,4 +13,9 @@ export class UpdateSectionDto extends PartialType(CreateSectionDto) {
   @IsString()
   @IsOptional()
   description: string;
+
+  @ApiProperty()
+  @IsArray()
+  @IsOptional()
+  playlistsIds?: string[];
 }

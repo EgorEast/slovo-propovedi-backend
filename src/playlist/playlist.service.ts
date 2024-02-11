@@ -1,26 +1,18 @@
-import {
-  HttpException,
-  HttpStatus,
-  Inject,
-  Injectable,
-  forwardRef,
-} from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PlaylistEntity } from './entities/playlist.entity';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   AllPlaylistsResponse,
   StatusPlaylistResponse,
-  UpdatePlaylist,
 } from './interfaces/interface';
 import { SermonService } from 'src/sermon/sermon.service';
 
 @Injectable()
 export class PlaylistService {
   constructor(
-    @Inject(forwardRef(() => SermonService))
     private sermonService: SermonService,
     @InjectRepository(PlaylistEntity)
     private playlistRepository: Repository<PlaylistEntity>,
@@ -32,8 +24,16 @@ export class PlaylistService {
         title: createPlaylistDto.title,
         description: createPlaylistDto.description,
       });
-      return this.playlistRepository.save(playlist);
-      // throw new HttpException('Проповедь не найдена', HttpStatus.BAD_REQUEST);
+      if (createPlaylistDto.sermonsIds && createPlaylistDto.sermonsIds.length) {
+        const sermons = await this.sermonService.findByIds(
+          createPlaylistDto.sermonsIds,
+        );
+        if (!sermons) {
+          throw new Error('Sermons not found');
+        }
+        playlist.sermons = sermons;
+      }
+      return await this.playlistRepository.save(playlist);
     } catch (error) {
       throw new HttpException(
         'from:createPlaylist ' + error.message,
@@ -52,6 +52,20 @@ export class PlaylistService {
     } catch (error) {
       throw new HttpException(
         'from:findAllPlaylistItems ' + error.message,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  async findByIds(ids: string[]): Promise<PlaylistEntity[]> {
+    try {
+      if (!ids.length) {
+        throw new Error('ids in empty');
+      }
+      return await this.playlistRepository.find({ where: { id: In(ids) } });
+    } catch (error) {
+      throw new HttpException(
+        'from:findByIds playlist ' + error.message,
         HttpStatus.BAD_REQUEST,
       );
     }

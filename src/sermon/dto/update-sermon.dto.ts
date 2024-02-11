@@ -1,6 +1,6 @@
 import { PartialType } from '@nestjs/mapped-types';
 import { CreateSermonDto } from './create-sermon.dto';
-import { IsArray, IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateSermonDto extends PartialType(CreateSermonDto) {
@@ -28,8 +28,4 @@ export class UpdateSermonDto extends PartialType(CreateSermonDto) {
   @IsString()
   @IsOptional()
   youtubeUrl?: string;
-
-  @ApiProperty()
-  @IsOptional()
-  playlist?: string;
 }
