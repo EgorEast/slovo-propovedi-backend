@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import * as Minio from 'minio';
+import * as path from 'path';
 
 @Injectable()
 export class MinioService {
@@ -30,12 +31,17 @@ export class MinioService {
 
   async uploadFile(file: Express.Multer.File) {
     try {
-      const fileName = randomUUID() + '-' + file.originalname;
+      const fileType = path.extname(file.originalname);
+      const contentType = this.getContentType(fileType);
+      const fileName = randomUUID() + fileType;
       await this.minioClient.putObject(
         MinioService.BUCKET_NAME,
         fileName,
         file.buffer,
         file.size,
+        {
+          'Content-Type': contentType,
+        },
       );
 
       return fileName;
@@ -44,11 +50,29 @@ export class MinioService {
     }
   }
 
-  async getFileUrl(fileName: string) {
-    return this.minioClient.presignedUrl(
-      'GET',
-      MinioService.BUCKET_NAME,
-      fileName,
-    );
+  async getFileUrl(fileName: string): Promise<string> {
+    return `${this.configService.get('MINIO_PUBLIC_URI')}/${
+      MinioService.BUCKET_NAME
+    }/${fileName}`;
+  }
+
+  getContentType(fileType: string): string {
+    switch (fileType) {
+      case '.jpeg': {
+        return 'image/jpeg';
+      }
+      case '.jpg': {
+        return 'image/jpeg';
+      }
+      case '.png': {
+        return 'image/png';
+      }
+      case '.webp': {
+        return 'image/webp';
+      }
+      case '.mp3': {
+        return 'audio/mp3';
+      }
+    }
   }
 }
