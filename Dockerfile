@@ -4,6 +4,9 @@ WORKDIR /app
 
 COPY package.json .
 
+RUN apt update \
+    && npm install @nestjs/cli -g
+
 RUN npm install
 
 COPY . .
