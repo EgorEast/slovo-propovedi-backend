@@ -17,10 +17,9 @@ FROM node:18.17-alpine
 WORKDIR /app
 
 COPY --from=builder /app/package.json ./
-COPY --from=builder /app/dist ./
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
 
 RUN npm install --production
 
 EXPOSE 3000
-CMD [ "node", "main.js" ]
+CMD [ "node", "dist/main.js" ]
