@@ -26,6 +26,30 @@ export class SectionEntity {
   @IsString()
   description: string;
 
+  @ApiProperty()
+  @Column({ name: 'items-size', type: 'varchar', nullable: true })
+  itemsSize: string;
+
+  @ApiProperty()
+  @Column({ name: 'items-rows', type: 'int', nullable: true })
+  itemsRows?: number;
+
+  @ApiProperty()
+  @Column({ name: 'transform', type: 'varchar', nullable: true })
+  transform: string;
+
+  @ApiProperty({ default: false })
+  @Column({ name: 'is-description-title-on-slide-large', type: 'boolean', default: false })
+  isDescriptionTitleOnSlideLarge: boolean;
+
+  @ApiProperty({ default: 'under' })
+  @Column({ name: 'where-is-slide-title-located', type: 'varchar', default: 'under' })
+  whereIsSlideTitleLocated: string;
+
+  @ApiProperty({ default: false })
+  @Column({ name: 'border-radius', type: 'boolean', default: false })
+  borderRadius: boolean;
+
   @ApiProperty({ type: () => PlaylistEntity, isArray: true })
   @ManyToMany(() => PlaylistEntity, (playlist) => playlist.sections, {
     onDelete: 'CASCADE',

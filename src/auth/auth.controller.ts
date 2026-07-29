@@ -8,8 +8,9 @@ import {
   UseGuards,
   Get,
 } from '@nestjs/common';
-import { AuthResponse, AuthService } from './auth.service';
+import { AuthResponse, RefreshResponse, AuthService } from './auth.service';
 import { SignInRequestDto } from './dto/sign-in-request.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { AuthGuard } from './guard/auth.guard';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
@@ -19,15 +20,18 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('login')
-  @ApiOperation({
-    summary: 'login to admin panel',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: AuthResponse,
-  })
+  @ApiOperation({ summary: 'Login with email and password' })
+  @ApiResponse({ status: HttpStatus.OK, type: AuthResponse })
   signIn(@Body() signInDto: SignInRequestDto): Promise<AuthResponse> {
     return this.authService.signIn(signInDto.email, signInDto.password);
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refresh access and refresh tokens' })
+  @ApiResponse({ status: HttpStatus.OK, type: RefreshResponse })
+  refresh(@Body() refreshDto: RefreshTokenDto): Promise<RefreshResponse> {
+    return this.authService.refreshTokens(refreshDto.refreshToken);
   }
 
   @UseGuards(AuthGuard)

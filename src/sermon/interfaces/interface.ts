@@ -7,6 +7,11 @@ export interface UpdateSermon {
   textFileUrl?: string;
   audioUrl?: string;
   youtubeUrl?: string;
+  artist?: string;
+  artwork?: string;
+  book?: string;
+  chapter?: number;
+  verse?: number | [number, number];
 }
 
 export class AllSermonsResponse {

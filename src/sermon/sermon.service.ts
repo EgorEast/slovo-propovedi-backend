@@ -3,6 +3,7 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  NotFoundException,
   forwardRef,
 } from '@nestjs/common';
 import { CreateSermonDto } from './dto/create-sermon.dto';
@@ -31,6 +32,11 @@ export class SermonService {
         audioUrl: createSermonDto.audioUrl,
         youtubeUrl: createSermonDto.youtubeUrl,
         textFileUrl: createSermonDto.textFileUrl,
+        artist: createSermonDto.artist,
+        artwork: createSermonDto.artwork,
+        book: createSermonDto.book,
+        chapter: createSermonDto.chapter,
+        verse: createSermonDto.verse,
       });
       return await this.sermonRepository.save(sermon);
     } catch (error) {
@@ -86,22 +92,44 @@ export class SermonService {
     updateSermonDto: UpdateSermonDto,
   ): Promise<StatusSermonResponse> {
     try {
+      const existingSermon = await this.sermonRepository.findOne({
+        where: { id },
+      });
+      if (!existingSermon) {
+        throw new NotFoundException(`Sermon with id "${id}" not found`);
+      }
+
       const updateFields: UpdateSermon = {};
 
-      if (updateSermonDto.title) {
+      if (updateSermonDto.title !== undefined) {
         updateFields.title = updateSermonDto.title;
       }
-      if (updateSermonDto.description) {
+      if (updateSermonDto.description !== undefined) {
         updateFields.description = updateSermonDto.description;
       }
-      if (updateSermonDto.audioUrl) {
+      if (updateSermonDto.audioUrl !== undefined) {
         updateFields.audioUrl = updateSermonDto.audioUrl;
       }
-      if (updateSermonDto.textFileUrl) {
+      if (updateSermonDto.textFileUrl !== undefined) {
         updateFields.textFileUrl = updateSermonDto.textFileUrl;
       }
-      if (updateSermonDto.youtubeUrl) {
+      if (updateSermonDto.youtubeUrl !== undefined) {
         updateFields.youtubeUrl = updateSermonDto.youtubeUrl;
+      }
+      if (updateSermonDto.artist !== undefined) {
+        updateFields.artist = updateSermonDto.artist;
+      }
+      if (updateSermonDto.artwork !== undefined) {
+        updateFields.artwork = updateSermonDto.artwork;
+      }
+      if (updateSermonDto.book !== undefined) {
+        updateFields.book = updateSermonDto.book;
+      }
+      if (updateSermonDto.chapter !== undefined) {
+        updateFields.chapter = updateSermonDto.chapter;
+      }
+      if (updateSermonDto.verse !== undefined) {
+        updateFields.verse = updateSermonDto.verse;
       }
 
       await this.sermonRepository.update(id, updateFields);

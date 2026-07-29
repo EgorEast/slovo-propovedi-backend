@@ -26,6 +26,10 @@ export class PlaylistEntity {
   @IsString()
   description: string;
 
+  @ApiProperty()
+  @Column({ name: 'artwork', type: 'varchar' })
+  artwork: string;
+
   @ApiProperty({ type: () => SectionEntity, isArray: true })
   @ManyToMany(() => SectionEntity, (section) => section.playlists, {
     onDelete: 'CASCADE',

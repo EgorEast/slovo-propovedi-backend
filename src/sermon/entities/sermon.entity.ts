@@ -37,6 +37,30 @@ export class SermonEntity {
   @IsOptional()
   youtubeUrl?: string;
 
+  @ApiProperty()
+  @Column({ name: 'artist', type: 'varchar' })
+  @IsString()
+  artist: string;
+
+  @ApiProperty()
+  @Column({ name: 'artwork', type: 'varchar' })
+  @IsString()
+  artwork: string;
+
+  @ApiProperty()
+  @Column({ name: 'book', type: 'varchar', nullable: true })
+  @IsString()
+  @IsOptional()
+  book?: string;
+
+  @ApiProperty()
+  @Column({ name: 'chapter', type: 'int', nullable: true })
+  chapter?: number;
+
+  @ApiProperty()
+  @Column({ name: 'verse', type: 'json', nullable: true })
+  verse?: number | [number, number];
+
   @ApiProperty({ type: () => PlaylistEntity, isArray: true })
   @ManyToMany(() => PlaylistEntity, (playlist) => playlist.sermons, {
     onDelete: 'CASCADE',

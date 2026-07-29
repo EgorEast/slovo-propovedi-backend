@@ -7,12 +7,14 @@ import {
   Param,
   Delete,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { SectionService } from './section.service';
 import { CreateSectionDto } from './dto/create-section.dto';
 import { UpdateSectionDto } from './dto/update-section.dto';
 import { SectionEntity } from './entities/section.entity';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { AuthGuard } from '../auth/guard/auth.guard';
 
 import {
   AllSectionsResponse,
@@ -25,6 +27,7 @@ export class SectionController {
   constructor(private readonly sectionService: SectionService) {}
 
   @Post()
+  @UseGuards(AuthGuard)
   @ApiOperation({
     summary: 'Create section',
   })
@@ -63,12 +66,13 @@ export class SectionController {
   }
 
   @Patch(':id')
+  @UseGuards(AuthGuard)
   @ApiOperation({
     summary: 'Update one section by id',
   })
   @ApiResponse({
     status: HttpStatus.OK,
-    type: StatusSectionsResponse,
+    type: SectionEntity,
   })
   async update(
     @Param('id') id: string,
@@ -78,6 +82,7 @@ export class SectionController {
   }
 
   @Delete(':id')
+  @UseGuards(AuthGuard)
   @ApiOperation({
     summary: 'Delete one section by id',
   })

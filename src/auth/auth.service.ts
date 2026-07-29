@@ -2,10 +2,52 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { ApiProperty } from '@nestjs/swagger';
+import * as bcrypt from 'bcrypt';
+
+const BCRYPT_PREFIXES = ['$2a$', '$2b$', '$2y$'];
+
+const ACCESS_SECRET = process.env.JWT_SECRET || 'passwordsecret';
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret-dev';
+
+if (!process.env.JWT_SECRET) {
+  console.warn(
+    '⚠️  Using default JWT_SECRET. Set JWT_SECRET env variable for production!',
+  );
+}
+if (!process.env.JWT_REFRESH_SECRET) {
+  console.warn(
+    '⚠️  Using default JWT_REFRESH_SECRET. Set JWT_REFRESH_SECRET env variable for production!',
+  );
+}
+
+class UserResponse {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  name: string;
+
+  @ApiProperty()
+  email: string;
+}
 
 export class AuthResponse {
   @ApiProperty()
-  access_token: string;
+  accessToken: string;
+
+  @ApiProperty()
+  refreshToken: string;
+
+  @ApiProperty({ type: UserResponse })
+  user: UserResponse;
+}
+
+export class RefreshResponse {
+  @ApiProperty()
+  accessToken: string;
+
+  @ApiProperty()
+  refreshToken: string;
 }
 
 @Injectable()
@@ -15,14 +57,75 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async signIn(email: string, pass: string): Promise<AuthResponse> {
+  async signIn(email: string, password: string): Promise<AuthResponse> {
     const user = await this.usersService.findOneByEmail(email);
-    if (user?.password !== pass) {
-      throw new UnauthorizedException();
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
     }
+
+    const isValid = await this.validatePassword(password, user);
+
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     const payload = { id: user.id, email: user.email };
+    const tokens = await this.generateTokens(payload);
+
     return {
-      access_token: await this.jwtService.signAsync(payload),
+      ...tokens,
+      user: { id: user.id, name: user.name, email: user.email },
     };
+  }
+
+  async refreshTokens(refreshToken: string): Promise<RefreshResponse> {
+    try {
+      const payload = await this.jwtService.verifyAsync(refreshToken, {
+        secret: REFRESH_SECRET,
+      });
+
+      return this.generateTokens({ id: payload.id, email: payload.email });
+    } catch {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+  }
+
+  private async generateTokens(payload: { id: string; email: string }) {
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(payload, {
+        secret: ACCESS_SECRET,
+        expiresIn: '30m',
+      }),
+      this.jwtService.signAsync(payload, {
+        secret: REFRESH_SECRET,
+        expiresIn: '30d',
+      }),
+    ]);
+
+    return { accessToken, refreshToken };
+  }
+
+  private isPasswordBcryptHash(hashedPassword: string): boolean {
+    return BCRYPT_PREFIXES.some((prefix) => hashedPassword.startsWith(prefix));
+  }
+
+  private async validatePassword(
+    inputPassword: string,
+    user: { id: string; password: string },
+  ): Promise<boolean> {
+    if (this.isPasswordBcryptHash(user.password)) {
+      return bcrypt.compare(inputPassword, user.password);
+    }
+
+    // Legacy plaintext — compare directly, then re-hash if matched
+    const matchesPlaintext = inputPassword === user.password;
+
+    if (matchesPlaintext) {
+      const rehashed = await bcrypt.hash(inputPassword, 10);
+      await this.usersService.updatePassword(user.id, rehashed);
+    }
+
+    return matchesPlaintext;
   }
 }

@@ -1,15 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsInt, IsOptional, IsString } from 'class-validator';
+import { IsVerseOrPair } from './validators/is-verse-or-pair.validator';
 
 export class CreateSermonDto {
   @ApiProperty()
   @IsString()
-  @IsOptional()
   title: string;
 
   @ApiProperty()
   @IsString()
-  @IsOptional()
   description: string;
 
   @ApiProperty()
@@ -26,4 +25,27 @@ export class CreateSermonDto {
   @IsString()
   @IsOptional()
   youtubeUrl?: string;
+
+  @ApiProperty()
+  @IsString()
+  artist: string;
+
+  @ApiProperty()
+  @IsString()
+  artwork: string;
+
+  @ApiProperty({ example: 'Genesis', description: 'Bible book reference' })
+  @IsString()
+  @IsOptional()
+  book?: string;
+
+  @ApiProperty()
+  @IsInt()
+  @IsOptional()
+  chapter?: number;
+
+  @ApiProperty()
+  @IsVerseOrPair()
+  @IsOptional()
+  verse?: number | [number, number];
 }

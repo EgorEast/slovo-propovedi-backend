@@ -7,11 +7,13 @@ import {
   Param,
   Delete,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { SermonService } from './sermon.service';
 import { CreateSermonDto } from './dto/create-sermon.dto';
 import { UpdateSermonDto } from './dto/update-sermon.dto';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { AuthGuard } from '../auth/guard/auth.guard';
 import { SermonEntity } from './entities/sermon.entity';
 import {
   AllSermonsResponse,
@@ -24,6 +26,7 @@ export class SermonController {
   constructor(private readonly sermonService: SermonService) {}
 
   @Post()
+  @UseGuards(AuthGuard)
   @ApiOperation({
     summary: 'Create sermon',
   })
@@ -62,6 +65,7 @@ export class SermonController {
   }
 
   @Patch(':id')
+  @UseGuards(AuthGuard)
   @ApiOperation({
     summary: 'Update one sermon by id',
   })
@@ -77,6 +81,7 @@ export class SermonController {
   }
 
   @Delete(':id')
+  @UseGuards(AuthGuard)
   @ApiOperation({
     summary: 'Delete one sermon by id',
   })

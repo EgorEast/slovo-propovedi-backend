@@ -19,7 +19,17 @@ export class SectionService {
     createSectionDto: CreateSectionDto,
   ): Promise<SectionEntity> {
     try {
-      return await this.sectionRepository.save(createSectionDto);
+      const section = this.sectionRepository.create({
+        title: createSectionDto.title,
+        description: createSectionDto.description,
+        itemsSize: createSectionDto.itemsSize,
+        itemsRows: createSectionDto.itemsRows,
+        transform: createSectionDto.transform,
+        isDescriptionTitleOnSlideLarge: createSectionDto.isDescriptionTitleOnSlideLarge,
+        whereIsSlideTitleLocated: createSectionDto.whereIsSlideTitleLocated,
+        borderRadius: createSectionDto.borderRadius,
+      });
+      return await this.sectionRepository.save(section);
     } catch (error) {
       throw new HttpException(
         'from:createSectionItem ' + error.message,
@@ -88,18 +98,37 @@ export class SectionService {
       if (updateSectionDto.description) {
         section.description = updateSectionDto.description;
       }
+      if (updateSectionDto.itemsSize) {
+        section.itemsSize = updateSectionDto.itemsSize;
+      }
+      if (updateSectionDto.itemsRows !== undefined) {
+        section.itemsRows = updateSectionDto.itemsRows;
+      }
+      if (updateSectionDto.transform) {
+        section.transform = updateSectionDto.transform;
+      }
+      if (updateSectionDto.isDescriptionTitleOnSlideLarge !== undefined) {
+        section.isDescriptionTitleOnSlideLarge = updateSectionDto.isDescriptionTitleOnSlideLarge;
+      }
+      if (updateSectionDto.whereIsSlideTitleLocated !== undefined) {
+        section.whereIsSlideTitleLocated = updateSectionDto.whereIsSlideTitleLocated;
+      }
+      if (updateSectionDto.borderRadius !== undefined) {
+        section.borderRadius = updateSectionDto.borderRadius;
+      }
 
-      if (
-        updateSectionDto.playlistsIds &&
-        updateSectionDto.playlistsIds.length
-      ) {
-        const playlists = await this.playlistService.findByIds(
-          updateSectionDto.playlistsIds,
-        );
-        if (!playlists) {
-          throw new Error('Playlists not found');
+      if (updateSectionDto.playlistsIds !== undefined) {
+        if (updateSectionDto.playlistsIds.length > 0) {
+          const playlists = await this.playlistService.findByIds(
+            updateSectionDto.playlistsIds,
+          );
+          if (!playlists) {
+            throw new Error('Playlists not found');
+          }
+          section.playlists = playlists;
+        } else {
+          section.playlists = [];
         }
-        section.playlists = playlists;
       }
 
       return await this.sectionRepository.save(section);

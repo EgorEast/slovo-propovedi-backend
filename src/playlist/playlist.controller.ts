@@ -7,11 +7,13 @@ import {
   Param,
   Delete,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { PlaylistService } from './playlist.service';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { AuthGuard } from '../auth/guard/auth.guard';
 import { PlaylistEntity } from './entities/playlist.entity';
 import {
   AllPlaylistsResponse,
@@ -24,6 +26,7 @@ export class PlaylistController {
   constructor(private readonly playlistService: PlaylistService) {}
 
   @Post()
+  @UseGuards(AuthGuard)
   @ApiOperation({
     summary: 'Create playlist',
   })
@@ -62,6 +65,7 @@ export class PlaylistController {
   }
 
   @Patch(':id')
+  @UseGuards(AuthGuard)
   @ApiOperation({
     summary: 'Update one playlist by id',
   })
@@ -77,6 +81,7 @@ export class PlaylistController {
   }
 
   @Delete(':id')
+  @UseGuards(AuthGuard)
   @ApiOperation({
     summary: 'Delete one playlist by id',
   })

@@ -23,6 +23,7 @@ export class PlaylistService {
       const playlist = this.playlistRepository.create({
         title: createPlaylistDto.title,
         description: createPlaylistDto.description,
+        artwork: createPlaylistDto.artwork,
       });
       if (createPlaylistDto.sermonsIds && createPlaylistDto.sermonsIds.length) {
         const sermons = await this.sermonService.findByIds(
@@ -106,14 +107,22 @@ export class PlaylistService {
         playlist.description = updatePlaylistDto.description;
       }
 
-      if (updatePlaylistDto.sermonsIds && updatePlaylistDto.sermonsIds.length) {
-        const sermons = await this.sermonService.findByIds(
-          updatePlaylistDto.sermonsIds,
-        );
-        if (!sermons) {
-          throw new Error('Sermons not found');
+      if (updatePlaylistDto.artwork !== undefined) {
+        playlist.artwork = updatePlaylistDto.artwork;
+      }
+
+      if (updatePlaylistDto.sermonsIds !== undefined) {
+        if (updatePlaylistDto.sermonsIds.length > 0) {
+          const sermons = await this.sermonService.findByIds(
+            updatePlaylistDto.sermonsIds,
+          );
+          if (!sermons) {
+            throw new Error('Sermons not found');
+          }
+          playlist.sermons = sermons;
+        } else {
+          playlist.sermons = [];
         }
-        playlist.sermons = sermons;
       }
 
       return await this.playlistRepository.save(playlist);

@@ -4,13 +4,15 @@ import { IsOptional, IsString } from 'class-validator';
 export class CreatePlaylistDto {
   @ApiProperty()
   @IsString()
-  @IsOptional()
   title: string;
 
   @ApiProperty()
   @IsString()
-  @IsOptional()
   description: string;
+
+  @ApiProperty()
+  @IsString()
+  artwork: string;
 
   @ApiProperty()
   @IsOptional()
