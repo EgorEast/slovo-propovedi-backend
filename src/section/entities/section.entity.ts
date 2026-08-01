@@ -27,7 +27,7 @@ export class SectionEntity {
   description: string;
 
   @ApiProperty()
-  @Column({ name: 'items-size', type: 'varchar', nullable: true })
+  @Column({ name: 'items-size', type: 'varchar' })
   itemsSize: string;
 
   @ApiProperty()
@@ -35,15 +35,23 @@ export class SectionEntity {
   itemsRows?: number;
 
   @ApiProperty()
-  @Column({ name: 'transform', type: 'varchar', nullable: true })
+  @Column({ name: 'transform', type: 'varchar' })
   transform: string;
 
   @ApiProperty({ default: false })
-  @Column({ name: 'is-description-title-on-slide-large', type: 'boolean', default: false })
+  @Column({
+    name: 'is-description-title-on-slide-large',
+    type: 'boolean',
+    default: false,
+  })
   isDescriptionTitleOnSlideLarge: boolean;
 
   @ApiProperty({ default: 'under' })
-  @Column({ name: 'where-is-slide-title-located', type: 'varchar', default: 'under' })
+  @Column({
+    name: 'where-is-slide-title-located',
+    type: 'varchar',
+    default: 'under',
+  })
   whereIsSlideTitleLocated: string;
 
   @ApiProperty({ default: false })

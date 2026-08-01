@@ -8,7 +8,12 @@ import {
   UseGuards,
   Get,
 } from '@nestjs/common';
-import { AuthResponse, RefreshResponse, AuthService } from './auth.service';
+import {
+  AuthResponse,
+  RefreshResponse,
+  UserResponse,
+  AuthService,
+} from './auth.service';
 import { SignInRequestDto } from './dto/sign-in-request.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { AuthGuard } from './guard/auth.guard';
@@ -36,7 +41,9 @@ export class AuthController {
 
   @UseGuards(AuthGuard)
   @Get('profile')
-  getProfile(@Request() req) {
-    return req.user;
+  @ApiOperation({ summary: 'Get current admin profile' })
+  @ApiResponse({ status: HttpStatus.OK, type: UserResponse })
+  async getProfile(@Request() req): Promise<UserResponse> {
+    return await this.authService.getProfile(req.user.id);
   }
 }

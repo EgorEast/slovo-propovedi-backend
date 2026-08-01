@@ -25,7 +25,8 @@ export class SectionService {
         itemsSize: createSectionDto.itemsSize,
         itemsRows: createSectionDto.itemsRows,
         transform: createSectionDto.transform,
-        isDescriptionTitleOnSlideLarge: createSectionDto.isDescriptionTitleOnSlideLarge,
+        isDescriptionTitleOnSlideLarge:
+          createSectionDto.isDescriptionTitleOnSlideLarge,
         whereIsSlideTitleLocated: createSectionDto.whereIsSlideTitleLocated,
         borderRadius: createSectionDto.borderRadius,
       });
@@ -108,10 +109,12 @@ export class SectionService {
         section.transform = updateSectionDto.transform;
       }
       if (updateSectionDto.isDescriptionTitleOnSlideLarge !== undefined) {
-        section.isDescriptionTitleOnSlideLarge = updateSectionDto.isDescriptionTitleOnSlideLarge;
+        section.isDescriptionTitleOnSlideLarge =
+          updateSectionDto.isDescriptionTitleOnSlideLarge;
       }
       if (updateSectionDto.whereIsSlideTitleLocated !== undefined) {
-        section.whereIsSlideTitleLocated = updateSectionDto.whereIsSlideTitleLocated;
+        section.whereIsSlideTitleLocated =
+          updateSectionDto.whereIsSlideTitleLocated;
       }
       if (updateSectionDto.borderRadius !== undefined) {
         section.borderRadius = updateSectionDto.borderRadius;

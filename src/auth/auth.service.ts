@@ -6,21 +6,7 @@ import * as bcrypt from 'bcrypt';
 
 const BCRYPT_PREFIXES = ['$2a$', '$2b$', '$2y$'];
 
-const ACCESS_SECRET = process.env.JWT_SECRET || 'passwordsecret';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret-dev';
-
-if (!process.env.JWT_SECRET) {
-  console.warn(
-    '⚠️  Using default JWT_SECRET. Set JWT_SECRET env variable for production!',
-  );
-}
-if (!process.env.JWT_REFRESH_SECRET) {
-  console.warn(
-    '⚠️  Using default JWT_REFRESH_SECRET. Set JWT_REFRESH_SECRET env variable for production!',
-  );
-}
-
-class UserResponse {
+export class UserResponse {
   @ApiProperty()
   id: string;
 
@@ -57,6 +43,22 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
+  private get accessSecret(): string {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET environment variable is not set');
+    }
+    return secret;
+  }
+
+  private get refreshSecret(): string {
+    const secret = process.env.JWT_REFRESH_SECRET;
+    if (!secret) {
+      throw new Error('JWT_REFRESH_SECRET environment variable is not set');
+    }
+    return secret;
+  }
+
   async signIn(email: string, password: string): Promise<AuthResponse> {
     const user = await this.usersService.findOneByEmail(email);
 
@@ -82,7 +84,7 @@ export class AuthService {
   async refreshTokens(refreshToken: string): Promise<RefreshResponse> {
     try {
       const payload = await this.jwtService.verifyAsync(refreshToken, {
-        secret: REFRESH_SECRET,
+        secret: this.refreshSecret,
       });
 
       return this.generateTokens({ id: payload.id, email: payload.email });
@@ -91,14 +93,22 @@ export class AuthService {
     }
   }
 
+  async getProfile(userId: string): Promise<UserResponse> {
+    const user = await this.usersService.findOneById(userId);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    return { id: user.id, name: user.name, email: user.email };
+  }
+
   private async generateTokens(payload: { id: string; email: string }) {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: ACCESS_SECRET,
+        secret: this.accessSecret,
         expiresIn: '30m',
       }),
       this.jwtService.signAsync(payload, {
-        secret: REFRESH_SECRET,
+        secret: this.refreshSecret,
         expiresIn: '30d',
       }),
     ]);

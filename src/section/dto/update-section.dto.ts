@@ -1,5 +1,10 @@
 import { PartialType } from '@nestjs/mapped-types';
-import { CreateSectionDto, ItemsSize, Transform, SlideTitleLocation } from './create-section.dto';
+import {
+  CreateSectionDto,
+  ItemsSize,
+  Transform,
+  SlideTitleLocation,
+} from './create-section.dto';
 import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 

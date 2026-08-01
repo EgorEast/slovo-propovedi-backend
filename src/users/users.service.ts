@@ -1,6 +1,4 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,15 +9,8 @@ export class UsersService {
     @InjectRepository(User)
     private usersRepository: Repository<User>,
   ) {}
-  create(createUserDto: CreateUserDto) {
-    return 'This action adds a new user';
-  }
 
-  findAll() {
-    return `This action returns all users`;
-  }
-
-  async findOneByEmail(email: string): Promise<User> {
+  async findOneByEmail(email: string): Promise<User | null> {
     try {
       return await this.usersRepository.findOne({ where: { email } });
     } catch (error) {
@@ -30,12 +21,15 @@ export class UsersService {
     }
   }
 
-  update(id: string, updateUserDto: UpdateUserDto) {
-    return `This action updates a #${id} user`;
-  }
-
-  remove(id: string) {
-    return `This action removes a #${id} user`;
+  async findOneById(id: string): Promise<User | null> {
+    try {
+      return await this.usersRepository.findOne({ where: { id } });
+    } catch (error) {
+      throw new HttpException(
+        'from:findOneById ' + error.message,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   async updatePassword(id: string, hashedPassword: string): Promise<void> {
