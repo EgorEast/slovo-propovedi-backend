@@ -59,3 +59,7 @@ COPY --chown=node:node --from=build /usr/src/app/dist ./dist
 
 # Start the server using the production build
 CMD [ "node", "dist/main.js" ]
+
+# Verify the container is healthy by polling the /health endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD wget -q -O /dev/null http://localhost:3000/health || exit 1

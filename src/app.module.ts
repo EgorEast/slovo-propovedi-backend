@@ -9,11 +9,13 @@ import { PlaylistModule } from './playlist/playlist.module';
 import { MinioService } from './minio/minio.service';
 import { ConfigModule } from '@nestjs/config';
 import { SermonModule } from './sermon/sermon.module';
+import { HealthModule } from './health/health.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    HealthModule,
     SectionModule,
     AuthModule,
     UsersModule,
