@@ -1,38 +1,24 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
-import { ApiProperty } from '@nestjs/swagger';
 import * as bcrypt from 'bcrypt';
 
 const BCRYPT_PREFIXES = ['$2a$', '$2b$', '$2y$'];
 
 export class UserResponse {
-  @ApiProperty()
   id: string;
-
-  @ApiProperty()
   name: string;
-
-  @ApiProperty()
   email: string;
 }
 
 export class AuthResponse {
-  @ApiProperty()
   accessToken: string;
-
-  @ApiProperty()
   refreshToken: string;
-
-  @ApiProperty({ type: UserResponse })
   user: UserResponse;
 }
 
 export class RefreshResponse {
-  @ApiProperty()
   accessToken: string;
-
-  @ApiProperty()
   refreshToken: string;
 }
 

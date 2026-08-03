@@ -6,90 +6,55 @@ import {
   Patch,
   Param,
   Delete,
-  HttpStatus,
   UseGuards,
 } from '@nestjs/common';
 import { PlaylistService } from './playlist.service';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { PlaylistResponseDto } from './dto/playlist-response.dto';
+import { AllPlaylistsResponseDto } from './dto/all-playlists-response.dto';
+import { StatusPlaylistResponseDto } from './dto/status-playlist-response.dto';
 import { AuthGuard } from '../auth/guard/auth.guard';
-import { PlaylistEntity } from './entities/playlist.entity';
-import {
-  AllPlaylistsResponse,
-  StatusPlaylistResponse,
-} from './interfaces/interface';
+import { ZodResponse } from 'nestjs-zod';
+import { IdParamDto } from '../shared/dto/id-param.dto';
 
 @Controller('playlists')
-@ApiTags('Playlists')
 export class PlaylistController {
   constructor(private readonly playlistService: PlaylistService) {}
 
   @Post()
   @UseGuards(AuthGuard)
-  @ApiOperation({
-    summary: 'Create playlist',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: PlaylistEntity,
-  })
-  async create(
-    @Body() createPlaylistDto: CreatePlaylistDto,
-  ): Promise<PlaylistEntity> {
+  @ZodResponse({ type: PlaylistResponseDto })
+  async create(@Body() createPlaylistDto: CreatePlaylistDto) {
     return await this.playlistService.create(createPlaylistDto);
   }
 
   @Get()
-  @ApiOperation({
-    summary: 'Get all playlists',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: AllPlaylistsResponse,
-  })
-  async findAll(): Promise<AllPlaylistsResponse> {
+  @ZodResponse({ type: AllPlaylistsResponseDto })
+  async findAll() {
     return await this.playlistService.findAll();
   }
 
   @Get(':id')
-  @ApiOperation({
-    summary: 'Get one playlist by id',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: PlaylistEntity,
-  })
-  async findOne(@Param('id') id: string): Promise<PlaylistEntity> {
-    return await this.playlistService.findOne(id);
+  @ZodResponse({ type: PlaylistResponseDto })
+  async findOne(@Param() params: IdParamDto) {
+    return await this.playlistService.findOne(params.id);
   }
 
   @Patch(':id')
   @UseGuards(AuthGuard)
-  @ApiOperation({
-    summary: 'Update one playlist by id',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: PlaylistEntity,
-  })
+  @ZodResponse({ type: PlaylistResponseDto })
   async update(
-    @Param('id') id: string,
+    @Param() params: IdParamDto,
     @Body() updatePlaylistDto: UpdatePlaylistDto,
-  ): Promise<PlaylistEntity> {
-    return await this.playlistService.update(id, updatePlaylistDto);
+  ) {
+    return await this.playlistService.update(params.id, updatePlaylistDto);
   }
 
   @Delete(':id')
   @UseGuards(AuthGuard)
-  @ApiOperation({
-    summary: 'Delete one playlist by id',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: StatusPlaylistResponse,
-  })
-  async remove(@Param('id') id: string): Promise<StatusPlaylistResponse> {
-    return await this.playlistService.remove(id);
+  @ZodResponse({ type: StatusPlaylistResponseDto })
+  async remove(@Param() params: IdParamDto) {
+    return await this.playlistService.remove(params.id);
   }
 }

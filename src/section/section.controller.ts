@@ -6,91 +6,52 @@ import {
   Patch,
   Param,
   Delete,
-  HttpStatus,
   UseGuards,
 } from '@nestjs/common';
 import { SectionService } from './section.service';
 import { CreateSectionDto } from './dto/create-section.dto';
 import { UpdateSectionDto } from './dto/update-section.dto';
-import { SectionEntity } from './entities/section.entity';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { SectionResponseDto } from './dto/section-response.dto';
+import { AllSectionsResponseDto } from './dto/all-sections-response.dto';
+import { StatusSectionResponseDto } from './dto/status-section-response.dto';
 import { AuthGuard } from '../auth/guard/auth.guard';
-
-import {
-  AllSectionsResponse,
-  StatusSectionsResponse,
-} from './interfacies/interface';
+import { ZodResponse } from 'nestjs-zod';
+import { IdParamDto } from '../shared/dto/id-param.dto';
 
 @Controller('section')
-@ApiTags('Sections')
 export class SectionController {
   constructor(private readonly sectionService: SectionService) {}
 
   @Post()
   @UseGuards(AuthGuard)
-  @ApiOperation({
-    summary: 'Create section',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: SectionEntity,
-  })
-  async create(
-    @Body() createSectionDto: CreateSectionDto,
-  ): Promise<SectionEntity> {
+  @ZodResponse({ type: SectionResponseDto })
+  async create(@Body() createSectionDto: CreateSectionDto) {
     return await this.sectionService.createSectionItem(createSectionDto);
   }
 
   @Get()
-  @ApiOperation({
-    summary: 'Get all sections',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: AllSectionsResponse,
-  })
-  async findAll(): Promise<AllSectionsResponse> {
-    return await this.sectionService.findAllSectionItems();
+  @ZodResponse({ type: AllSectionsResponseDto })
+  findAll() {
+    return this.sectionService.findAllSectionItems();
   }
 
   @Get(':id')
-  @ApiOperation({
-    summary: 'Get one section by id',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: SectionEntity,
-  })
-  async findOne(@Param('id') id: string): Promise<SectionEntity> {
-    return await this.sectionService.findOneSectionItem(id);
+  @ZodResponse({ type: SectionResponseDto })
+  findOne(@Param() params: IdParamDto) {
+    return this.sectionService.findOneSectionItem(params.id);
   }
 
   @Patch(':id')
   @UseGuards(AuthGuard)
-  @ApiOperation({
-    summary: 'Update one section by id',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: SectionEntity,
-  })
-  async update(
-    @Param('id') id: string,
-    @Body() updateSectionDto: UpdateSectionDto,
-  ): Promise<SectionEntity> {
-    return await this.sectionService.update(id, updateSectionDto);
+  @ZodResponse({ type: SectionResponseDto })
+  update(@Param() params: IdParamDto, @Body() updateSectionDto: UpdateSectionDto) {
+    return this.sectionService.update(params.id, updateSectionDto);
   }
 
   @Delete(':id')
   @UseGuards(AuthGuard)
-  @ApiOperation({
-    summary: 'Delete one section by id',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: StatusSectionsResponse,
-  })
-  async remove(@Param('id') id: string): Promise<StatusSectionsResponse> {
-    return await this.sectionService.remove(id);
+  @ZodResponse({ type: StatusSectionResponseDto })
+  remove(@Param() params: IdParamDto) {
+    return this.sectionService.remove(params.id);
   }
 }

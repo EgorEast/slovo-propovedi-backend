@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { ZodValidationPipe } from 'nestjs-zod';
+import { createZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import { MinioService } from './minio/minio.service';
 import { SwaggerModule } from '@nestjs/swagger';
@@ -32,8 +32,12 @@ async function bootstrap() {
   // ZodValidationPipe runs FIRST: validates Zod DTOs, no-ops on class-validator DTOs
   // ValidationPipe runs SECOND: validates class-validator DTOs, no-ops on Zod
   // This prevents whitelist:true from stripping data before Zod sees it
+  // strictSchemaDeclaration: true throws if any route param is not a Zod DTO
+  const StrictZodValidationPipe = createZodValidationPipe({
+    strictSchemaDeclaration: true,
+  });
   app.useGlobalPipes(
-    new ZodValidationPipe(),
+    new StrictZodValidationPipe(),
     new ValidationPipe({ whitelist: true, transform: true }),
   );
 

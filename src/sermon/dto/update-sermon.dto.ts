@@ -1,4 +1,4 @@
-import { PartialType } from '@nestjs/mapped-types';
-import { CreateSermonDto } from './create-sermon.dto';
+import { createZodDto } from 'nestjs-zod';
+import { SermonControllerUpdateBody } from '../../generated';
 
-export class UpdateSermonDto extends PartialType(CreateSermonDto) {}
+export class UpdateSermonDto extends createZodDto(SermonControllerUpdateBody) {}

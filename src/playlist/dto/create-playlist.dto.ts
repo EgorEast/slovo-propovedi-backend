@@ -1,20 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { PlaylistControllerCreateBody } from '../../generated';
 
-export class CreatePlaylistDto {
-  @ApiProperty()
-  @IsString()
-  title: string;
-
-  @ApiProperty()
-  @IsString()
-  description: string;
-
-  @ApiProperty()
-  @IsString()
-  artwork: string;
-
-  @ApiProperty()
-  @IsOptional()
-  sermonsIds?: string[];
-}
+export class CreatePlaylistDto extends createZodDto(
+  PlaylistControllerCreateBody,
+) {}

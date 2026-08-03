@@ -2,82 +2,37 @@ import {
   BadRequestException,
   Controller,
   Get,
-  HttpStatus,
   Param,
   Post,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { AppService } from './app.service';
+import { ZodResponse } from 'nestjs-zod';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MinioService } from './minio/minio.service';
-import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiConsumes,
-  ApiOperation,
-  ApiProperty,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
 import { AuthGuard } from './auth/guard/auth.guard';
-
-class IFileResponseDto {
-  @ApiProperty()
-  fileName: string;
-  @ApiProperty()
-  fileUrl: string;
-}
-
-class StreamUrlResponseDto {
-  @ApiProperty()
-  url: string;
-}
+import { FileResponseDto } from './app/dto/file-response.dto';
+import { StreamUrlResponseDto } from './app/dto/stream-url-response.dto';
+import { FileNameParamDto } from './shared/dto/file-name-param.dto';
 
 @Controller()
-@ApiTags('Files')
 export class AppController {
-  constructor(
-    private readonly appService: AppService,
-    private readonly minioService: MinioService,
-  ) {}
+  constructor(private readonly minioService: MinioService) {}
 
   @Post('files')
   @UseGuards(AuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Upload file',
-  })
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-        },
-      },
-    },
-  })
+  @ZodResponse({ type: FileResponseDto })
   @UseInterceptors(FileInterceptor('file'))
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: IFileResponseDto,
-  })
   async uploadFile(
     @UploadedFile('file') file: Express.Multer.File,
-  ): Promise<IFileResponseDto> {
+  ): Promise<FileResponseDto> {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
     const fileName = await this.minioService.uploadFile(file);
     const fileUrl = await this.minioService.getFileUrl(fileName);
-    return {
-      fileName,
-      fileUrl,
-    };
+    return { fileName, fileUrl } as FileResponseDto;
   }
 
   /**
@@ -86,35 +41,18 @@ export class AppController {
    * URL, since the default bucket is private.
    */
   @Get('files/:fileName')
-  @ApiOperation({
-    summary: 'Get file',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: IFileResponseDto,
-  })
-  async getFile(
-    @Param('fileName') fileName: string,
-  ): Promise<IFileResponseDto> {
-    const fileUrl = await this.minioService.getFileUrl(fileName);
-    return {
-      fileName,
-      fileUrl,
-    };
+  @ZodResponse({ type: FileResponseDto })
+  async getFile(@Param() params: FileNameParamDto): Promise<FileResponseDto> {
+    const fileUrl = await this.minioService.getFileUrl(params.fileName);
+    return { fileName: params.fileName, fileUrl } as FileResponseDto;
   }
 
   @Get('files/:fileName/stream-url')
-  @ApiOperation({
-    summary: 'Get a presigned streaming URL for a file',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    type: StreamUrlResponseDto,
-  })
+  @ZodResponse({ type: StreamUrlResponseDto })
   async getStreamUrl(
-    @Param('fileName') fileName: string,
+    @Param() params: FileNameParamDto,
   ): Promise<StreamUrlResponseDto> {
-    const url = await this.minioService.getPresignedFileUrl(fileName);
-    return { url };
+    const url = await this.minioService.getPresignedFileUrl(params.fileName);
+    return { url } as StreamUrlResponseDto;
   }
 }
