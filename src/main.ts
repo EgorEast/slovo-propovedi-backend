@@ -43,7 +43,9 @@ async function bootstrap() {
   if (process.env.SWAGGER_ENABLED === 'true') {
     // Load the hand-written OpenAPI spec from repo root
     const yamlPath = path.join(__dirname, '..', '..', 'openAPI.yaml');
-    const openApiDoc = yaml.load(fs.readFileSync(yamlPath, 'utf8')) as OpenAPIObject;
+    const openApiDoc = yaml.load(
+      fs.readFileSync(yamlPath, 'utf8'),
+    ) as OpenAPIObject;
     SwaggerModule.setup('swagger-api', app, openApiDoc);
   }
 
