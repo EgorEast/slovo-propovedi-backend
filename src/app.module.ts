@@ -6,7 +6,7 @@ import { SectionModule } from './section/section.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PlaylistModule } from './playlist/playlist.module';
-import { MinioService } from './minio/minio.service';
+import { MinioModule } from './minio/minio.module';
 import { ConfigModule } from '@nestjs/config';
 import { SermonModule } from './sermon/sermon.module';
 import { HealthModule } from './health/health.module';
@@ -22,8 +22,9 @@ import { HealthModule } from './health/health.module';
     PlaylistModule,
     TypeOrmModule,
     SermonModule,
+    MinioModule,
   ],
   controllers: [AppController],
-  providers: [AppService, MinioService],
+  providers: [AppService],
 })
 export class AppModule {}

@@ -1,10 +1,8 @@
 import {
   HttpException,
   HttpStatus,
-  Inject,
   Injectable,
   NotFoundException,
-  forwardRef,
 } from '@nestjs/common';
 import { CreateSermonDto } from './dto/create-sermon.dto';
 import { UpdateSermonDto } from './dto/update-sermon.dto';
@@ -15,8 +13,10 @@ import { In, Repository } from 'typeorm';
 import {
   AllSermonsResponse,
   StatusSermonResponse,
+  StreamUrlResponse,
   UpdateSermon,
 } from './interfaces/interface';
+import { MinioService } from 'src/minio/minio.service';
 
 @Injectable()
 export class SermonService {
@@ -25,6 +25,7 @@ export class SermonService {
     private sermonRepository: Repository<SermonEntity>,
     @InjectRepository(PlaylistEntity)
     private playlistRepository: Repository<PlaylistEntity>,
+    private readonly minioService: MinioService,
   ) {}
 
   async create(createSermonDto: CreateSermonDto): Promise<SermonEntity> {
@@ -55,14 +56,39 @@ export class SermonService {
     }
   }
 
-  async findAll(): Promise<AllSermonsResponse> {
+  async findAll(take?: number, cursor?: string): Promise<AllSermonsResponse> {
     try {
-      const [sermons, count] = await this.sermonRepository.findAndCount({
-        relations: ['playlists'],
-      });
+      if (!take) {
+        // Backward-compatible full fetch — used by the admin UI when no
+        // pagination params are supplied.
+        const [sermons, count] = await this.sermonRepository.findAndCount({
+          relations: ['playlists'],
+          order: { id: 'DESC' },
+        });
+        return { sermons, count, nextCursor: null };
+      }
+
+      // Keyset (cursor) pagination: instead of OFFSET — which rescans and skips
+      // every row before the offset on each page — fetch take+1 rows after the
+      // cursor and use the extra row to decide whether another page exists.
+      const queryBuilder = this.sermonRepository
+        .createQueryBuilder('sermon')
+        .leftJoinAndSelect('sermon.playlists', 'playlists')
+        .orderBy('sermon.id', 'DESC')
+        .take(take + 1);
+
+      if (cursor) {
+        queryBuilder.andWhere('sermon.id < :cursor', { cursor });
+      }
+
+      const rows = await queryBuilder.getMany();
+      const hasMore = rows.length > take;
+      const sermons = hasMore ? rows.slice(0, take) : rows;
+
       return {
         sermons,
-        count,
+        count: null,
+        nextCursor: hasMore ? sermons[sermons.length - 1].id : null,
       };
     } catch (error) {
       throw new HttpException(
@@ -70,6 +96,20 @@ export class SermonService {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  async getStreamUrl(id: string): Promise<StreamUrlResponse> {
+    const sermon = await this.sermonRepository.findOne({ where: { id } });
+    if (!sermon) {
+      throw new NotFoundException(`Sermon with id "${id}" not found`);
+    }
+    if (!sermon.audioUrl) {
+      throw new NotFoundException(`Sermon with id "${id}" has no audio file`);
+    }
+
+    const fileName = MinioService.extractFileNameFromUrl(sermon.audioUrl);
+    const url = await this.minioService.getPresignedFileUrl(fileName);
+    return { url };
   }
 
   async findOne(id: string): Promise<SermonEntity> {

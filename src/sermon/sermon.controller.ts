@@ -6,18 +6,21 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
 import { SermonService } from './sermon.service';
 import { CreateSermonDto } from './dto/create-sermon.dto';
 import { UpdateSermonDto } from './dto/update-sermon.dto';
+import { FindAllSermonsQueryDto } from './dto/find-all-sermons-query.dto';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/guard/auth.guard';
 import { SermonEntity } from './entities/sermon.entity';
 import {
   AllSermonsResponse,
   StatusSermonResponse,
+  StreamUrlResponse,
 } from './interfaces/interface';
 
 @Controller('sermons')
@@ -48,8 +51,22 @@ export class SermonController {
     status: HttpStatus.OK,
     type: AllSermonsResponse,
   })
-  async findAll(): Promise<AllSermonsResponse> {
-    return await this.sermonService.findAll();
+  async findAll(
+    @Query() query: FindAllSermonsQueryDto,
+  ): Promise<AllSermonsResponse> {
+    return await this.sermonService.findAll(query.take, query.cursor);
+  }
+
+  @Get(':id/stream-url')
+  @ApiOperation({
+    summary: 'Get a presigned streaming URL for a sermon audio',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    type: StreamUrlResponse,
+  })
+  async getStreamUrl(@Param('id') id: string): Promise<StreamUrlResponse> {
+    return await this.sermonService.getStreamUrl(id);
   }
 
   @Get(':id')

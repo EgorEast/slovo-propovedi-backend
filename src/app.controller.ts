@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   HttpStatus,
@@ -27,6 +28,11 @@ class IFileResponseDto {
   fileName: string;
   @ApiProperty()
   fileUrl: string;
+}
+
+class StreamUrlResponseDto {
+  @ApiProperty()
+  url: string;
 }
 
 @Controller()
@@ -60,20 +66,25 @@ export class AppController {
     status: HttpStatus.OK,
     type: IFileResponseDto,
   })
-  async uploadFile(@UploadedFile('file') file) {
-    console.log(file);
-    try {
-      const fileName = await this.minioService.uploadFile(file);
-      const fileUrl = await this.minioService.getFileUrl(fileName);
-      return {
-        fileName,
-        fileUrl,
-      } as IFileResponseDto;
-    } catch (error) {
-      console.log('Error - ', error.message);
+  async uploadFile(
+    @UploadedFile('file') file: Express.Multer.File,
+  ): Promise<IFileResponseDto> {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
     }
+    const fileName = await this.minioService.uploadFile(file);
+    const fileUrl = await this.minioService.getFileUrl(fileName);
+    return {
+      fileName,
+      fileUrl,
+    };
   }
 
+  /**
+   * @deprecated Returns a static (non-expiring) URL. Prefer
+   * `GET /files/:fileName/stream-url`, which returns a time-limited presigned
+   * URL, since the default bucket is private.
+   */
   @Get('files/:fileName')
   @ApiOperation({
     summary: 'Get file',
@@ -82,17 +93,28 @@ export class AppController {
     status: HttpStatus.OK,
     type: IFileResponseDto,
   })
-  async getFile(@Param('fileName') fileName: string) {
-    try {
-      const fileUrl = await this.minioService.getFileUrl(fileName);
-      if (fileUrl) {
-        return {
-          fileName,
-          fileUrl,
-        };
-      }
-    } catch (error) {
-      console.log('Error - ', error.message);
-    }
+  async getFile(
+    @Param('fileName') fileName: string,
+  ): Promise<IFileResponseDto> {
+    const fileUrl = await this.minioService.getFileUrl(fileName);
+    return {
+      fileName,
+      fileUrl,
+    };
+  }
+
+  @Get('files/:fileName/stream-url')
+  @ApiOperation({
+    summary: 'Get a presigned streaming URL for a file',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    type: StreamUrlResponseDto,
+  })
+  async getStreamUrl(
+    @Param('fileName') fileName: string,
+  ): Promise<StreamUrlResponseDto> {
+    const url = await this.minioService.getPresignedFileUrl(fileName);
+    return { url };
   }
 }
