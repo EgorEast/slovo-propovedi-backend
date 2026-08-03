@@ -2,7 +2,7 @@ import { defineConfig } from 'orval';
 
 export default defineConfig({
   'backend-schemas': {
-    input: '../openAPI.yaml',
+    input: 'https://docs.slovo-propovedi.ru/openAPI.yaml',
     output: {
       mode: 'single',
       target: 'src/generated/index.ts',
@@ -16,3 +16,4 @@ export default defineConfig({
     },
   },
 });
+
