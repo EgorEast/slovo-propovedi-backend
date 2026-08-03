@@ -36,6 +36,10 @@ COPY --chown=node:node --from=development /usr/src/app/node_modules ./node_modul
 
 COPY --chown=node:node . .
 
+# Cap the Node.js heap so the build stays within the Docker build memory limit
+# (configured via `slovo_backend_container_image_build_memory` in the playbook).
+ENV NODE_OPTIONS="--max-old-space-size=768"
+
 # Run the build command which creates the production bundle
 RUN npm run build
 
