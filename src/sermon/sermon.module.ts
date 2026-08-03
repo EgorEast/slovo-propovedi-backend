@@ -3,9 +3,10 @@ import { SermonService } from './sermon.service';
 import { SermonController } from './sermon.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SermonEntity } from './entities/sermon.entity';
+import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SermonEntity])],
+  imports: [TypeOrmModule.forFeature([SermonEntity, PlaylistEntity])],
   controllers: [SermonController],
   providers: [SermonService],
   exports: [SermonService],

@@ -12,6 +12,7 @@ async function bootstrap() {
       'https://slovo-propovedi.ru',
       'https://www.slovo-propovedi.ru',
       'http://localhost:3000',
+      'http://localhost:4321',
       'http://localhost:8081',
       'http://localhost:8082',
     ],

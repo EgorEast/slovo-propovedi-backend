@@ -3,6 +3,7 @@ import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PlaylistEntity } from './entities/playlist.entity';
+import { SectionEntity } from 'src/section/entities/section.entity';
 import { In, Repository } from 'typeorm';
 import {
   AllPlaylistsResponse,
@@ -16,6 +17,8 @@ export class PlaylistService {
     private sermonService: SermonService,
     @InjectRepository(PlaylistEntity)
     private playlistRepository: Repository<PlaylistEntity>,
+    @InjectRepository(SectionEntity)
+    private sectionRepository: Repository<SectionEntity>,
   ) {}
 
   async create(createPlaylistDto: CreatePlaylistDto): Promise<PlaylistEntity> {
@@ -45,7 +48,9 @@ export class PlaylistService {
 
   async findAll(): Promise<AllPlaylistsResponse> {
     try {
-      const [playlists, count] = await this.playlistRepository.findAndCount();
+      const [playlists, count] = await this.playlistRepository.findAndCount({
+        relations: ['sermons', 'sections'],
+      });
       return {
         playlists,
         count,
@@ -76,7 +81,7 @@ export class PlaylistService {
     try {
       return await this.playlistRepository.findOne({
         where: { id },
-        relations: ['sermons'],
+        relations: ['sermons', 'sections'],
       });
     } catch (error) {
       throw new HttpException(
@@ -125,6 +130,11 @@ export class PlaylistService {
         }
       }
 
+      await this.syncPlaylistSectionMembership(
+        playlist,
+        updatePlaylistDto.sectionsIds,
+      );
+
       return await this.playlistRepository.save(playlist);
     } catch (error) {
       throw new HttpException(
@@ -144,5 +154,64 @@ export class PlaylistService {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  private async attachPlaylistToSections(
+    playlist: PlaylistEntity,
+    sectionIds: string[] | undefined,
+  ): Promise<void> {
+    if (!sectionIds?.length) {
+      return;
+    }
+
+    const sections = await this.sectionRepository.find({
+      where: { id: In(sectionIds) },
+      relations: ['playlists'],
+    });
+
+    sections.forEach((section) => {
+      const isPlaylistAlreadyAttached = section.playlists.some(
+        (attachedPlaylist) => attachedPlaylist.id === playlist.id,
+      );
+      if (!isPlaylistAlreadyAttached) {
+        section.playlists.push(playlist);
+      }
+    });
+
+    await this.sectionRepository.save(sections);
+  }
+
+  private async syncPlaylistSectionMembership(
+    playlist: PlaylistEntity,
+    desiredSectionIds: string[] | undefined,
+  ): Promise<void> {
+    if (desiredSectionIds === undefined) {
+      return;
+    }
+
+    const allSections = await this.sectionRepository.find({
+      relations: ['playlists'],
+    });
+    const currentSections = allSections.filter((section) =>
+      section.playlists.some(
+        (attachedPlaylist) => attachedPlaylist.id === playlist.id,
+      ),
+    );
+
+    const sectionsToRemove = currentSections.filter(
+      (section) => !desiredSectionIds.includes(section.id),
+    );
+    sectionsToRemove.forEach((section) => {
+      section.playlists = section.playlists.filter(
+        (attachedPlaylist) => attachedPlaylist.id !== playlist.id,
+      );
+    });
+    await this.sectionRepository.save(sectionsToRemove);
+
+    const sectionIdsToAdd = desiredSectionIds.filter(
+      (sectionId) =>
+        !currentSections.some((section) => section.id === sectionId),
+    );
+    await this.attachPlaylistToSections(playlist, sectionIdsToAdd);
   }
 }

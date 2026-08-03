@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString } from 'class-validator';
 import { IsVerseOrPair } from './validators/is-verse-or-pair.validator';
 
 export class CreateSermonDto {
@@ -48,4 +48,10 @@ export class CreateSermonDto {
   @IsVerseOrPair()
   @IsOptional()
   verse?: number | [number, number];
+
+  @ApiProperty({ type: [String], required: false })
+  @IsArray()
+  @IsOptional()
+  @IsString({ each: true })
+  playlistsIds?: string[];
 }

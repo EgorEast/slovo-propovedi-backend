@@ -10,6 +10,7 @@ import { CreateSermonDto } from './dto/create-sermon.dto';
 import { UpdateSermonDto } from './dto/update-sermon.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SermonEntity } from './entities/sermon.entity';
+import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
 import { In, Repository } from 'typeorm';
 import {
   AllSermonsResponse,
@@ -22,6 +23,8 @@ export class SermonService {
   constructor(
     @InjectRepository(SermonEntity)
     private sermonRepository: Repository<SermonEntity>,
+    @InjectRepository(PlaylistEntity)
+    private playlistRepository: Repository<PlaylistEntity>,
   ) {}
 
   async create(createSermonDto: CreateSermonDto): Promise<SermonEntity> {
@@ -38,7 +41,12 @@ export class SermonService {
         chapter: createSermonDto.chapter,
         verse: createSermonDto.verse,
       });
-      return await this.sermonRepository.save(sermon);
+      const savedSermon = await this.sermonRepository.save(sermon);
+      await this.attachSermonToPlaylists(
+        savedSermon,
+        createSermonDto.playlistsIds,
+      );
+      return await this.findOne(savedSermon.id);
     } catch (error) {
       throw new HttpException(
         'from:createSermon ' + error.message,
@@ -49,7 +57,9 @@ export class SermonService {
 
   async findAll(): Promise<AllSermonsResponse> {
     try {
-      const [sermons, count] = await this.sermonRepository.findAndCount();
+      const [sermons, count] = await this.sermonRepository.findAndCount({
+        relations: ['playlists'],
+      });
       return {
         sermons,
         count,
@@ -64,7 +74,10 @@ export class SermonService {
 
   async findOne(id: string): Promise<SermonEntity> {
     try {
-      return await this.sermonRepository.findOne({ where: { id } });
+      return await this.sermonRepository.findOne({
+        where: { id },
+        relations: ['playlists'],
+      });
     } catch (error) {
       throw new HttpException(
         'from:findOneSermonItem ' + error.message,
@@ -133,6 +146,10 @@ export class SermonService {
       }
 
       await this.sermonRepository.update(id, updateFields);
+      await this.syncSermonPlaylistMembership(
+        existingSermon,
+        updateSermonDto.playlistsIds,
+      );
       return { status: 'success' };
     } catch (error) {
       throw new HttpException(
@@ -152,5 +169,64 @@ export class SermonService {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  private async attachSermonToPlaylists(
+    sermon: SermonEntity,
+    playlistIds: string[] | undefined,
+  ): Promise<void> {
+    if (!playlistIds?.length) {
+      return;
+    }
+
+    const playlists = await this.playlistRepository.find({
+      where: { id: In(playlistIds) },
+      relations: ['sermons'],
+    });
+
+    playlists.forEach((playlist) => {
+      const isSermonAlreadyAttached = playlist.sermons.some(
+        (attachedSermon) => attachedSermon.id === sermon.id,
+      );
+      if (!isSermonAlreadyAttached) {
+        playlist.sermons.push(sermon);
+      }
+    });
+
+    await this.playlistRepository.save(playlists);
+  }
+
+  private async syncSermonPlaylistMembership(
+    sermon: SermonEntity,
+    desiredPlaylistIds: string[] | undefined,
+  ): Promise<void> {
+    if (desiredPlaylistIds === undefined) {
+      return;
+    }
+
+    const allPlaylists = await this.playlistRepository.find({
+      relations: ['sermons'],
+    });
+    const currentPlaylists = allPlaylists.filter((playlist) =>
+      playlist.sermons.some(
+        (attachedSermon) => attachedSermon.id === sermon.id,
+      ),
+    );
+
+    const playlistsToRemove = currentPlaylists.filter(
+      (playlist) => !desiredPlaylistIds.includes(playlist.id),
+    );
+    playlistsToRemove.forEach((playlist) => {
+      playlist.sermons = playlist.sermons.filter(
+        (attachedSermon) => attachedSermon.id !== sermon.id,
+      );
+    });
+    await this.playlistRepository.save(playlistsToRemove);
+
+    const playlistIdsToAdd = desiredPlaylistIds.filter(
+      (playlistId) =>
+        !currentPlaylists.some((playlist) => playlist.id === playlistId),
+    );
+    await this.attachSermonToPlaylists(sermon, playlistIdsToAdd);
   }
 }

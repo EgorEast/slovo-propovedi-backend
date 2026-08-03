@@ -55,7 +55,9 @@ export class SectionService {
 
   async findAllSectionItems(): Promise<AllSectionsResponse> {
     try {
-      const [result, count] = await this.sectionRepository.findAndCount();
+      const [result, count] = await this.sectionRepository.findAndCount({
+        relations: ['playlists'],
+      });
       return {
         sections: result,
         count: count,
@@ -70,7 +72,10 @@ export class SectionService {
 
   async findOneSectionItem(id: string): Promise<SectionEntity> {
     try {
-      return await this.sectionRepository.findOne({ where: { id } });
+      return await this.sectionRepository.findOne({
+        where: { id },
+        relations: ['playlists'],
+      });
     } catch (error) {
       throw new HttpException(
         'from:findOneSectionItem ' + error.message,

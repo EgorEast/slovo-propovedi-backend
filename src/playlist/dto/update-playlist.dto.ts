@@ -18,4 +18,10 @@ export class UpdatePlaylistDto extends PartialType(CreatePlaylistDto) {
   @IsArray()
   @IsOptional()
   sermonsIds?: string[];
+
+  @ApiProperty({ type: [String], required: false })
+  @IsArray()
+  @IsOptional()
+  @IsString({ each: true })
+  sectionsIds?: string[];
 }
