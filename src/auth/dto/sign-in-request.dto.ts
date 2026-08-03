@@ -1,14 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { AuthControllerSignInBody } from '../../generated';
 
-export class SignInRequestDto {
-  @ApiProperty()
-  @IsEmail()
-  @IsNotEmpty()
-  email: string;
-
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  password: string;
-}
+export class SignInRequestDto extends createZodDto(AuthControllerSignInBody) {}

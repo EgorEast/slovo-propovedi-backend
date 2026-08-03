@@ -1,9 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { AuthControllerRefreshBody } from '../../generated';
 
-export class RefreshTokenDto {
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  refreshToken: string;
-}
+export class RefreshTokenDto extends createZodDto(AuthControllerRefreshBody) {}

@@ -8,15 +8,14 @@ import {
   UseGuards,
   Get,
 } from '@nestjs/common';
-import {
-  AuthResponse,
-  RefreshResponse,
-  UserResponse,
-  AuthService,
-} from './auth.service';
+import { AuthService } from './auth.service';
 import { SignInRequestDto } from './dto/sign-in-request.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { AuthResponseDto } from './dto/auth-response.dto';
+import { RefreshResponseDto } from './dto/refresh-response.dto';
+import { UserResponseDto } from './dto/user-response.dto';
 import { AuthGuard } from './guard/auth.guard';
+import { ZodResponse } from 'nestjs-zod';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 @Controller('auth')
@@ -26,24 +25,24 @@ export class AuthController {
 
   @Post('login')
   @ApiOperation({ summary: 'Login with email and password' })
-  @ApiResponse({ status: HttpStatus.OK, type: AuthResponse })
-  signIn(@Body() signInDto: SignInRequestDto): Promise<AuthResponse> {
+  @ZodResponse({ type: AuthResponseDto })
+  signIn(@Body() signInDto: SignInRequestDto): Promise<AuthResponseDto> {
     return this.authService.signIn(signInDto.email, signInDto.password);
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access and refresh tokens' })
-  @ApiResponse({ status: HttpStatus.OK, type: RefreshResponse })
-  refresh(@Body() refreshDto: RefreshTokenDto): Promise<RefreshResponse> {
+  @ZodResponse({ type: RefreshResponseDto })
+  refresh(@Body() refreshDto: RefreshTokenDto): Promise<RefreshResponseDto> {
     return this.authService.refreshTokens(refreshDto.refreshToken);
   }
 
   @UseGuards(AuthGuard)
   @Get('profile')
   @ApiOperation({ summary: 'Get current admin profile' })
-  @ApiResponse({ status: HttpStatus.OK, type: UserResponse })
-  async getProfile(@Request() req): Promise<UserResponse> {
+  @ZodResponse({ type: UserResponseDto })
+  async getProfile(@Request() req): Promise<UserResponseDto> {
     return await this.authService.getProfile(req.user.id);
   }
 }
