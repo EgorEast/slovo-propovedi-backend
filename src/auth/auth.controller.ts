@@ -24,6 +24,7 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('login')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with email and password' })
   @ZodResponse({ type: AuthResponseDto })
   signIn(@Body() signInDto: SignInRequestDto): Promise<AuthResponseDto> {
