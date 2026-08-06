@@ -118,10 +118,11 @@ export class SermonService {
 
   async findOne(id: string): Promise<SermonEntity> {
     try {
-      return await this.sermonRepository.findOne({
+      const sermon = await this.sermonRepository.findOne({
         where: { id },
         relations: ['playlists'],
       });
+      return sermon ? this.normalizeSermonRelations(sermon) : sermon;
     } catch (error) {
       throw new HttpException(
         'from:findOneSermonItem ' + error.message,

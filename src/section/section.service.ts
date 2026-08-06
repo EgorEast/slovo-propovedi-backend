@@ -31,7 +31,8 @@ export class SectionService {
         borderRadius: createSectionDto.borderRadius,
         playlists: [],
       });
-      return await this.sectionRepository.save(section);
+      const saved = await this.sectionRepository.save(section);
+      return this.normalizeSection(saved);
     } catch (error) {
       throw new HttpException(
         'from:createSectionItem ' + error.message,
@@ -60,14 +61,7 @@ export class SectionService {
         relations: ['playlists'],
       });
       return {
-        sections: result.map((sec) => ({
-          ...sec,
-          playlists: (sec.playlists ?? []).map((pl) => ({
-            ...pl,
-            sections: pl.sections ?? [],
-            sermons: pl.sermons ?? [],
-          })),
-        })),
+        sections: result.map((sec) => this.normalizeSection(sec)),
         count: count,
       };
     } catch (error) {
@@ -80,10 +74,11 @@ export class SectionService {
 
   async findOneSectionItem(id: string): Promise<SectionEntity> {
     try {
-      return await this.sectionRepository.findOne({
+      const section = await this.sectionRepository.findOne({
         where: { id },
         relations: ['playlists'],
       });
+      return section ? this.normalizeSection(section) : section;
     } catch (error) {
       throw new HttpException(
         'from:findOneSectionItem ' + error.message,
@@ -147,13 +142,21 @@ export class SectionService {
         }
       }
 
-      return await this.sectionRepository.save(section);
+      const saved = await this.sectionRepository.save(section);
+      return this.normalizeSection(saved);
     } catch (error) {
       throw new HttpException(
         'from:update ' + error.message,
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  private normalizeSection(sec: SectionEntity) {
+    return {
+      ...sec,
+      playlists: (sec.playlists ?? []).map((pl) => ({ ...pl, sections: pl.sections ?? [], sermons: pl.sermons ?? [] })),
+    };
   }
 
   async remove(id: string) {

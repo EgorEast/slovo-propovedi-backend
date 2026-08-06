@@ -39,7 +39,8 @@ export class PlaylistService {
         }
         playlist.sermons = sermons;
       }
-      return await this.playlistRepository.save(playlist);
+      const saved = await this.playlistRepository.save(playlist);
+      return this.normalizePlaylist(saved);
     } catch (error) {
       throw new HttpException(
         'from:createPlaylist ' + error.message,
@@ -54,17 +55,7 @@ export class PlaylistService {
         relations: ['sermons', 'sections'],
       });
       return {
-        playlists: playlists.map((p) => ({
-          ...p,
-          sections: (p.sections ?? []).map((s) => ({
-            ...s,
-            playlists: s.playlists ?? [],
-          })),
-          sermons: (p.sermons ?? []).map((s) => ({
-            ...s,
-            playlists: s.playlists ?? [],
-          })),
-        })),
+        playlists: playlists.map((p) => this.normalizePlaylist(p)),
         count,
       };
     } catch (error) {
@@ -91,10 +82,11 @@ export class PlaylistService {
 
   async findOne(id: string): Promise<PlaylistEntity> {
     try {
-      return await this.playlistRepository.findOne({
+      const playlist = await this.playlistRepository.findOne({
         where: { id },
         relations: ['sermons', 'sections'],
       });
+      return playlist ? this.normalizePlaylist(playlist) : playlist;
     } catch (error) {
       throw new HttpException(
         'from:findOnePlaylistItem ' + error.message,
@@ -147,7 +139,8 @@ export class PlaylistService {
         updatePlaylistDto.sectionsIds,
       );
 
-      return await this.playlistRepository.save(playlist);
+      const saved = await this.playlistRepository.save(playlist);
+      return this.normalizePlaylist(saved);
     } catch (error) {
       throw new HttpException(
         'from:update ' + error.message,
@@ -166,6 +159,14 @@ export class PlaylistService {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  private normalizePlaylist(p: PlaylistEntity) {
+    return {
+      ...p,
+      sections: (p.sections ?? []).map((s) => ({ ...s, playlists: s.playlists ?? [] })),
+      sermons: (p.sermons ?? []).map((s) => ({ ...s, playlists: s.playlists ?? [] })),
+    };
   }
 
   private async attachPlaylistToSections(
