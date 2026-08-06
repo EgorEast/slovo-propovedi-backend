@@ -36,7 +36,7 @@ async function bootstrap() {
   });
   app.useGlobalPipes(
     new StrictZodValidationPipe(),
-    new ValidationPipe({ whitelist: true, transform: true }),
+    new ValidationPipe({ transform: true }),
   );
 
   const minioService = app.get<MinioService>(MinioService);
