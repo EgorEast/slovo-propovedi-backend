@@ -60,7 +60,14 @@ export class SectionService {
         relations: ['playlists'],
       });
       return {
-        sections: result,
+        sections: result.map((sec) => ({
+          ...sec,
+          playlists: (sec.playlists ?? []).map((pl) => ({
+            ...pl,
+            sections: pl.sections ?? [],
+            sermons: pl.sermons ?? [],
+          })),
+        })),
         count: count,
       };
     } catch (error) {

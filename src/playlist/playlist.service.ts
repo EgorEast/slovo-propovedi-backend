@@ -54,7 +54,17 @@ export class PlaylistService {
         relations: ['sermons', 'sections'],
       });
       return {
-        playlists,
+        playlists: playlists.map((p) => ({
+          ...p,
+          sections: (p.sections ?? []).map((s) => ({
+            ...s,
+            playlists: s.playlists ?? [],
+          })),
+          sermons: (p.sermons ?? []).map((s) => ({
+            ...s,
+            playlists: s.playlists ?? [],
+          })),
+        })),
         count,
       };
     } catch (error) {

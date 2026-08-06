@@ -65,7 +65,11 @@ export class SermonService {
           relations: ['playlists'],
           order: { id: 'DESC' },
         });
-        return { sermons, count, nextCursor: null };
+        return {
+          sermons: sermons.map((s) => this.normalizeSermonRelations(s)),
+          count,
+          nextCursor: null,
+        };
       }
 
       // Keyset (cursor) pagination: instead of OFFSET — which rescans and skips
@@ -86,7 +90,7 @@ export class SermonService {
       const sermons = hasMore ? rows.slice(0, take) : rows;
 
       return {
-        sermons,
+        sermons: sermons.map((s) => this.normalizeSermonRelations(s)),
         count: null,
         nextCursor: hasMore ? sermons[sermons.length - 1].id : null,
       };
@@ -209,6 +213,17 @@ export class SermonService {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  private normalizeSermonRelations(sermon: SermonEntity) {
+    return {
+      ...sermon,
+      playlists: (sermon.playlists ?? []).map((pl) => ({
+        ...pl,
+        sections: pl.sections ?? [],
+        sermons: pl.sermons ?? [],
+      })),
+    };
   }
 
   private async attachSermonToPlaylists(
