@@ -35,6 +35,33 @@ export class MinioService {
     if (!bucketExists) {
       await this.minioClient.makeBucket(MinioService.BUCKET_NAME, 'us-east-1');
     }
+    await this.applyPublicReadPolicy();
+  }
+
+  /**
+   * Grants anonymous read access to stored media so the static URLs returned
+   * by getFileUrl work for browsers. Applied unconditionally on every startup
+   * (setBucketPolicy is idempotent) so an existing bucket that was created
+   * private is self-healed. Grants ONLY s3:GetObject — uploads, listing and
+   * deletes remain gated by the MinIO credentials.
+   */
+  private async applyPublicReadPolicy(): Promise<void> {
+    const policy = {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Sid: 'PublicReadGetObject',
+          Effect: 'Allow',
+          Principal: '*',
+          Action: ['s3:GetObject'],
+          Resource: [`arn:aws:s3:::${MinioService.BUCKET_NAME}/*`],
+        },
+      ],
+    };
+    await this.minioClient.setBucketPolicy(
+      MinioService.BUCKET_NAME,
+      JSON.stringify(policy),
+    );
   }
 
   async uploadFile(file: Express.Multer.File): Promise<string> {
