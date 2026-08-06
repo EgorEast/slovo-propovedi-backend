@@ -13,6 +13,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { MinioService } from './minio/minio.service';
 import { AuthGuard } from './auth/guard/auth.guard';
 import { FileResponseDto } from './app/dto/file-response.dto';
+import { FileUploadDto } from './app/dto/file-upload.dto';
 import { StreamUrlResponseDto } from './app/dto/stream-url-response.dto';
 import { FileNameParamDto } from './shared/dto/file-name-param.dto';
 
@@ -25,12 +26,17 @@ export class AppController {
   @ZodResponse({ type: FileResponseDto })
   @UseInterceptors(FileInterceptor('file'))
   async uploadFile(
-    @UploadedFile('file') file: Express.Multer.File,
+    @UploadedFile('file') file: FileUploadDto,
   ): Promise<FileResponseDto> {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
-    const fileName = await this.minioService.uploadFile(file);
+    // The param is annotated with the ZodDto solely so the strict global pipe
+    // accepts it; at runtime it is still the Express.Multer.File produced by
+    // FileInterceptor (z.any() is a passthrough).
+    const fileName = await this.minioService.uploadFile(
+      file as Express.Multer.File,
+    );
     const fileUrl = await this.minioService.getFileUrl(fileName);
     return { fileName, fileUrl } as FileResponseDto;
   }
