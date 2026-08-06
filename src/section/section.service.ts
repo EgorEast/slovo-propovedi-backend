@@ -29,6 +29,7 @@ export class SectionService {
           createSectionDto.isDescriptionTitleOnSlideLarge,
         whereIsSlideTitleLocated: createSectionDto.whereIsSlideTitleLocated,
         borderRadius: createSectionDto.borderRadius,
+        playlists: [],
       });
       return await this.sectionRepository.save(section);
     } catch (error) {
