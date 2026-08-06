@@ -29,6 +29,7 @@ CREATE TABLE "user" (
     id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     name character varying NOT NULL,
     email character varying NOT NULL,
+    username character varying NOT NULL,
     password character varying NOT NULL
 );
 
@@ -108,6 +109,8 @@ ALTER TABLE ONLY section_playlists_playlist
 -- ---------------------------------------------------------------------------
 ALTER TABLE ONLY "user"
     ADD CONSTRAINT "UQ_e12875dfb3b1d92d7d7c5377e22" UNIQUE (email);
+ALTER TABLE ONLY "user"
+    ADD CONSTRAINT "UQ_78a916df40e02a9deb1c4b75edb" UNIQUE (username);
 
 -- ---------------------------------------------------------------------------
 -- Indexes (join-table FK lookups)

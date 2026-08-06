@@ -10,12 +10,12 @@ export class UsersService {
     private usersRepository: Repository<User>,
   ) {}
 
-  async findOneByEmail(email: string): Promise<User | null> {
+  async findOneByUsername(username: string): Promise<User | null> {
     try {
-      return await this.usersRepository.findOne({ where: { email } });
+      return await this.usersRepository.findOne({ where: { username } });
     } catch (error) {
       throw new HttpException(
-        'from:findOneByEmail ' + error.message,
+        'from:findOneByUsername ' + error.message,
         HttpStatus.BAD_REQUEST,
       );
     }

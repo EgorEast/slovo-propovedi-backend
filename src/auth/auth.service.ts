@@ -8,6 +8,7 @@ const BCRYPT_PREFIXES = ['$2a$', '$2b$', '$2y$'];
 export class UserResponse {
   id: string;
   name: string;
+  username: string;
   email: string;
 }
 
@@ -45,8 +46,8 @@ export class AuthService {
     return secret;
   }
 
-  async signIn(email: string, password: string): Promise<AuthResponse> {
-    const user = await this.usersService.findOneByEmail(email);
+  async signIn(username: string, password: string): Promise<AuthResponse> {
+    const user = await this.usersService.findOneByUsername(username);
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -58,12 +59,20 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Payload email is retained for backwards compatibility with already-issued
+    // refresh tokens; it is NOT used for lookup (getProfile re-fetches by id,
+    // refresh re-signs from the old payload).
     const payload = { id: user.id, email: user.email };
     const tokens = await this.generateTokens(payload);
 
     return {
       ...tokens,
-      user: { id: user.id, name: user.name, email: user.email },
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+      },
     };
   }
 
@@ -84,7 +93,7 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-    return { id: user.id, name: user.name, email: user.email };
+    return { id: user.id, name: user.name, username: user.username, email: user.email };
   }
 
   private async generateTokens(payload: { id: string; email: string }) {

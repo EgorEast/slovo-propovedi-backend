@@ -24,7 +24,7 @@ export const AppControllerUploadFileResponse = zod.object({
 
 
 /**
- * @summary Get stream URL for file
+ * @summary Получить URL потока для файла
  */
 export const AppControllerGetStreamUrlParams = zod.object({
   "fileName": zod.string()
@@ -49,7 +49,7 @@ export const AppControllerGetFileResponse = zod.object({
 
 
 /**
- * @summary Check service health
+ * @summary Проверить состояние сервиса
  */
 export const HealthControllerCheckResponse = zod.object({
   "status": zod.string()
@@ -621,7 +621,7 @@ export const SermonControllerFindAllResponse = zod.object({
 
 
 /**
- * @summary Get stream URL for sermon audio
+ * @summary Получить URL потока для аудио проповеди
  */
 export const SermonControllerGetStreamUrlParams = zod.object({
   "id": zod.uuid()
@@ -728,7 +728,7 @@ export const SermonControllerRemoveResponse = zod.object({
  * @summary Вход в админ-панель
  */
 export const AuthControllerSignInBody = zod.object({
-  "email": zod.string(),
+  "username": zod.string().describe('Имя пользователя для входа'),
   "password": zod.string()
 })
 
@@ -738,6 +738,7 @@ export const AuthControllerSignInResponse = zod.object({
   "user": zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "username": zod.string().describe('Имя пользователя для входа в систему'),
   "email": zod.string()
 })
 })
@@ -763,5 +764,6 @@ export const AuthControllerRefreshResponse = zod.object({
 export const AuthControllerGetProfileResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "username": zod.string().describe('Имя пользователя для входа в систему'),
   "email": zod.string()
 })

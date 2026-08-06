@@ -25,10 +25,10 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with email and password' })
+  @ApiOperation({ summary: 'Login with username and password' })
   @ZodResponse({ type: AuthResponseDto })
   signIn(@Body() signInDto: SignInRequestDto): Promise<AuthResponseDto> {
-    return this.authService.signIn(signInDto.email, signInDto.password);
+    return this.authService.signIn(signInDto.username, signInDto.password);
   }
 
   @Post('refresh')
