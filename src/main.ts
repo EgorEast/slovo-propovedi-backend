@@ -18,8 +18,8 @@ async function bootstrap() {
     'http://localhost:8081',
     'http://localhost:8082',
   ];
-  if (process.env.SWAGGER_UI_ORIGIN) {
-    allowedOrigins.push(process.env.SWAGGER_UI_ORIGIN);
+  if (process.env.DOCS_UI_ORIGIN) {
+    allowedOrigins.push(process.env.DOCS_UI_ORIGIN);
   }
   app.enableCors({
     origin: allowedOrigins,
@@ -42,7 +42,7 @@ async function bootstrap() {
   const minioService = app.get<MinioService>(MinioService);
   await minioService.createBucketIfNotExists();
 
-  if (process.env.SWAGGER_ENABLED === 'true') {
+  if (process.env.DOCS_ENABLED === 'true') {
     try {
       const specUrl =
         process.env.OPENAPI_SPEC_URL ||
