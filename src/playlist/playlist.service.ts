@@ -27,6 +27,8 @@ export class PlaylistService {
         title: createPlaylistDto.title,
         description: createPlaylistDto.description,
         artwork: createPlaylistDto.artwork,
+        sections: [],
+        sermons: [],
       });
       if (createPlaylistDto.sermonsIds && createPlaylistDto.sermonsIds.length) {
         const sermons = await this.sermonService.findByIds(
