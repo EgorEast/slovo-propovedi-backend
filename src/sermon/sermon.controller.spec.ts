@@ -1,17 +1,21 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { PlaylistController } from './sermon.controller';
-import { PlaylistService } from './sermon.service';
+import { JwtService } from '@nestjs/jwt';
+import { SermonController } from './sermon.controller';
+import { SermonService } from './sermon.service';
 
-describe('PlaylistController', () => {
-  let controller: PlaylistController;
+describe('SermonController', () => {
+  let controller: SermonController;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      controllers: [PlaylistController],
-      providers: [PlaylistService],
+      controllers: [SermonController],
+      providers: [
+        { provide: SermonService, useValue: {} },
+        { provide: JwtService, useValue: {} },
+      ],
     }).compile();
 
-    controller = module.get<PlaylistController>(PlaylistController);
+    controller = module.get<SermonController>(SermonController);
   });
 
   it('should be defined', () => {
