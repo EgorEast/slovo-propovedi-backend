@@ -4,6 +4,13 @@ import { randomUUID } from 'crypto';
 import * as Minio from 'minio';
 import * as path from 'path';
 
+export interface StoredImage {
+  fileName: string;
+  fileUrl: string;
+  size: number | null;
+  lastModified: Date | null;
+}
+
 @Injectable()
 export class MinioService {
   static readonly BUCKET_NAME = 'files';
@@ -87,6 +94,67 @@ export class MinioService {
     }/${fileName}`;
   }
 
+  /**
+   * Lists up to 500 image objects in the default bucket, newest first. Used by
+   * the cover-reuse feature so the admin UI can offer already-uploaded images.
+   * Filters by file extension (not content type) because getContentType has no
+   * mapping for every object MinIO may return.
+   *
+   * The scan is capped at IMAGE_LIMIT so a large bucket cannot load an
+   * unbounded number of objects into memory.
+   */
+  async listImages(): Promise<StoredImage[]> {
+    // Generous for a small admin app: enough for the cover-reuse gallery while
+    // bounding memory usage.
+    const IMAGE_LIMIT = 500;
+    const imageExtensions = ['.jpeg', '.jpg', '.png', '.webp'];
+
+    const imageObjects = await new Promise<Minio.BucketItem[]>(
+      (resolve, reject) => {
+        const stream = this.minioClient.listObjectsV2(
+          MinioService.BUCKET_NAME,
+          '',
+          true,
+        );
+        const matches: Minio.BucketItem[] = [];
+        stream.on('data', (obj) => {
+          const fileName = obj.name ?? '';
+          const extension = fileName
+            .slice(fileName.lastIndexOf('.'))
+            .toLowerCase();
+          if (imageExtensions.includes(extension)) {
+            matches.push(obj);
+            if (matches.length >= IMAGE_LIMIT) {
+              // Stop the stream early once the limit is reached. The promise
+              // is already resolved, so any later end/error event is ignored.
+              stream.destroy();
+              resolve(matches);
+            }
+          }
+        });
+        stream.on('error', reject);
+        stream.on('end', () => resolve(matches));
+      },
+    );
+
+    const newestFirst = imageObjects.sort(
+      (a, b) =>
+        (b.lastModified?.getTime() ?? 0) - (a.lastModified?.getTime() ?? 0),
+    );
+
+    return Promise.all(
+      newestFirst.map(async (obj) => {
+        const fileName = obj.name ?? '';
+        return {
+          fileName,
+          fileUrl: await this.getFileUrl(fileName),
+          size: obj.size ?? null,
+          lastModified: obj.lastModified ?? null,
+        };
+      }),
+    );
+  }
+
   async getPresignedUrl(
     bucket: string,
     fileName: string,
@@ -155,6 +223,9 @@ export class MinioService {
       }
       case '.mp3': {
         return 'audio/mp3';
+      }
+      default: {
+        return 'application/octet-stream';
       }
     }
   }

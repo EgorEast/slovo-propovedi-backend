@@ -6,17 +6,41 @@ import {
 } from '@nestjs/common';
 import { CreateSermonDto } from './dto/create-sermon.dto';
 import { UpdateSermonDto } from './dto/update-sermon.dto';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { SermonEntity } from './entities/sermon.entity';
 import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
-import { In, Repository } from 'typeorm';
+import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-join.entity';
+import { DataSource, In, Repository } from 'typeorm';
 import {
   AllSermonsResponse,
+  NormalizedSermonResponse,
   StatusSermonResponse,
   StreamUrlResponse,
   UpdateSermon,
 } from './interfaces/interface';
 import { MinioService } from 'src/minio/minio.service';
+
+const SERMON_RELATIONS = [
+  'playlistJoins',
+  'playlistJoins.playlist',
+  'playlistJoins.playlist.sectionJoins',
+  'playlistJoins.playlist.sectionJoins.section',
+  'playlistJoins.playlist.sermonJoins',
+  'playlistJoins.playlist.sermonJoins.sermon',
+];
+
+// DB-level ordering for the relation paths normalizePlaylistRelations exposes
+// — each playlist's section and sermon joins ordered by position, so no
+// in-memory re-sorting is needed.
+const SERMON_RELATION_ORDER = {
+  playlistJoins: {
+    position: 'ASC',
+    playlist: {
+      sectionJoins: { position: 'ASC' },
+      sermonJoins: { position: 'ASC' },
+    },
+  },
+} as const;
 
 @Injectable()
 export class SermonService {
@@ -25,10 +49,16 @@ export class SermonService {
     private sermonRepository: Repository<SermonEntity>,
     @InjectRepository(PlaylistEntity)
     private playlistRepository: Repository<PlaylistEntity>,
+    @InjectRepository(PlaylistSermonJoinEntity)
+    private playlistSermonJoinRepository: Repository<PlaylistSermonJoinEntity>,
     private readonly minioService: MinioService,
+    @InjectDataSource()
+    private dataSource: DataSource,
   ) {}
 
-  async create(createSermonDto: CreateSermonDto): Promise<SermonEntity> {
+  async create(
+    createSermonDto: CreateSermonDto,
+  ): Promise<NormalizedSermonResponse> {
     try {
       const sermon = this.sermonRepository.create({
         title: createSermonDto.title,
@@ -62,8 +92,8 @@ export class SermonService {
         // Backward-compatible full fetch — used by the admin UI when no
         // pagination params are supplied.
         const [sermons, count] = await this.sermonRepository.findAndCount({
-          relations: ['playlists'],
-          order: { id: 'DESC' },
+          relations: SERMON_RELATIONS,
+          order: { id: 'DESC', ...SERMON_RELATION_ORDER },
         });
         return {
           sermons: sermons.map((s) => this.normalizeSermonRelations(s)),
@@ -77,8 +107,16 @@ export class SermonService {
       // cursor and use the extra row to decide whether another page exists.
       const queryBuilder = this.sermonRepository
         .createQueryBuilder('sermon')
-        .leftJoinAndSelect('sermon.playlists', 'playlists')
+        .leftJoinAndSelect('sermon.playlistJoins', 'playlistJoins')
+        .leftJoinAndSelect('playlistJoins.playlist', 'playlists')
+        .leftJoinAndSelect('playlists.sectionJoins', 'playlistSectionJoins')
+        .leftJoinAndSelect('playlistSectionJoins.section', 'playlistSections')
+        .leftJoinAndSelect('playlists.sermonJoins', 'playlistSermonJoins')
+        .leftJoinAndSelect('playlistSermonJoins.sermon', 'playlistSermons')
         .orderBy('sermon.id', 'DESC')
+        .addOrderBy('playlistJoins.position', 'ASC')
+        .addOrderBy('playlistSectionJoins.position', 'ASC')
+        .addOrderBy('playlistSermonJoins.position', 'ASC')
         .take(take + 1);
 
       if (cursor) {
@@ -116,13 +154,14 @@ export class SermonService {
     return { url };
   }
 
-  async findOne(id: string): Promise<SermonEntity> {
+  async findOne(id: string): Promise<NormalizedSermonResponse | null> {
     try {
       const sermon = await this.sermonRepository.findOne({
         where: { id },
-        relations: ['playlists'],
+        relations: SERMON_RELATIONS,
+        order: SERMON_RELATION_ORDER,
       });
-      return sermon ? this.normalizeSermonRelations(sermon) : sermon;
+      return sermon ? this.normalizeSermonRelations(sermon) : null;
     } catch (error) {
       throw new HttpException(
         'from:findOneSermonItem ' + error.message,
@@ -216,13 +255,64 @@ export class SermonService {
     }
   }
 
-  private normalizeSermonRelations(sermon: SermonEntity) {
+  private normalizeSermonRelations(
+    sermon: SermonEntity,
+  ): NormalizedSermonResponse {
     return {
-      ...sermon,
-      playlists: (sermon.playlists ?? []).map((pl) => ({
-        ...pl,
-        sections: pl.sections ?? [],
-        sermons: pl.sermons ?? [],
+      id: sermon.id,
+      title: sermon.title,
+      description: sermon.description,
+      textFileUrl: sermon.textFileUrl,
+      audioUrl: sermon.audioUrl,
+      youtubeUrl: sermon.youtubeUrl,
+      artist: sermon.artist,
+      artwork: sermon.artwork,
+      book: sermon.book,
+      chapter: sermon.chapter,
+      verse: sermon.verse,
+      playlists: (sermon.playlistJoins ?? []).map((join) =>
+        this.normalizePlaylistRelations(join.playlist),
+      ),
+    };
+  }
+
+  private normalizePlaylistRelations(
+    playlist: PlaylistEntity,
+  ): NormalizedSermonResponse['playlists'][number] {
+    const sectionJoins = playlist.sectionJoins ?? [];
+    const sermonJoins = playlist.sermonJoins ?? [];
+    return {
+      id: playlist.id,
+      title: playlist.title,
+      description: playlist.description,
+      artwork: playlist.artwork,
+      sections: sectionJoins.map((sectionJoin) => ({
+        id: sectionJoin.section.id,
+        title: sectionJoin.section.title,
+        description: sectionJoin.section.description,
+        position: sectionJoin.section.position,
+        itemsSize: sectionJoin.section.itemsSize,
+        itemsRows: sectionJoin.section.itemsRows,
+        transform: sectionJoin.section.transform,
+        isDescriptionTitleOnSlideLarge:
+          sectionJoin.section.isDescriptionTitleOnSlideLarge,
+        whereIsSlideTitleLocated: sectionJoin.section.whereIsSlideTitleLocated,
+        borderRadius: sectionJoin.section.borderRadius,
+        playlists: [],
+      })),
+      sermons: sermonJoins.map((sermonJoin) => ({
+        id: sermonJoin.sermon.id,
+        title: sermonJoin.sermon.title,
+        description: sermonJoin.sermon.description,
+        textFileUrl: sermonJoin.sermon.textFileUrl,
+        audioUrl: sermonJoin.sermon.audioUrl,
+        youtubeUrl: sermonJoin.sermon.youtubeUrl,
+        artist: sermonJoin.sermon.artist,
+        artwork: sermonJoin.sermon.artwork,
+        book: sermonJoin.sermon.book,
+        chapter: sermonJoin.sermon.chapter,
+        verse: sermonJoin.sermon.verse,
+        position: sermonJoin.position,
       })),
     };
   }
@@ -235,21 +325,23 @@ export class SermonService {
       return;
     }
 
-    const playlists = await this.playlistRepository.find({
-      where: { id: In(playlistIds) },
-      relations: ['sermons'],
-    });
-
-    playlists.forEach((playlist) => {
-      const isSermonAlreadyAttached = playlist.sermons.some(
-        (attachedSermon) => attachedSermon.id === sermon.id,
-      );
-      if (!isSermonAlreadyAttached) {
-        playlist.sermons.push(sermon);
+    // SERIALIZABLE isolation prevents two concurrent attachments from both
+    // reading the same max position and inserting duplicate positions.
+    await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const joinRepository = manager.getRepository(PlaylistSermonJoinEntity);
+      for (const playlistId of playlistIds) {
+        const maxPosition = await joinRepository.maximum('position', {
+          playlistId,
+        });
+        await joinRepository.save(
+          joinRepository.create({
+            playlistId,
+            sermonId: sermon.id,
+            position: (maxPosition ?? -1) + 1,
+          }),
+        );
       }
     });
-
-    await this.playlistRepository.save(playlists);
   }
 
   private async syncSermonPlaylistMembership(
@@ -260,28 +352,23 @@ export class SermonService {
       return;
     }
 
-    const allPlaylists = await this.playlistRepository.find({
-      relations: ['sermons'],
+    const currentJoins = await this.playlistSermonJoinRepository.find({
+      where: { sermonId: sermon.id },
     });
-    const currentPlaylists = allPlaylists.filter((playlist) =>
-      playlist.sermons.some(
-        (attachedSermon) => attachedSermon.id === sermon.id,
-      ),
-    );
+    const currentPlaylistIds = currentJoins.map((join) => join.playlistId);
 
-    const playlistsToRemove = currentPlaylists.filter(
-      (playlist) => !desiredPlaylistIds.includes(playlist.id),
+    const playlistIdsToRemove = currentPlaylistIds.filter(
+      (playlistId) => !desiredPlaylistIds.includes(playlistId),
     );
-    playlistsToRemove.forEach((playlist) => {
-      playlist.sermons = playlist.sermons.filter(
-        (attachedSermon) => attachedSermon.id !== sermon.id,
-      );
-    });
-    await this.playlistRepository.save(playlistsToRemove);
+    if (playlistIdsToRemove.length) {
+      await this.playlistSermonJoinRepository.delete({
+        sermonId: sermon.id,
+        playlistId: In(playlistIdsToRemove),
+      });
+    }
 
     const playlistIdsToAdd = desiredPlaylistIds.filter(
-      (playlistId) =>
-        !currentPlaylists.some((playlist) => playlist.id === playlistId),
+      (playlistId) => !currentPlaylistIds.includes(playlistId),
     );
     await this.attachSermonToPlaylists(sermon, playlistIdsToAdd);
   }

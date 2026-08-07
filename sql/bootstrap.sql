@@ -57,6 +57,8 @@ CREATE TABLE section (
     id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     title character varying NOT NULL,
     description character varying,
+    -- Global order of sections (drag-and-drop reordering on the admin dashboard).
+    "position" integer NOT NULL DEFAULT 0,
     "items-size" character varying NOT NULL,
     "items-rows" integer,
     transform character varying NOT NULL,
@@ -76,16 +78,27 @@ CREATE TABLE playlist (
 );
 
 -- ---------------------------------------------------------------------------
--- Many-to-many join tables (TypeORM default names)
+-- Many-to-many join tables
+--
+-- These are backed by explicit join entities (PlaylistSermonJoinEntity /
+-- SectionPlaylistJoinEntity) with a surrogate `id` primary key plus a UNIQUE
+-- constraint on the FK pair — the pair uniqueness preserves the old composite
+-- PK invariant ("a sermon is in a playlist at most once").
 -- ---------------------------------------------------------------------------
 CREATE TABLE playlist_sermons_sermon (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     "playlistId" uuid NOT NULL,
-    "sermonId" uuid NOT NULL
+    "sermonId" uuid NOT NULL,
+    -- Order of sermons within a playlist (drag-and-drop reordering on the admin dashboard).
+    "position" integer NOT NULL DEFAULT 0
 );
 
 CREATE TABLE section_playlists_playlist (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     "sectionId" uuid NOT NULL,
-    "playlistId" uuid NOT NULL
+    "playlistId" uuid NOT NULL,
+    -- Order of playlists within a section (drag-and-drop reordering on the admin dashboard).
+    "position" integer NOT NULL DEFAULT 0
 );
 
 -- ---------------------------------------------------------------------------
@@ -100,9 +113,9 @@ ALTER TABLE ONLY section
 ALTER TABLE ONLY playlist
     ADD CONSTRAINT "PK_538c2893e2024fabc7ae65ad142" PRIMARY KEY (id);
 ALTER TABLE ONLY playlist_sermons_sermon
-    ADD CONSTRAINT "PK_8eae5095c69292abbe514b959ce" PRIMARY KEY ("playlistId", "sermonId");
+    ADD CONSTRAINT "PK_playlist_sermons_sermon_id" PRIMARY KEY (id);
 ALTER TABLE ONLY section_playlists_playlist
-    ADD CONSTRAINT "PK_5d0453111a321630eac68ada913" PRIMARY KEY ("sectionId", "playlistId");
+    ADD CONSTRAINT "PK_section_playlists_playlist_id" PRIMARY KEY (id);
 
 -- ---------------------------------------------------------------------------
 -- Unique constraints
@@ -111,6 +124,10 @@ ALTER TABLE ONLY "user"
     ADD CONSTRAINT "UQ_e12875dfb3b1d92d7d7c5377e22" UNIQUE (email);
 ALTER TABLE ONLY "user"
     ADD CONSTRAINT "UQ_78a916df40e02a9deb1c4b75edb" UNIQUE (username);
+ALTER TABLE ONLY playlist_sermons_sermon
+    ADD CONSTRAINT "UQ_playlist_sermons_sermon_pair" UNIQUE ("playlistId", "sermonId");
+ALTER TABLE ONLY section_playlists_playlist
+    ADD CONSTRAINT "UQ_section_playlists_playlist_pair" UNIQUE ("sectionId", "playlistId");
 
 -- ---------------------------------------------------------------------------
 -- Indexes (join-table FK lookups)

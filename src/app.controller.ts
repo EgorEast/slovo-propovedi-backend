@@ -14,6 +14,7 @@ import { MinioService } from './minio/minio.service';
 import { AuthGuard } from './auth/guard/auth.guard';
 import { FileResponseDto } from './app/dto/file-response.dto';
 import { FileUploadDto } from './app/dto/file-upload.dto';
+import { GetFilesResponseDto } from './app/dto/get-files-response.dto';
 import { StreamUrlResponseDto } from './app/dto/stream-url-response.dto';
 import { FileNameParamDto } from './shared/dto/file-name-param.dto';
 
@@ -39,6 +40,29 @@ export class AppController {
     );
     const fileUrl = await this.minioService.getFileUrl(fileName);
     return { fileName, fileUrl } as FileResponseDto;
+  }
+
+  /**
+   * Lists all image files in storage for the cover-reuse feature. Protected —
+   * the storage inventory must not be exposed to unauthenticated callers.
+   * Declared before `GET /files/:fileName` — Express matches routes in order.
+   */
+  @Get('files')
+  @UseGuards(AuthGuard)
+  @ZodResponse({ type: GetFilesResponseDto })
+  async listFiles(): Promise<GetFilesResponseDto> {
+    const storedFiles = await this.minioService.listImages();
+    return {
+      files: storedFiles.map((file) => ({
+        fileName: file.fileName,
+        fileUrl: file.fileUrl,
+        size: file.size,
+        lastModified: file.lastModified
+          ? file.lastModified.toISOString()
+          : null,
+      })),
+      count: storedFiles.length,
+    } as GetFilesResponseDto;
   }
 
   /**

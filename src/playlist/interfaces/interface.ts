@@ -1,14 +1,20 @@
-import { PlaylistEntity } from '../entities/playlist.entity';
-import { SermonEntity } from 'src/sermon/entities/sermon.entity';
+import { z } from 'zod';
+import {
+  PlaylistControllerCreateResponse,
+  PlaylistControllerFindAllResponse,
+} from '../../generated';
 
 export interface UpdatePlaylist {
   title?: string;
   description?: string;
-  sermons?: SermonEntity[];
 }
 
+export type NormalizedPlaylistResponse = z.infer<
+  typeof PlaylistControllerCreateResponse
+>;
+
 export class AllPlaylistsResponse {
-  playlists: PlaylistEntity[];
+  playlists: z.infer<typeof PlaylistControllerFindAllResponse>['playlists'];
   count: number;
 }
 

@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { PlaylistService } from './playlist.service';
 import { PlaylistEntity } from './entities/playlist.entity';
+import { PlaylistSermonJoinEntity } from './entities/playlist-sermon-join.entity';
 import { SectionEntity } from 'src/section/entities/section.entity';
+import { SectionPlaylistJoinEntity } from 'src/section/entities/section-playlist-join.entity';
 import { SermonService } from 'src/sermon/sermon.service';
 
 describe('PlaylistService', () => {
@@ -13,6 +15,10 @@ describe('PlaylistService', () => {
       providers: [
         PlaylistService,
         {
+          provide: SermonService,
+          useValue: {},
+        },
+        {
           provide: getRepositoryToken(PlaylistEntity),
           useValue: {},
         },
@@ -21,7 +27,15 @@ describe('PlaylistService', () => {
           useValue: {},
         },
         {
-          provide: SermonService,
+          provide: getRepositoryToken(SectionPlaylistJoinEntity),
+          useValue: {},
+        },
+        {
+          provide: getRepositoryToken(PlaylistSermonJoinEntity),
+          useValue: {},
+        },
+        {
+          provide: getDataSourceToken(),
           useValue: {},
         },
       ],

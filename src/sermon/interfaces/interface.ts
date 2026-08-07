@@ -1,4 +1,8 @@
-import { SermonEntity } from '../entities/sermon.entity';
+import { z } from 'zod';
+import {
+  SermonControllerCreateResponse,
+  SermonControllerFindAllResponse,
+} from '../../generated';
 
 export interface UpdateSermon {
   title?: string;
@@ -13,8 +17,12 @@ export interface UpdateSermon {
   verse?: number | number[];
 }
 
+export type NormalizedSermonResponse = z.infer<
+  typeof SermonControllerCreateResponse
+>;
+
 export class AllSermonsResponse {
-  sermons: SermonEntity[];
+  sermons: z.infer<typeof SermonControllerFindAllResponse>['sermons'];
   count: number | null;
   nextCursor: string | null;
 }

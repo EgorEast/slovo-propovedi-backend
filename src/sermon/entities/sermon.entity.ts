@@ -1,5 +1,5 @@
-import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
-import { Column, Entity, ManyToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-join.entity';
 
 @Entity('sermon')
 export class SermonEntity {
@@ -36,8 +36,8 @@ export class SermonEntity {
   @Column({ name: 'verse', type: 'json', nullable: true })
   verse?: number | number[];
 
-  @ManyToMany(() => PlaylistEntity, (playlist) => playlist.sermons, {
-    onDelete: 'CASCADE',
+  @OneToMany(() => PlaylistSermonJoinEntity, (join) => join.sermon, {
+    cascade: true,
   })
-  playlists: PlaylistEntity[];
+  playlistJoins: PlaylistSermonJoinEntity[];
 }

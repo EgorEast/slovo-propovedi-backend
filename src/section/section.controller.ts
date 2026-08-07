@@ -11,6 +11,8 @@ import {
 import { SectionService } from './section.service';
 import { CreateSectionDto } from './dto/create-section.dto';
 import { UpdateSectionDto } from './dto/update-section.dto';
+import { ReorderSectionsDto } from './dto/reorder-sections.dto';
+import { ReorderPlaylistsInSectionDto } from './dto/reorder-playlists-in-section.dto';
 import { SectionResponseDto } from './dto/section-response.dto';
 import { AllSectionsResponseDto } from './dto/all-sections-response.dto';
 import { StatusSectionResponseDto } from './dto/status-section-response.dto';
@@ -39,6 +41,27 @@ export class SectionController {
   @ZodResponse({ type: SectionResponseDto })
   findOne(@Param() params: IdParamDto) {
     return this.sectionService.findOneSectionItem(params.id);
+  }
+
+  // Must be declared before @Patch(':id') so 'reorder' is not swallowed as an id.
+  @Patch('reorder')
+  @UseGuards(AuthGuard)
+  @ZodResponse({ type: StatusSectionResponseDto })
+  async reorder(@Body() reorderSectionsDto: ReorderSectionsDto) {
+    return this.sectionService.reorderSections(reorderSectionsDto.ids);
+  }
+
+  @Patch(':id/playlists/reorder')
+  @UseGuards(AuthGuard)
+  @ZodResponse({ type: StatusSectionResponseDto })
+  async reorderPlaylistsInSection(
+    @Param() params: IdParamDto,
+    @Body() reorderPlaylistsInSectionDto: ReorderPlaylistsInSectionDto,
+  ) {
+    return this.sectionService.reorderPlaylistsInSection(
+      params.id,
+      reorderPlaylistsInSectionDto.playlistIds,
+    );
   }
 
   @Patch(':id')

@@ -1,11 +1,5 @@
-import {
-  Column,
-  Entity,
-  JoinTable,
-  ManyToMany,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
-import { PlaylistEntity } from '../../playlist/entities/playlist.entity';
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { SectionPlaylistJoinEntity } from './section-playlist-join.entity';
 
 export type ItemsSize = 'small' | 'middle' | 'large' | 'xLarge';
 export type Transform = 'high' | 'short';
@@ -21,6 +15,10 @@ export class SectionEntity {
 
   @Column({ name: 'description', type: 'varchar', nullable: true })
   description: string | null;
+
+  // Global order of sections (drag-and-drop reordering on the admin dashboard).
+  @Column({ name: 'position', type: 'integer', nullable: false, default: 0 })
+  position: number;
 
   @Column({ name: 'items-size', type: 'varchar' })
   itemsSize: ItemsSize;
@@ -48,9 +46,8 @@ export class SectionEntity {
   @Column({ name: 'border-radius', type: 'boolean', default: false })
   borderRadius: boolean;
 
-  @ManyToMany(() => PlaylistEntity, (playlist) => playlist.sections, {
-    onDelete: 'CASCADE',
+  @OneToMany(() => SectionPlaylistJoinEntity, (join) => join.section, {
+    cascade: true,
   })
-  @JoinTable()
-  playlists: PlaylistEntity[];
+  playlistJoins: SectionPlaylistJoinEntity[];
 }

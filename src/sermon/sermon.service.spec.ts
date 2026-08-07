@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { SermonService } from './sermon.service';
 import { SermonEntity } from './entities/sermon.entity';
 import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
+import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-join.entity';
 import { MinioService } from 'src/minio/minio.service';
 
 describe('SermonService', () => {
@@ -21,7 +22,15 @@ describe('SermonService', () => {
           useValue: {},
         },
         {
+          provide: getRepositoryToken(PlaylistSermonJoinEntity),
+          useValue: {},
+        },
+        {
           provide: MinioService,
+          useValue: {},
+        },
+        {
+          provide: getDataSourceToken(),
           useValue: {},
         },
       ],

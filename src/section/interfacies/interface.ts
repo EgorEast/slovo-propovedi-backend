@@ -1,6 +1,8 @@
-import { SectionEntity } from '../entities/section.entity';
-import { PlaylistEntity } from '../../playlist/entities/playlist.entity';
-import { SermonEntity } from '../../sermon/entities/sermon.entity';
+import { z } from 'zod';
+import {
+  SectionControllerCreateResponse,
+  SectionControllerFindAllResponse,
+} from '../../generated';
 
 export interface UpdateSection {
   title?: string;
@@ -13,20 +15,21 @@ export interface UpdateSection {
   borderRadius?: boolean;
 }
 
-export type NormalizedPlaylist = Omit<
-  PlaylistEntity,
-  'sections' | 'sermons'
-> & {
-  sections: Pick<SectionEntity, 'id' | 'title'>[];
-  sermons: SermonEntity[];
-};
+/**
+ * The normalized section shape is exactly the OpenAPI response schema — the
+ * service constructs it field-by-field (no raw entity spreads) so the
+ * ZodSerializerInterceptor's strict parse never sees an unexpected key.
+ */
+export type NormalizedSection = z.infer<typeof SectionControllerCreateResponse>;
 
-export type NormalizedSection = Omit<SectionEntity, 'playlists'> & {
-  playlists: NormalizedPlaylist[];
-};
+export type NormalizedPlaylist = NormalizedSection['playlists'][number];
+
+export type AllSectionsResponseShape = z.infer<
+  typeof SectionControllerFindAllResponse
+>;
 
 export class AllSectionsResponse {
-  sections: NormalizedSection[];
+  sections: AllSectionsResponseShape['sections'];
   count: number;
 }
 

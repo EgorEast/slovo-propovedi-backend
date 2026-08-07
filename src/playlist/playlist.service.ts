@@ -1,15 +1,39 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { PlaylistEntity } from './entities/playlist.entity';
+import { PlaylistSermonJoinEntity } from './entities/playlist-sermon-join.entity';
 import { SectionEntity } from 'src/section/entities/section.entity';
-import { In, Repository } from 'typeorm';
+import { SectionPlaylistJoinEntity } from 'src/section/entities/section-playlist-join.entity';
+import { DataSource, In, Repository } from 'typeorm';
 import {
   AllPlaylistsResponse,
+  NormalizedPlaylistResponse,
   StatusPlaylistResponse,
 } from './interfaces/interface';
 import { SermonService } from 'src/sermon/sermon.service';
+
+const PLAYLIST_RELATIONS = [
+  'sermonJoins',
+  'sermonJoins.sermon',
+  'sectionJoins',
+  'sectionJoins.section',
+];
+
+// DB-level ordering for every relation path the normalize function exposes —
+// sermon and section joins are both ordered by position, so no in-memory
+// re-sorting is needed.
+const PLAYLIST_ORDER = {
+  sermonJoins: { position: 'ASC' },
+  sectionJoins: { position: 'ASC' },
+} as const;
 
 @Injectable()
 export class PlaylistService {
@@ -19,28 +43,58 @@ export class PlaylistService {
     private playlistRepository: Repository<PlaylistEntity>,
     @InjectRepository(SectionEntity)
     private sectionRepository: Repository<SectionEntity>,
+    @InjectRepository(SectionPlaylistJoinEntity)
+    private sectionPlaylistJoinRepository: Repository<SectionPlaylistJoinEntity>,
+    @InjectDataSource()
+    private dataSource: DataSource,
   ) {}
 
-  async create(createPlaylistDto: CreatePlaylistDto): Promise<PlaylistEntity> {
+  async create(
+    createPlaylistDto: CreatePlaylistDto,
+  ): Promise<NormalizedPlaylistResponse> {
     try {
-      const playlist = this.playlistRepository.create({
-        title: createPlaylistDto.title,
-        description: createPlaylistDto.description,
-        artwork: createPlaylistDto.artwork,
-        sections: [],
-        sermons: [],
-      });
-      if (createPlaylistDto.sermonsIds && createPlaylistDto.sermonsIds.length) {
-        const sermons = await this.sermonService.findByIds(
-          createPlaylistDto.sermonsIds,
-        );
-        if (!sermons) {
-          throw new Error('Sermons not found');
-        }
-        playlist.sermons = sermons;
-      }
-      const saved = await this.playlistRepository.save(playlist);
-      return this.normalizePlaylist(saved);
+      const savedId = await this.dataSource.transaction(
+        'SERIALIZABLE',
+        async (manager) => {
+          const playlistRepository = manager.getRepository(PlaylistEntity);
+          const playlistSermonJoinRepository = manager.getRepository(
+            PlaylistSermonJoinEntity,
+          );
+
+          const playlist = playlistRepository.create({
+            title: createPlaylistDto.title,
+            description: createPlaylistDto.description,
+            artwork: createPlaylistDto.artwork,
+            sectionJoins: [],
+            sermonJoins: [],
+          });
+          const saved = await playlistRepository.save(playlist);
+
+          if (createPlaylistDto.sermonsIds?.length) {
+            const sermons = await this.sermonService.findByIds(
+              createPlaylistDto.sermonsIds,
+            );
+            if (sermons.length !== createPlaylistDto.sermonsIds.length) {
+              throw new Error('Some sermons not found');
+            }
+            const joinRows = createPlaylistDto.sermonsIds.map(
+              (sermonId, index) =>
+                playlistSermonJoinRepository.create({
+                  playlistId: saved.id,
+                  sermonId,
+                  position: index,
+                }),
+            );
+            await playlistSermonJoinRepository.save(joinRows);
+          }
+
+          return saved.id;
+        },
+      );
+
+      // Re-read after the transaction commits so the response reflects the
+      // fully persisted playlist.
+      return await this.findOne(savedId);
     } catch (error) {
       throw new HttpException(
         'from:createPlaylist ' + error.message,
@@ -52,7 +106,8 @@ export class PlaylistService {
   async findAll(): Promise<AllPlaylistsResponse> {
     try {
       const [playlists, count] = await this.playlistRepository.findAndCount({
-        relations: ['sermons', 'sections'],
+        relations: PLAYLIST_RELATIONS,
+        order: PLAYLIST_ORDER,
       });
       return {
         playlists: playlists.map((p) => this.normalizePlaylist(p)),
@@ -80,13 +135,14 @@ export class PlaylistService {
     }
   }
 
-  async findOne(id: string): Promise<PlaylistEntity> {
+  async findOne(id: string): Promise<NormalizedPlaylistResponse | null> {
     try {
       const playlist = await this.playlistRepository.findOne({
         where: { id },
-        relations: ['sermons', 'sections'],
+        relations: PLAYLIST_RELATIONS,
+        order: PLAYLIST_ORDER,
       });
-      return playlist ? this.normalizePlaylist(playlist) : playlist;
+      return playlist ? this.normalizePlaylist(playlist) : null;
     } catch (error) {
       throw new HttpException(
         'from:findOnePlaylistItem ' + error.message,
@@ -98,49 +154,47 @@ export class PlaylistService {
   async update(
     id: string,
     updatePlaylistDto: UpdatePlaylistDto,
-  ): Promise<PlaylistEntity> {
+  ): Promise<NormalizedPlaylistResponse> {
     try {
       const playlist = await this.playlistRepository.findOne({
         where: { id },
-        relations: ['sermons'],
+        relations: PLAYLIST_RELATIONS,
+        order: PLAYLIST_ORDER,
       });
 
       if (!playlist) {
         throw new Error('Playlist not found');
       }
 
-      if (updatePlaylistDto.title) {
+      if (updatePlaylistDto.title !== undefined) {
         playlist.title = updatePlaylistDto.title;
       }
-      if (updatePlaylistDto.description) {
+      if (updatePlaylistDto.description !== undefined) {
         playlist.description = updatePlaylistDto.description;
       }
-
       if (updatePlaylistDto.artwork !== undefined) {
         playlist.artwork = updatePlaylistDto.artwork;
       }
 
+      await this.playlistRepository.save(playlist);
+
       if (updatePlaylistDto.sermonsIds !== undefined) {
-        if (updatePlaylistDto.sermonsIds.length > 0) {
-          const sermons = await this.sermonService.findByIds(
-            updatePlaylistDto.sermonsIds,
-          );
-          if (!sermons) {
-            throw new Error('Sermons not found');
-          }
-          playlist.sermons = sermons;
-        } else {
-          playlist.sermons = [];
-        }
+        await this.replacePlaylistSermons(id, updatePlaylistDto.sermonsIds);
       }
 
-      await this.syncPlaylistSectionMembership(
-        playlist,
-        updatePlaylistDto.sectionsIds,
-      );
+      if (updatePlaylistDto.sectionsIds !== undefined) {
+        await this.syncPlaylistSectionMembership(
+          playlist,
+          updatePlaylistDto.sectionsIds,
+        );
+      }
 
-      const saved = await this.playlistRepository.save(playlist);
-      return this.normalizePlaylist(saved);
+      const saved = await this.playlistRepository.findOne({
+        where: { id },
+        relations: PLAYLIST_RELATIONS,
+        order: PLAYLIST_ORDER,
+      });
+      return this.normalizePlaylist(saved ?? playlist);
     } catch (error) {
       throw new HttpException(
         'from:update ' + error.message,
@@ -161,18 +215,104 @@ export class PlaylistService {
     }
   }
 
-  private normalizePlaylist(p: PlaylistEntity) {
-    return {
-      ...p,
-      sections: (p.sections ?? []).map((s) => ({
-        ...s,
-        playlists: s.playlists ?? [],
-      })),
-      sermons: (p.sermons ?? []).map((s) => ({
-        ...s,
-        playlists: s.playlists ?? [],
-      })),
-    };
+  async reorderSermonsInPlaylist(
+    playlistId: string,
+    sermonIds: string[],
+  ): Promise<{ status: string }> {
+    if (!sermonIds.length) {
+      throw new BadRequestException('Sermon IDs array cannot be empty');
+    }
+    if (new Set(sermonIds).size !== sermonIds.length) {
+      throw new BadRequestException('Duplicate sermon IDs detected');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const playlistRepository = manager.getRepository(PlaylistEntity);
+      const playlist = await playlistRepository.findOne({
+        where: { id: playlistId },
+        select: { id: true },
+      });
+      if (!playlist) {
+        throw new NotFoundException(
+          `Playlist with id "${playlistId}" not found`,
+        );
+      }
+
+      const joinRepository = manager.getRepository(PlaylistSermonJoinEntity);
+
+      // The client must send the complete in-scope set; a partial list would
+      // silently collide positions for the omitted sermons.
+      const total = await joinRepository.count({ where: { playlistId } });
+      if (sermonIds.length !== total) {
+        throw new BadRequestException(
+          `Reorder list must contain all ${total} items in scope, received ${sermonIds.length}`,
+        );
+      }
+
+      const joins = await joinRepository.find({
+        where: { playlistId, sermonId: In(sermonIds) },
+      });
+      if (joins.length !== sermonIds.length) {
+        throw new NotFoundException('Some sermons are not in the playlist');
+      }
+
+      const joinBySermonId = new Map(
+        joins.map((join) => [join.sermonId, join]),
+      );
+      // A single CASE UPDATE replaces the previous per-id loop (N queries).
+      // Join ids are UUIDs generated by the DB, so interpolation is safe.
+      const positionCase = sermonIds
+        .map((sermonId, index) => {
+          const join = joinBySermonId.get(sermonId);
+          if (!join) {
+            throw new NotFoundException(
+              `Sermon with id "${sermonId}" is not in the playlist`,
+            );
+          }
+          return `WHEN '${join.id}' THEN ${index}`;
+        })
+        .join(' ');
+      await joinRepository
+        .createQueryBuilder()
+        .update(PlaylistSermonJoinEntity)
+        .set({ position: () => `CASE id ${positionCase} END` })
+        .where('id IN (:...ids)', { ids: joins.map((join) => join.id) })
+        .execute();
+
+      return { status: 'success' };
+    });
+  }
+
+  private async replacePlaylistSermons(
+    playlistId: string,
+    sermonIds: string[],
+  ): Promise<void> {
+    if (sermonIds.length > 0) {
+      const sermons = await this.sermonService.findByIds(sermonIds);
+      if (sermons.length !== sermonIds.length) {
+        throw new Error('Some sermons not found');
+      }
+    }
+
+    // Delete + insert run in one transaction so a failed insert cannot leave
+    // the playlist with zero sermons.
+    await this.dataSource.transaction(async (manager) => {
+      const joinRepository = manager.getRepository(PlaylistSermonJoinEntity);
+      await joinRepository.delete({ playlistId });
+
+      if (sermonIds.length === 0) {
+        return;
+      }
+
+      const joinRows = sermonIds.map((sermonId, index) =>
+        joinRepository.create({
+          playlistId,
+          sermonId,
+          position: index,
+        }),
+      );
+      await joinRepository.save(joinRows);
+    });
   }
 
   private async attachPlaylistToSections(
@@ -183,21 +323,23 @@ export class PlaylistService {
       return;
     }
 
-    const sections = await this.sectionRepository.find({
-      where: { id: In(sectionIds) },
-      relations: ['playlists'],
-    });
-
-    sections.forEach((section) => {
-      const isPlaylistAlreadyAttached = section.playlists.some(
-        (attachedPlaylist) => attachedPlaylist.id === playlist.id,
-      );
-      if (!isPlaylistAlreadyAttached) {
-        section.playlists.push(playlist);
+    // SERIALIZABLE isolation prevents two concurrent attachments from both
+    // reading the same max position and inserting duplicate positions.
+    await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const joinRepository = manager.getRepository(SectionPlaylistJoinEntity);
+      for (const sectionId of sectionIds) {
+        const maxPosition = await joinRepository.maximum('position', {
+          sectionId,
+        });
+        await joinRepository.save(
+          joinRepository.create({
+            sectionId,
+            playlistId: playlist.id,
+            position: (maxPosition ?? -1) + 1,
+          }),
+        );
       }
     });
-
-    await this.sectionRepository.save(sections);
   }
 
   private async syncPlaylistSectionMembership(
@@ -208,29 +350,63 @@ export class PlaylistService {
       return;
     }
 
-    const allSections = await this.sectionRepository.find({
-      relations: ['playlists'],
+    const currentJoins = await this.sectionPlaylistJoinRepository.find({
+      where: { playlistId: playlist.id },
     });
-    const currentSections = allSections.filter((section) =>
-      section.playlists.some(
-        (attachedPlaylist) => attachedPlaylist.id === playlist.id,
-      ),
-    );
+    const currentSectionIds = currentJoins.map((join) => join.sectionId);
 
-    const sectionsToRemove = currentSections.filter(
-      (section) => !desiredSectionIds.includes(section.id),
+    const sectionIdsToRemove = currentSectionIds.filter(
+      (sectionId) => !desiredSectionIds.includes(sectionId),
     );
-    sectionsToRemove.forEach((section) => {
-      section.playlists = section.playlists.filter(
-        (attachedPlaylist) => attachedPlaylist.id !== playlist.id,
-      );
-    });
-    await this.sectionRepository.save(sectionsToRemove);
+    if (sectionIdsToRemove.length) {
+      await this.sectionPlaylistJoinRepository.delete({
+        playlistId: playlist.id,
+        sectionId: In(sectionIdsToRemove),
+      });
+    }
 
     const sectionIdsToAdd = desiredSectionIds.filter(
-      (sectionId) =>
-        !currentSections.some((section) => section.id === sectionId),
+      (sectionId) => !currentSectionIds.includes(sectionId),
     );
     await this.attachPlaylistToSections(playlist, sectionIdsToAdd);
+  }
+
+  private normalizePlaylist(p: PlaylistEntity): NormalizedPlaylistResponse {
+    const sermonJoins = p.sermonJoins ?? [];
+    const sectionJoins = p.sectionJoins ?? [];
+    return {
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      artwork: p.artwork,
+      sections: sectionJoins.map((sectionJoin) => ({
+        id: sectionJoin.section.id,
+        title: sectionJoin.section.title,
+        description: sectionJoin.section.description,
+        position: sectionJoin.section.position,
+        itemsSize: sectionJoin.section.itemsSize,
+        itemsRows: sectionJoin.section.itemsRows,
+        transform: sectionJoin.section.transform,
+        isDescriptionTitleOnSlideLarge:
+          sectionJoin.section.isDescriptionTitleOnSlideLarge,
+        whereIsSlideTitleLocated: sectionJoin.section.whereIsSlideTitleLocated,
+        borderRadius: sectionJoin.section.borderRadius,
+        playlists: [],
+      })),
+      sermons: sermonJoins.map((sermonJoin) => ({
+        id: sermonJoin.sermon.id,
+        title: sermonJoin.sermon.title,
+        description: sermonJoin.sermon.description,
+        textFileUrl: sermonJoin.sermon.textFileUrl,
+        audioUrl: sermonJoin.sermon.audioUrl,
+        youtubeUrl: sermonJoin.sermon.youtubeUrl,
+        artist: sermonJoin.sermon.artist,
+        artwork: sermonJoin.sermon.artwork,
+        book: sermonJoin.sermon.book,
+        chapter: sermonJoin.sermon.chapter,
+        verse: sermonJoin.sermon.verse,
+        position: sermonJoin.position,
+      })),
+    };
   }
 }

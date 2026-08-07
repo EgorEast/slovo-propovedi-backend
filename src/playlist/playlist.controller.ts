@@ -11,6 +11,7 @@ import {
 import { PlaylistService } from './playlist.service';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
+import { ReorderSermonsInPlaylistDto } from './dto/reorder-sermons-in-playlist.dto';
 import { PlaylistResponseDto } from './dto/playlist-response.dto';
 import { AllPlaylistsResponseDto } from './dto/all-playlists-response.dto';
 import { StatusPlaylistResponseDto } from './dto/status-playlist-response.dto';
@@ -39,6 +40,19 @@ export class PlaylistController {
   @ZodResponse({ type: PlaylistResponseDto })
   async findOne(@Param() params: IdParamDto) {
     return await this.playlistService.findOne(params.id);
+  }
+
+  @Patch(':id/sermons/reorder')
+  @UseGuards(AuthGuard)
+  @ZodResponse({ type: StatusPlaylistResponseDto })
+  async reorderSermons(
+    @Param() params: IdParamDto,
+    @Body() reorderSermonsInPlaylistDto: ReorderSermonsInPlaylistDto,
+  ) {
+    return this.playlistService.reorderSermonsInPlaylist(
+      params.id,
+      reorderSermonsInPlaylistDto.sermonIds,
+    );
   }
 
   @Patch(':id')
