@@ -1,4 +1,6 @@
 import { SectionEntity } from '../entities/section.entity';
+import { PlaylistEntity } from '../../playlist/entities/playlist.entity';
+import { SermonEntity } from '../../sermon/entities/sermon.entity';
 
 export interface UpdateSection {
   title?: string;
@@ -11,8 +13,20 @@ export interface UpdateSection {
   borderRadius?: boolean;
 }
 
+export type NormalizedPlaylist = Omit<
+  PlaylistEntity,
+  'sections' | 'sermons'
+> & {
+  sections: Pick<SectionEntity, 'id' | 'title'>[];
+  sermons: SermonEntity[];
+};
+
+export type NormalizedSection = Omit<SectionEntity, 'playlists'> & {
+  playlists: NormalizedPlaylist[];
+};
+
 export class AllSectionsResponse {
-  sections: SectionEntity[];
+  sections: NormalizedSection[];
   count: number;
 }
 

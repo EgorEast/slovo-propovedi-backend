@@ -4,7 +4,10 @@ import { UpdateSectionDto } from './dto/update-section.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SectionEntity } from './entities/section.entity';
 import { In, Repository } from 'typeorm';
-import { AllSectionsResponse, UpdateSection } from './interfacies/interface';
+import {
+  AllSectionsResponse,
+  NormalizedSection,
+} from './interfacies/interface';
 import { PlaylistService } from 'src/playlist/playlist.service';
 
 @Injectable()
@@ -17,7 +20,7 @@ export class SectionService {
 
   async createSectionItem(
     createSectionDto: CreateSectionDto,
-  ): Promise<SectionEntity> {
+  ): Promise<NormalizedSection> {
     try {
       const section = this.sectionRepository.create({
         title: createSectionDto.title,
@@ -58,7 +61,7 @@ export class SectionService {
   async findAllSectionItems(): Promise<AllSectionsResponse> {
     try {
       const [result, count] = await this.sectionRepository.findAndCount({
-        relations: ['playlists'],
+        relations: ['playlists', 'playlists.sections', 'playlists.sermons'],
       });
       return {
         sections: result.map((sec) => this.normalizeSection(sec)),
@@ -72,13 +75,16 @@ export class SectionService {
     }
   }
 
-  async findOneSectionItem(id: string): Promise<SectionEntity> {
+  async findOneSectionItem(id: string): Promise<NormalizedSection | null> {
     try {
       const section = await this.sectionRepository.findOne({
         where: { id },
-        relations: ['playlists'],
+        relations: ['playlists', 'playlists.sections', 'playlists.sermons'],
       });
-      return section ? this.normalizeSection(section) : section;
+      if (!section) {
+        return null;
+      }
+      return this.normalizeSection(section);
     } catch (error) {
       throw new HttpException(
         'from:findOneSectionItem ' + error.message,
@@ -90,11 +96,11 @@ export class SectionService {
   async update(
     id: string,
     updateSectionDto: UpdateSectionDto,
-  ): Promise<SectionEntity> {
+  ): Promise<NormalizedSection> {
     try {
       const section = await this.sectionRepository.findOne({
         where: { id },
-        relations: ['playlists'],
+        relations: ['playlists', 'playlists.sections', 'playlists.sermons'],
       });
 
       if (!section) {
@@ -133,8 +139,8 @@ export class SectionService {
           const playlists = await this.playlistService.findByIds(
             updateSectionDto.playlistsIds,
           );
-          if (!playlists) {
-            throw new Error('Playlists not found');
+          if (playlists.length !== updateSectionDto.playlistsIds.length) {
+            throw new Error('Some playlists not found');
           }
           section.playlists = playlists;
         } else {
@@ -143,7 +149,14 @@ export class SectionService {
       }
 
       const saved = await this.sectionRepository.save(section);
-      return this.normalizeSection(saved);
+      const reloaded = await this.sectionRepository.findOne({
+        where: { id: saved.id },
+        relations: ['playlists', 'playlists.sections', 'playlists.sermons'],
+      });
+      if (!reloaded) {
+        throw new Error('Section not found after update');
+      }
+      return this.normalizeSection(reloaded);
     } catch (error) {
       throw new HttpException(
         'from:update ' + error.message,
@@ -152,10 +165,20 @@ export class SectionService {
     }
   }
 
-  private normalizeSection(sec: SectionEntity) {
+  private normalizeSection(sec: SectionEntity): NormalizedSection {
     return {
       ...sec,
-      playlists: (sec.playlists ?? []).map((pl) => ({ ...pl, sections: pl.sections ?? [], sermons: pl.sermons ?? [] })),
+      playlists: (sec.playlists ?? []).map((pl) => ({
+        ...pl,
+        sections: (pl.sections ?? []).map((s) => ({
+          id: s.id,
+          title: s.title,
+        })),
+        sermons: (pl.sermons ?? []).map((s) => ({
+          ...s,
+          playlists: s.playlists ?? [],
+        })),
+      })),
     };
   }
 
