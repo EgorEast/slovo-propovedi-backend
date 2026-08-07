@@ -44,7 +44,9 @@ export class SermonController {
 
   @Get(':id/stream-url')
   @ZodResponse({ type: StreamUrlResponseDto })
-  async getStreamUrl(@Param() params: IdParamDto): Promise<StreamUrlResponseDto> {
+  async getStreamUrl(
+    @Param() params: IdParamDto,
+  ): Promise<StreamUrlResponseDto> {
     return await this.sermonService.getStreamUrl(params.id);
   }
 

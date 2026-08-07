@@ -93,7 +93,12 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-    return { id: user.id, name: user.name, username: user.username, email: user.email };
+    return {
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      email: user.email,
+    };
   }
 
   private async generateTokens(payload: { id: string; email: string }) {

@@ -44,7 +44,10 @@ export class SectionController {
   @Patch(':id')
   @UseGuards(AuthGuard)
   @ZodResponse({ type: SectionResponseDto })
-  update(@Param() params: IdParamDto, @Body() updateSectionDto: UpdateSectionDto) {
+  update(
+    @Param() params: IdParamDto,
+    @Body() updateSectionDto: UpdateSectionDto,
+  ) {
     return this.sectionService.update(params.id, updateSectionDto);
   }
 

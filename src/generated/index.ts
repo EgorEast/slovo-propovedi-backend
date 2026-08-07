@@ -14,491 +14,682 @@ import * as zod from 'zod';
  * @summary Загрузить файл (аудио, видео, изображение и др.)
  */
 export const AppControllerUploadFileBody = zod.object({
-  "file": zod.instanceof(File).optional()
-})
+  file: zod.instanceof(File).optional(),
+});
 
 export const AppControllerUploadFileResponse = zod.object({
-  "fileName": zod.string(),
-  "fileUrl": zod.string()
-})
-
+  fileName: zod.string(),
+  fileUrl: zod.string(),
+});
 
 /**
  * @summary Получить URL потока для файла
  */
 export const AppControllerGetStreamUrlParams = zod.object({
-  "fileName": zod.string()
-})
+  fileName: zod.string(),
+});
 
 export const AppControllerGetStreamUrlResponse = zod.object({
-  "url": zod.string()
-})
-
+  url: zod.string(),
+});
 
 /**
  * @summary Получить публичный URL файла
  */
 export const AppControllerGetFileParams = zod.object({
-  "fileName": zod.string()
-})
+  fileName: zod.string(),
+});
 
 export const AppControllerGetFileResponse = zod.object({
-  "fileName": zod.string(),
-  "fileUrl": zod.string()
-})
-
+  fileName: zod.string(),
+  fileUrl: zod.string(),
+});
 
 /**
  * @summary Проверить состояние сервиса
  */
 export const HealthControllerCheckResponse = zod.object({
-  "status": zod.string()
-})
-
+  status: zod.string(),
+});
 
 /**
  * @summary Создать раздел
  */
 export const SectionControllerCreateBody = zod.object({
-  "title": zod.string(),
-  "description": zod.string().optional(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().optional(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().optional(),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).optional(),
-  "borderRadius": zod.boolean().optional()
-})
+  title: zod.string(),
+  description: zod.string().optional(),
+  itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+  itemsRows: zod.number().optional(),
+  transform: zod.enum(['high', 'short']),
+  isDescriptionTitleOnSlideLarge: zod.boolean().optional(),
+  whereIsSlideTitleLocated: zod
+    .enum(['on', 'under', 'bothOnAndUnder'])
+    .optional(),
+  borderRadius: zod.boolean().optional(),
+});
 
-export const sectionControllerCreateResponseIsDescriptionTitleOnSlideLargeDefault = false;
+export const sectionControllerCreateResponseIsDescriptionTitleOnSlideLargeDefault =
+  false;
 export const sectionControllerCreateResponseWhereIsSlideTitleLocatedDefault = `under`;
 export const sectionControllerCreateResponseBorderRadiusDefault = false;
 export const sectionControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
 
-
-
 export const SectionControllerCreateResponse = zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string().nullish(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().nullish(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().default(sectionControllerCreateResponseIsDescriptionTitleOnSlideLargeDefault),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).default(sectionControllerCreateResponseWhereIsSlideTitleLocatedDefault),
-  "borderRadius": zod.boolean().default(sectionControllerCreateResponseBorderRadiusDefault),
-  "playlists": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sections": zod.array(zod.unknown()),
-  "sermons": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().nullable(),
-  "audioUrl": zod.string().nullable(),
-  "youtubeUrl": zod.string().nullable(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullable(),
-  "chapter": zod.number().nullable(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(sectionControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMin).max(sectionControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMax)]).nullable(),
-  "playlists": zod.array(zod.unknown())
-}))
-}))
-})
-
+  id: zod.string(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+  itemsRows: zod.number().nullish(),
+  transform: zod.enum(['high', 'short']),
+  isDescriptionTitleOnSlideLarge: zod
+    .boolean()
+    .default(
+      sectionControllerCreateResponseIsDescriptionTitleOnSlideLargeDefault,
+    ),
+  whereIsSlideTitleLocated: zod
+    .enum(['on', 'under', 'bothOnAndUnder'])
+    .default(sectionControllerCreateResponseWhereIsSlideTitleLocatedDefault),
+  borderRadius: zod
+    .boolean()
+    .default(sectionControllerCreateResponseBorderRadiusDefault),
+  playlists: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      artwork: zod.string(),
+      sections: zod.array(zod.unknown()),
+      sermons: zod.array(
+        zod.object({
+          id: zod.string(),
+          title: zod.string(),
+          description: zod.string(),
+          textFileUrl: zod.string().nullable(),
+          audioUrl: zod.string().nullable(),
+          youtubeUrl: zod.string().nullable(),
+          artist: zod.string(),
+          artwork: zod.string(),
+          book: zod.string().nullable(),
+          chapter: zod.number().nullable(),
+          verse: zod
+            .union([
+              zod.int(),
+              zod
+                .array(zod.int())
+                .min(
+                  sectionControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMin,
+                )
+                .max(
+                  sectionControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMax,
+                ),
+            ])
+            .nullable(),
+          playlists: zod.array(zod.unknown()),
+        }),
+      ),
+    }),
+  ),
+});
 
 /**
  * @summary Получить все разделы
  */
-export const sectionControllerFindAllResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
+export const sectionControllerFindAllResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault =
+  false;
 export const sectionControllerFindAllResponseSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const sectionControllerFindAllResponseSectionsItemBorderRadiusDefault = false;
+export const sectionControllerFindAllResponseSectionsItemBorderRadiusDefault =
+  false;
 export const sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMax = 2;
 
-
-
 export const SectionControllerFindAllResponse = zod.object({
-  "sections": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string().nullish(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().nullish(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().default(sectionControllerFindAllResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).default(sectionControllerFindAllResponseSectionsItemWhereIsSlideTitleLocatedDefault),
-  "borderRadius": zod.boolean().default(sectionControllerFindAllResponseSectionsItemBorderRadiusDefault),
-  "playlists": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sections": zod.array(zod.unknown()),
-  "sermons": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().nullable(),
-  "audioUrl": zod.string().nullable(),
-  "youtubeUrl": zod.string().nullable(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullable(),
-  "chapter": zod.number().nullable(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMin).max(sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMax)]).nullable(),
-  "playlists": zod.array(zod.unknown())
-}))
-}))
-})),
-  "count": zod.number()
-})
-
+  sections: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string().nullish(),
+      itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+      itemsRows: zod.number().nullish(),
+      transform: zod.enum(['high', 'short']),
+      isDescriptionTitleOnSlideLarge: zod
+        .boolean()
+        .default(
+          sectionControllerFindAllResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault,
+        ),
+      whereIsSlideTitleLocated: zod
+        .enum(['on', 'under', 'bothOnAndUnder'])
+        .default(
+          sectionControllerFindAllResponseSectionsItemWhereIsSlideTitleLocatedDefault,
+        ),
+      borderRadius: zod
+        .boolean()
+        .default(
+          sectionControllerFindAllResponseSectionsItemBorderRadiusDefault,
+        ),
+      playlists: zod.array(
+        zod.object({
+          id: zod.string(),
+          title: zod.string(),
+          description: zod.string(),
+          artwork: zod.string(),
+          sections: zod.array(zod.unknown()),
+          sermons: zod.array(
+            zod.object({
+              id: zod.string(),
+              title: zod.string(),
+              description: zod.string(),
+              textFileUrl: zod.string().nullable(),
+              audioUrl: zod.string().nullable(),
+              youtubeUrl: zod.string().nullable(),
+              artist: zod.string(),
+              artwork: zod.string(),
+              book: zod.string().nullable(),
+              chapter: zod.number().nullable(),
+              verse: zod
+                .union([
+                  zod.int(),
+                  zod
+                    .array(zod.int())
+                    .min(
+                      sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMin,
+                    )
+                    .max(
+                      sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMax,
+                    ),
+                ])
+                .nullable(),
+              playlists: zod.array(zod.unknown()),
+            }),
+          ),
+        }),
+      ),
+    }),
+  ),
+  count: zod.number(),
+});
 
 /**
  * @summary Получить раздел по ID
  */
 export const SectionControllerFindOneParams = zod.object({
-  "id": zod.uuid()
-})
+  id: zod.uuid(),
+});
 
-export const sectionControllerFindOneResponseIsDescriptionTitleOnSlideLargeDefault = false;
+export const sectionControllerFindOneResponseIsDescriptionTitleOnSlideLargeDefault =
+  false;
 export const sectionControllerFindOneResponseWhereIsSlideTitleLocatedDefault = `under`;
 export const sectionControllerFindOneResponseBorderRadiusDefault = false;
 export const sectionControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
 
-
-
 export const SectionControllerFindOneResponse = zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string().nullish(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().nullish(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().default(sectionControllerFindOneResponseIsDescriptionTitleOnSlideLargeDefault),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).default(sectionControllerFindOneResponseWhereIsSlideTitleLocatedDefault),
-  "borderRadius": zod.boolean().default(sectionControllerFindOneResponseBorderRadiusDefault),
-  "playlists": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sections": zod.array(zod.unknown()),
-  "sermons": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().nullable(),
-  "audioUrl": zod.string().nullable(),
-  "youtubeUrl": zod.string().nullable(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullable(),
-  "chapter": zod.number().nullable(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(sectionControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMin).max(sectionControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMax)]).nullable(),
-  "playlists": zod.array(zod.unknown())
-}))
-}))
-})
-
+  id: zod.string(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+  itemsRows: zod.number().nullish(),
+  transform: zod.enum(['high', 'short']),
+  isDescriptionTitleOnSlideLarge: zod
+    .boolean()
+    .default(
+      sectionControllerFindOneResponseIsDescriptionTitleOnSlideLargeDefault,
+    ),
+  whereIsSlideTitleLocated: zod
+    .enum(['on', 'under', 'bothOnAndUnder'])
+    .default(sectionControllerFindOneResponseWhereIsSlideTitleLocatedDefault),
+  borderRadius: zod
+    .boolean()
+    .default(sectionControllerFindOneResponseBorderRadiusDefault),
+  playlists: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      artwork: zod.string(),
+      sections: zod.array(zod.unknown()),
+      sermons: zod.array(
+        zod.object({
+          id: zod.string(),
+          title: zod.string(),
+          description: zod.string(),
+          textFileUrl: zod.string().nullable(),
+          audioUrl: zod.string().nullable(),
+          youtubeUrl: zod.string().nullable(),
+          artist: zod.string(),
+          artwork: zod.string(),
+          book: zod.string().nullable(),
+          chapter: zod.number().nullable(),
+          verse: zod
+            .union([
+              zod.int(),
+              zod
+                .array(zod.int())
+                .min(
+                  sectionControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMin,
+                )
+                .max(
+                  sectionControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMax,
+                ),
+            ])
+            .nullable(),
+          playlists: zod.array(zod.unknown()),
+        }),
+      ),
+    }),
+  ),
+});
 
 /**
  * @summary Обновить раздел (включая связанные плейлисты)
  */
 export const SectionControllerUpdateParams = zod.object({
-  "id": zod.uuid()
-})
+  id: zod.uuid(),
+});
 
 export const SectionControllerUpdateBody = zod.object({
-  "title": zod.string().optional(),
-  "description": zod.string().optional(),
-  "playlistsIds": zod.array(zod.string()).optional(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']).optional(),
-  "itemsRows": zod.number().optional(),
-  "transform": zod.enum(['high', 'short']).optional(),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().optional(),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).optional(),
-  "borderRadius": zod.boolean().optional()
-})
+  title: zod.string().optional(),
+  description: zod.string().optional(),
+  playlistsIds: zod.array(zod.string()).optional(),
+  itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']).optional(),
+  itemsRows: zod.number().optional(),
+  transform: zod.enum(['high', 'short']).optional(),
+  isDescriptionTitleOnSlideLarge: zod.boolean().optional(),
+  whereIsSlideTitleLocated: zod
+    .enum(['on', 'under', 'bothOnAndUnder'])
+    .optional(),
+  borderRadius: zod.boolean().optional(),
+});
 
-export const sectionControllerUpdateResponseIsDescriptionTitleOnSlideLargeDefault = false;
+export const sectionControllerUpdateResponseIsDescriptionTitleOnSlideLargeDefault =
+  false;
 export const sectionControllerUpdateResponseWhereIsSlideTitleLocatedDefault = `under`;
 export const sectionControllerUpdateResponseBorderRadiusDefault = false;
 export const sectionControllerUpdateResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerUpdateResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
 
-
-
 export const SectionControllerUpdateResponse = zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string().nullish(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().nullish(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().default(sectionControllerUpdateResponseIsDescriptionTitleOnSlideLargeDefault),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).default(sectionControllerUpdateResponseWhereIsSlideTitleLocatedDefault),
-  "borderRadius": zod.boolean().default(sectionControllerUpdateResponseBorderRadiusDefault),
-  "playlists": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sections": zod.array(zod.unknown()),
-  "sermons": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().nullable(),
-  "audioUrl": zod.string().nullable(),
-  "youtubeUrl": zod.string().nullable(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullable(),
-  "chapter": zod.number().nullable(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(sectionControllerUpdateResponsePlaylistsItemSermonsItemVerseTwoMin).max(sectionControllerUpdateResponsePlaylistsItemSermonsItemVerseTwoMax)]).nullable(),
-  "playlists": zod.array(zod.unknown())
-}))
-}))
-})
-
+  id: zod.string(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+  itemsRows: zod.number().nullish(),
+  transform: zod.enum(['high', 'short']),
+  isDescriptionTitleOnSlideLarge: zod
+    .boolean()
+    .default(
+      sectionControllerUpdateResponseIsDescriptionTitleOnSlideLargeDefault,
+    ),
+  whereIsSlideTitleLocated: zod
+    .enum(['on', 'under', 'bothOnAndUnder'])
+    .default(sectionControllerUpdateResponseWhereIsSlideTitleLocatedDefault),
+  borderRadius: zod
+    .boolean()
+    .default(sectionControllerUpdateResponseBorderRadiusDefault),
+  playlists: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      artwork: zod.string(),
+      sections: zod.array(zod.unknown()),
+      sermons: zod.array(
+        zod.object({
+          id: zod.string(),
+          title: zod.string(),
+          description: zod.string(),
+          textFileUrl: zod.string().nullable(),
+          audioUrl: zod.string().nullable(),
+          youtubeUrl: zod.string().nullable(),
+          artist: zod.string(),
+          artwork: zod.string(),
+          book: zod.string().nullable(),
+          chapter: zod.number().nullable(),
+          verse: zod
+            .union([
+              zod.int(),
+              zod
+                .array(zod.int())
+                .min(
+                  sectionControllerUpdateResponsePlaylistsItemSermonsItemVerseTwoMin,
+                )
+                .max(
+                  sectionControllerUpdateResponsePlaylistsItemSermonsItemVerseTwoMax,
+                ),
+            ])
+            .nullable(),
+          playlists: zod.array(zod.unknown()),
+        }),
+      ),
+    }),
+  ),
+});
 
 /**
  * @summary Удалить раздел
  */
 export const SectionControllerRemoveParams = zod.object({
-  "id": zod.uuid()
-})
+  id: zod.uuid(),
+});
 
 export const SectionControllerRemoveResponse = zod.object({
-  "status": zod.string()
-})
-
+  status: zod.string(),
+});
 
 /**
  * @summary Создать плейлист
  */
 export const PlaylistControllerCreateBody = zod.object({
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sermonsIds": zod.array(zod.string()).optional()
-})
+  title: zod.string(),
+  description: zod.string(),
+  artwork: zod.string(),
+  sermonsIds: zod.array(zod.string()).optional(),
+});
 
-export const playlistControllerCreateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
+export const playlistControllerCreateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault =
+  false;
 export const playlistControllerCreateResponseSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const playlistControllerCreateResponseSectionsItemBorderRadiusDefault = false;
+export const playlistControllerCreateResponseSectionsItemBorderRadiusDefault =
+  false;
 export const playlistControllerCreateResponseSermonsItemVerseTwoMin = 2;
 export const playlistControllerCreateResponseSermonsItemVerseTwoMax = 2;
 
-
-
 export const PlaylistControllerCreateResponse = zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sections": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string().nullish(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().nullish(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().default(playlistControllerCreateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).default(playlistControllerCreateResponseSectionsItemWhereIsSlideTitleLocatedDefault),
-  "borderRadius": zod.boolean().default(playlistControllerCreateResponseSectionsItemBorderRadiusDefault),
-  "playlists": zod.array(zod.unknown())
-})),
-  "sermons": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().nullable(),
-  "audioUrl": zod.string().nullable(),
-  "youtubeUrl": zod.string().nullable(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullable(),
-  "chapter": zod.number().nullable(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(playlistControllerCreateResponseSermonsItemVerseTwoMin).max(playlistControllerCreateResponseSermonsItemVerseTwoMax)]).nullable(),
-  "playlists": zod.array(zod.unknown())
-}))
-})
-
+  id: zod.string(),
+  title: zod.string(),
+  description: zod.string(),
+  artwork: zod.string(),
+  sections: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string().nullish(),
+      itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+      itemsRows: zod.number().nullish(),
+      transform: zod.enum(['high', 'short']),
+      isDescriptionTitleOnSlideLarge: zod
+        .boolean()
+        .default(
+          playlistControllerCreateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault,
+        ),
+      whereIsSlideTitleLocated: zod
+        .enum(['on', 'under', 'bothOnAndUnder'])
+        .default(
+          playlistControllerCreateResponseSectionsItemWhereIsSlideTitleLocatedDefault,
+        ),
+      borderRadius: zod
+        .boolean()
+        .default(
+          playlistControllerCreateResponseSectionsItemBorderRadiusDefault,
+        ),
+      playlists: zod.array(zod.unknown()),
+    }),
+  ),
+  sermons: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      textFileUrl: zod.string().nullable(),
+      audioUrl: zod.string().nullable(),
+      youtubeUrl: zod.string().nullable(),
+      artist: zod.string(),
+      artwork: zod.string(),
+      book: zod.string().nullable(),
+      chapter: zod.number().nullable(),
+      verse: zod
+        .union([
+          zod.int(),
+          zod
+            .array(zod.int())
+            .min(playlistControllerCreateResponseSermonsItemVerseTwoMin)
+            .max(playlistControllerCreateResponseSermonsItemVerseTwoMax),
+        ])
+        .nullable(),
+      playlists: zod.array(zod.unknown()),
+    }),
+  ),
+});
 
 /**
  * @summary Получить все плейлисты
  */
-export const playlistControllerFindAllResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
+export const playlistControllerFindAllResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault =
+  false;
 export const playlistControllerFindAllResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const playlistControllerFindAllResponsePlaylistsItemSectionsItemBorderRadiusDefault = false;
+export const playlistControllerFindAllResponsePlaylistsItemSectionsItemBorderRadiusDefault =
+  false;
 export const playlistControllerFindAllResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const playlistControllerFindAllResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
 
-
-
 export const PlaylistControllerFindAllResponse = zod.object({
-  "playlists": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sections": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string().nullish(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().nullish(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().default(playlistControllerFindAllResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).default(playlistControllerFindAllResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault),
-  "borderRadius": zod.boolean().default(playlistControllerFindAllResponsePlaylistsItemSectionsItemBorderRadiusDefault),
-  "playlists": zod.array(zod.unknown())
-})),
-  "sermons": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().nullable(),
-  "audioUrl": zod.string().nullable(),
-  "youtubeUrl": zod.string().nullable(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullable(),
-  "chapter": zod.number().nullable(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(playlistControllerFindAllResponsePlaylistsItemSermonsItemVerseTwoMin).max(playlistControllerFindAllResponsePlaylistsItemSermonsItemVerseTwoMax)]).nullable(),
-  "playlists": zod.array(zod.unknown())
-}))
-})),
-  "count": zod.number()
-})
-
+  playlists: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      artwork: zod.string(),
+      sections: zod.array(
+        zod.object({
+          id: zod.string(),
+          title: zod.string(),
+          description: zod.string().nullish(),
+          itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+          itemsRows: zod.number().nullish(),
+          transform: zod.enum(['high', 'short']),
+          isDescriptionTitleOnSlideLarge: zod
+            .boolean()
+            .default(
+              playlistControllerFindAllResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault,
+            ),
+          whereIsSlideTitleLocated: zod
+            .enum(['on', 'under', 'bothOnAndUnder'])
+            .default(
+              playlistControllerFindAllResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault,
+            ),
+          borderRadius: zod
+            .boolean()
+            .default(
+              playlistControllerFindAllResponsePlaylistsItemSectionsItemBorderRadiusDefault,
+            ),
+          playlists: zod.array(zod.unknown()),
+        }),
+      ),
+      sermons: zod.array(
+        zod.object({
+          id: zod.string(),
+          title: zod.string(),
+          description: zod.string(),
+          textFileUrl: zod.string().nullable(),
+          audioUrl: zod.string().nullable(),
+          youtubeUrl: zod.string().nullable(),
+          artist: zod.string(),
+          artwork: zod.string(),
+          book: zod.string().nullable(),
+          chapter: zod.number().nullable(),
+          verse: zod
+            .union([
+              zod.int(),
+              zod
+                .array(zod.int())
+                .min(
+                  playlistControllerFindAllResponsePlaylistsItemSermonsItemVerseTwoMin,
+                )
+                .max(
+                  playlistControllerFindAllResponsePlaylistsItemSermonsItemVerseTwoMax,
+                ),
+            ])
+            .nullable(),
+          playlists: zod.array(zod.unknown()),
+        }),
+      ),
+    }),
+  ),
+  count: zod.number(),
+});
 
 /**
  * @summary Получить плейлист по ID (с проповедями)
  */
 export const PlaylistControllerFindOneParams = zod.object({
-  "id": zod.uuid()
-})
+  id: zod.uuid(),
+});
 
-export const playlistControllerFindOneResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
+export const playlistControllerFindOneResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault =
+  false;
 export const playlistControllerFindOneResponseSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const playlistControllerFindOneResponseSectionsItemBorderRadiusDefault = false;
+export const playlistControllerFindOneResponseSectionsItemBorderRadiusDefault =
+  false;
 export const playlistControllerFindOneResponseSermonsItemVerseTwoMin = 2;
 export const playlistControllerFindOneResponseSermonsItemVerseTwoMax = 2;
 
-
-
 export const PlaylistControllerFindOneResponse = zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sections": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string().nullish(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().nullish(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().default(playlistControllerFindOneResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).default(playlistControllerFindOneResponseSectionsItemWhereIsSlideTitleLocatedDefault),
-  "borderRadius": zod.boolean().default(playlistControllerFindOneResponseSectionsItemBorderRadiusDefault),
-  "playlists": zod.array(zod.unknown())
-})),
-  "sermons": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().nullable(),
-  "audioUrl": zod.string().nullable(),
-  "youtubeUrl": zod.string().nullable(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullable(),
-  "chapter": zod.number().nullable(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(playlistControllerFindOneResponseSermonsItemVerseTwoMin).max(playlistControllerFindOneResponseSermonsItemVerseTwoMax)]).nullable(),
-  "playlists": zod.array(zod.unknown())
-}))
-})
-
+  id: zod.string(),
+  title: zod.string(),
+  description: zod.string(),
+  artwork: zod.string(),
+  sections: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string().nullish(),
+      itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+      itemsRows: zod.number().nullish(),
+      transform: zod.enum(['high', 'short']),
+      isDescriptionTitleOnSlideLarge: zod
+        .boolean()
+        .default(
+          playlistControllerFindOneResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault,
+        ),
+      whereIsSlideTitleLocated: zod
+        .enum(['on', 'under', 'bothOnAndUnder'])
+        .default(
+          playlistControllerFindOneResponseSectionsItemWhereIsSlideTitleLocatedDefault,
+        ),
+      borderRadius: zod
+        .boolean()
+        .default(
+          playlistControllerFindOneResponseSectionsItemBorderRadiusDefault,
+        ),
+      playlists: zod.array(zod.unknown()),
+    }),
+  ),
+  sermons: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      textFileUrl: zod.string().nullable(),
+      audioUrl: zod.string().nullable(),
+      youtubeUrl: zod.string().nullable(),
+      artist: zod.string(),
+      artwork: zod.string(),
+      book: zod.string().nullable(),
+      chapter: zod.number().nullable(),
+      verse: zod
+        .union([
+          zod.int(),
+          zod
+            .array(zod.int())
+            .min(playlistControllerFindOneResponseSermonsItemVerseTwoMin)
+            .max(playlistControllerFindOneResponseSermonsItemVerseTwoMax),
+        ])
+        .nullable(),
+      playlists: zod.array(zod.unknown()),
+    }),
+  ),
+});
 
 /**
  * @summary Обновить плейлист
  */
 export const PlaylistControllerUpdateParams = zod.object({
-  "id": zod.uuid()
-})
+  id: zod.uuid(),
+});
 
 export const PlaylistControllerUpdateBody = zod.object({
-  "title": zod.string().optional(),
-  "description": zod.string().optional(),
-  "artwork": zod.string().optional(),
-  "sermonsIds": zod.array(zod.string()).optional(),
-  "sectionsIds": zod.array(zod.string()).optional()
-})
+  title: zod.string().optional(),
+  description: zod.string().optional(),
+  artwork: zod.string().optional(),
+  sermonsIds: zod.array(zod.string()).optional(),
+  sectionsIds: zod.array(zod.string()).optional(),
+});
 
-export const playlistControllerUpdateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
+export const playlistControllerUpdateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault =
+  false;
 export const playlistControllerUpdateResponseSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const playlistControllerUpdateResponseSectionsItemBorderRadiusDefault = false;
+export const playlistControllerUpdateResponseSectionsItemBorderRadiusDefault =
+  false;
 export const playlistControllerUpdateResponseSermonsItemVerseTwoMin = 2;
 export const playlistControllerUpdateResponseSermonsItemVerseTwoMax = 2;
 
-
-
 export const PlaylistControllerUpdateResponse = zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sections": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string().nullish(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().nullish(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().default(playlistControllerUpdateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).default(playlistControllerUpdateResponseSectionsItemWhereIsSlideTitleLocatedDefault),
-  "borderRadius": zod.boolean().default(playlistControllerUpdateResponseSectionsItemBorderRadiusDefault),
-  "playlists": zod.array(zod.unknown())
-})),
-  "sermons": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().nullable(),
-  "audioUrl": zod.string().nullable(),
-  "youtubeUrl": zod.string().nullable(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullable(),
-  "chapter": zod.number().nullable(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(playlistControllerUpdateResponseSermonsItemVerseTwoMin).max(playlistControllerUpdateResponseSermonsItemVerseTwoMax)]).nullable(),
-  "playlists": zod.array(zod.unknown())
-}))
-})
-
+  id: zod.string(),
+  title: zod.string(),
+  description: zod.string(),
+  artwork: zod.string(),
+  sections: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string().nullish(),
+      itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+      itemsRows: zod.number().nullish(),
+      transform: zod.enum(['high', 'short']),
+      isDescriptionTitleOnSlideLarge: zod
+        .boolean()
+        .default(
+          playlistControllerUpdateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault,
+        ),
+      whereIsSlideTitleLocated: zod
+        .enum(['on', 'under', 'bothOnAndUnder'])
+        .default(
+          playlistControllerUpdateResponseSectionsItemWhereIsSlideTitleLocatedDefault,
+        ),
+      borderRadius: zod
+        .boolean()
+        .default(
+          playlistControllerUpdateResponseSectionsItemBorderRadiusDefault,
+        ),
+      playlists: zod.array(zod.unknown()),
+    }),
+  ),
+  sermons: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      textFileUrl: zod.string().nullable(),
+      audioUrl: zod.string().nullable(),
+      youtubeUrl: zod.string().nullable(),
+      artist: zod.string(),
+      artwork: zod.string(),
+      book: zod.string().nullable(),
+      chapter: zod.number().nullable(),
+      verse: zod
+        .union([
+          zod.int(),
+          zod
+            .array(zod.int())
+            .min(playlistControllerUpdateResponseSermonsItemVerseTwoMin)
+            .max(playlistControllerUpdateResponseSermonsItemVerseTwoMax),
+        ])
+        .nullable(),
+      playlists: zod.array(zod.unknown()),
+    }),
+  ),
+});
 
 /**
  * @summary Удалить плейлист
  */
 export const PlaylistControllerRemoveParams = zod.object({
-  "id": zod.uuid()
-})
+  id: zod.uuid(),
+});
 
 export const PlaylistControllerRemoveResponse = zod.object({
-  "status": zod.string()
-})
-
+  status: zod.string(),
+});
 
 /**
  * @summary Создать новую проповедь
@@ -506,264 +697,346 @@ export const PlaylistControllerRemoveResponse = zod.object({
 export const sermonControllerCreateBodyVerseTwoMin = 2;
 export const sermonControllerCreateBodyVerseTwoMax = 2;
 
-
-
 export const SermonControllerCreateBody = zod.object({
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().optional(),
-  "audioUrl": zod.string().optional(),
-  "youtubeUrl": zod.string().optional(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullish(),
-  "chapter": zod.number().optional(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(sermonControllerCreateBodyVerseTwoMin).max(sermonControllerCreateBodyVerseTwoMax)]).optional(),
-  "playlistsIds": zod.array(zod.string()).optional()
-})
+  title: zod.string(),
+  description: zod.string(),
+  textFileUrl: zod.string().optional(),
+  audioUrl: zod.string().optional(),
+  youtubeUrl: zod.string().optional(),
+  artist: zod.string(),
+  artwork: zod.string(),
+  book: zod.string().nullish(),
+  chapter: zod.number().optional(),
+  verse: zod
+    .union([
+      zod.int(),
+      zod
+        .array(zod.int())
+        .min(sermonControllerCreateBodyVerseTwoMin)
+        .max(sermonControllerCreateBodyVerseTwoMax),
+    ])
+    .optional(),
+  playlistsIds: zod.array(zod.string()).optional(),
+});
 
 export const sermonControllerCreateResponseVerseTwoMin = 2;
 export const sermonControllerCreateResponseVerseTwoMax = 2;
 
-export const sermonControllerCreateResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
+export const sermonControllerCreateResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault =
+  false;
 export const sermonControllerCreateResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const sermonControllerCreateResponsePlaylistsItemSectionsItemBorderRadiusDefault = false;
+export const sermonControllerCreateResponsePlaylistsItemSectionsItemBorderRadiusDefault =
+  false;
 
 export const SermonControllerCreateResponse = zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().nullable(),
-  "audioUrl": zod.string().nullable(),
-  "youtubeUrl": zod.string().nullable(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullable(),
-  "chapter": zod.number().nullable(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(sermonControllerCreateResponseVerseTwoMin).max(sermonControllerCreateResponseVerseTwoMax)]).nullable(),
-  "playlists": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sections": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string().nullish(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().nullish(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().default(sermonControllerCreateResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).default(sermonControllerCreateResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault),
-  "borderRadius": zod.boolean().default(sermonControllerCreateResponsePlaylistsItemSectionsItemBorderRadiusDefault),
-  "playlists": zod.array(zod.unknown())
-})),
-  "sermons": zod.array(zod.unknown())
-}))
-})
-
+  id: zod.string(),
+  title: zod.string(),
+  description: zod.string(),
+  textFileUrl: zod.string().nullable(),
+  audioUrl: zod.string().nullable(),
+  youtubeUrl: zod.string().nullable(),
+  artist: zod.string(),
+  artwork: zod.string(),
+  book: zod.string().nullable(),
+  chapter: zod.number().nullable(),
+  verse: zod
+    .union([
+      zod.int(),
+      zod
+        .array(zod.int())
+        .min(sermonControllerCreateResponseVerseTwoMin)
+        .max(sermonControllerCreateResponseVerseTwoMax),
+    ])
+    .nullable(),
+  playlists: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      artwork: zod.string(),
+      sections: zod.array(
+        zod.object({
+          id: zod.string(),
+          title: zod.string(),
+          description: zod.string().nullish(),
+          itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+          itemsRows: zod.number().nullish(),
+          transform: zod.enum(['high', 'short']),
+          isDescriptionTitleOnSlideLarge: zod
+            .boolean()
+            .default(
+              sermonControllerCreateResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault,
+            ),
+          whereIsSlideTitleLocated: zod
+            .enum(['on', 'under', 'bothOnAndUnder'])
+            .default(
+              sermonControllerCreateResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault,
+            ),
+          borderRadius: zod
+            .boolean()
+            .default(
+              sermonControllerCreateResponsePlaylistsItemSectionsItemBorderRadiusDefault,
+            ),
+          playlists: zod.array(zod.unknown()),
+        }),
+      ),
+      sermons: zod.array(zod.unknown()),
+    }),
+  ),
+});
 
 /**
  * @summary Получить список всех проповедей
  */
 export const sermonControllerFindAllQueryTakeMax = 100;
 
-
-
 export const SermonControllerFindAllQueryParams = zod.object({
-  "take": zod.int().min(1).max(sermonControllerFindAllQueryTakeMax).optional(),
-  "cursor": zod.uuid().optional()
-})
+  take: zod.int().min(1).max(sermonControllerFindAllQueryTakeMax).optional(),
+  cursor: zod.uuid().optional(),
+});
 
 export const sermonControllerFindAllResponseSermonsItemVerseTwoMin = 2;
 export const sermonControllerFindAllResponseSermonsItemVerseTwoMax = 2;
 
-export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
+export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault =
+  false;
 export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemBorderRadiusDefault = false;
+export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemBorderRadiusDefault =
+  false;
 
 export const SermonControllerFindAllResponse = zod.object({
-  "sermons": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().nullable(),
-  "audioUrl": zod.string().nullable(),
-  "youtubeUrl": zod.string().nullable(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullable(),
-  "chapter": zod.number().nullable(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(sermonControllerFindAllResponseSermonsItemVerseTwoMin).max(sermonControllerFindAllResponseSermonsItemVerseTwoMax)]).nullable(),
-  "playlists": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sections": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string().nullish(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().nullish(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().default(sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).default(sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault),
-  "borderRadius": zod.boolean().default(sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemBorderRadiusDefault),
-  "playlists": zod.array(zod.unknown())
-})),
-  "sermons": zod.array(zod.unknown())
-}))
-})),
-  "count": zod.number().nullable(),
-  "nextCursor": zod.string().nullable()
-})
-
+  sermons: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      textFileUrl: zod.string().nullable(),
+      audioUrl: zod.string().nullable(),
+      youtubeUrl: zod.string().nullable(),
+      artist: zod.string(),
+      artwork: zod.string(),
+      book: zod.string().nullable(),
+      chapter: zod.number().nullable(),
+      verse: zod
+        .union([
+          zod.int(),
+          zod
+            .array(zod.int())
+            .min(sermonControllerFindAllResponseSermonsItemVerseTwoMin)
+            .max(sermonControllerFindAllResponseSermonsItemVerseTwoMax),
+        ])
+        .nullable(),
+      playlists: zod.array(
+        zod.object({
+          id: zod.string(),
+          title: zod.string(),
+          description: zod.string(),
+          artwork: zod.string(),
+          sections: zod.array(
+            zod.object({
+              id: zod.string(),
+              title: zod.string(),
+              description: zod.string().nullish(),
+              itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+              itemsRows: zod.number().nullish(),
+              transform: zod.enum(['high', 'short']),
+              isDescriptionTitleOnSlideLarge: zod
+                .boolean()
+                .default(
+                  sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault,
+                ),
+              whereIsSlideTitleLocated: zod
+                .enum(['on', 'under', 'bothOnAndUnder'])
+                .default(
+                  sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault,
+                ),
+              borderRadius: zod
+                .boolean()
+                .default(
+                  sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemBorderRadiusDefault,
+                ),
+              playlists: zod.array(zod.unknown()),
+            }),
+          ),
+          sermons: zod.array(zod.unknown()),
+        }),
+      ),
+    }),
+  ),
+  count: zod.number().nullable(),
+  nextCursor: zod.string().nullable(),
+});
 
 /**
  * @summary Получить URL потока для аудио проповеди
  */
 export const SermonControllerGetStreamUrlParams = zod.object({
-  "id": zod.uuid()
-})
+  id: zod.uuid(),
+});
 
 export const SermonControllerGetStreamUrlResponse = zod.object({
-  "url": zod.string()
-})
-
+  url: zod.string(),
+});
 
 /**
  * @summary Получить одну проповедь по ID
  */
 export const SermonControllerFindOneParams = zod.object({
-  "id": zod.uuid()
-})
+  id: zod.uuid(),
+});
 
 export const sermonControllerFindOneResponseVerseTwoMin = 2;
 export const sermonControllerFindOneResponseVerseTwoMax = 2;
 
-export const sermonControllerFindOneResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
+export const sermonControllerFindOneResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault =
+  false;
 export const sermonControllerFindOneResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const sermonControllerFindOneResponsePlaylistsItemSectionsItemBorderRadiusDefault = false;
+export const sermonControllerFindOneResponsePlaylistsItemSectionsItemBorderRadiusDefault =
+  false;
 
 export const SermonControllerFindOneResponse = zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "textFileUrl": zod.string().nullable(),
-  "audioUrl": zod.string().nullable(),
-  "youtubeUrl": zod.string().nullable(),
-  "artist": zod.string(),
-  "artwork": zod.string(),
-  "book": zod.string().nullable(),
-  "chapter": zod.number().nullable(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(sermonControllerFindOneResponseVerseTwoMin).max(sermonControllerFindOneResponseVerseTwoMax)]).nullable(),
-  "playlists": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string(),
-  "artwork": zod.string(),
-  "sections": zod.array(zod.object({
-  "id": zod.string(),
-  "title": zod.string(),
-  "description": zod.string().nullish(),
-  "itemsSize": zod.enum(['small', 'middle', 'large', 'xLarge']),
-  "itemsRows": zod.number().nullish(),
-  "transform": zod.enum(['high', 'short']),
-  "isDescriptionTitleOnSlideLarge": zod.boolean().default(sermonControllerFindOneResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault),
-  "whereIsSlideTitleLocated": zod.enum(['on', 'under', 'bothOnAndUnder']).default(sermonControllerFindOneResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault),
-  "borderRadius": zod.boolean().default(sermonControllerFindOneResponsePlaylistsItemSectionsItemBorderRadiusDefault),
-  "playlists": zod.array(zod.unknown())
-})),
-  "sermons": zod.array(zod.unknown())
-}))
-})
-
+  id: zod.string(),
+  title: zod.string(),
+  description: zod.string(),
+  textFileUrl: zod.string().nullable(),
+  audioUrl: zod.string().nullable(),
+  youtubeUrl: zod.string().nullable(),
+  artist: zod.string(),
+  artwork: zod.string(),
+  book: zod.string().nullable(),
+  chapter: zod.number().nullable(),
+  verse: zod
+    .union([
+      zod.int(),
+      zod
+        .array(zod.int())
+        .min(sermonControllerFindOneResponseVerseTwoMin)
+        .max(sermonControllerFindOneResponseVerseTwoMax),
+    ])
+    .nullable(),
+  playlists: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      artwork: zod.string(),
+      sections: zod.array(
+        zod.object({
+          id: zod.string(),
+          title: zod.string(),
+          description: zod.string().nullish(),
+          itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
+          itemsRows: zod.number().nullish(),
+          transform: zod.enum(['high', 'short']),
+          isDescriptionTitleOnSlideLarge: zod
+            .boolean()
+            .default(
+              sermonControllerFindOneResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault,
+            ),
+          whereIsSlideTitleLocated: zod
+            .enum(['on', 'under', 'bothOnAndUnder'])
+            .default(
+              sermonControllerFindOneResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault,
+            ),
+          borderRadius: zod
+            .boolean()
+            .default(
+              sermonControllerFindOneResponsePlaylistsItemSectionsItemBorderRadiusDefault,
+            ),
+          playlists: zod.array(zod.unknown()),
+        }),
+      ),
+      sermons: zod.array(zod.unknown()),
+    }),
+  ),
+});
 
 /**
  * @summary Обновить проповедь
  */
 export const SermonControllerUpdateParams = zod.object({
-  "id": zod.uuid()
-})
+  id: zod.uuid(),
+});
 
 export const sermonControllerUpdateBodyVerseTwoMin = 2;
 export const sermonControllerUpdateBodyVerseTwoMax = 2;
 
-
-
 export const SermonControllerUpdateBody = zod.object({
-  "title": zod.string().optional(),
-  "description": zod.string().optional(),
-  "textFileUrl": zod.string().optional(),
-  "audioUrl": zod.string().optional(),
-  "youtubeUrl": zod.string().optional(),
-  "artist": zod.string().optional(),
-  "artwork": zod.string().optional(),
-  "book": zod.string().nullish(),
-  "chapter": zod.number().optional(),
-  "verse": zod.union([zod.int(),zod.array(zod.int()).min(sermonControllerUpdateBodyVerseTwoMin).max(sermonControllerUpdateBodyVerseTwoMax)]).optional(),
-  "playlistsIds": zod.array(zod.string()).optional()
-})
+  title: zod.string().optional(),
+  description: zod.string().optional(),
+  textFileUrl: zod.string().optional(),
+  audioUrl: zod.string().optional(),
+  youtubeUrl: zod.string().optional(),
+  artist: zod.string().optional(),
+  artwork: zod.string().optional(),
+  book: zod.string().nullish(),
+  chapter: zod.number().optional(),
+  verse: zod
+    .union([
+      zod.int(),
+      zod
+        .array(zod.int())
+        .min(sermonControllerUpdateBodyVerseTwoMin)
+        .max(sermonControllerUpdateBodyVerseTwoMax),
+    ])
+    .optional(),
+  playlistsIds: zod.array(zod.string()).optional(),
+});
 
 export const SermonControllerUpdateResponse = zod.object({
-  "status": zod.string()
-})
-
+  status: zod.string(),
+});
 
 /**
  * @summary Удалить проповедь
  */
 export const SermonControllerRemoveParams = zod.object({
-  "id": zod.uuid()
-})
+  id: zod.uuid(),
+});
 
 export const SermonControllerRemoveResponse = zod.object({
-  "status": zod.string()
-})
-
+  status: zod.string(),
+});
 
 /**
  * Возвращает JWT токен для дальнейших запросов
  * @summary Вход в админ-панель
  */
 export const AuthControllerSignInBody = zod.object({
-  "username": zod.string().describe('Имя пользователя для входа'),
-  "password": zod.string()
-})
+  username: zod.string().describe('Имя пользователя для входа'),
+  password: zod.string(),
+});
 
 export const AuthControllerSignInResponse = zod.object({
-  "accessToken": zod.string(),
-  "refreshToken": zod.string(),
-  "user": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "username": zod.string().describe('Имя пользователя для входа в систему'),
-  "email": zod.string()
-})
-})
-
+  accessToken: zod.string(),
+  refreshToken: zod.string(),
+  user: zod.object({
+    id: zod.string(),
+    name: zod.string(),
+    username: zod.string().describe('Имя пользователя для входа в систему'),
+    email: zod.string(),
+  }),
+});
 
 /**
  * Принимает refresh токен и возвращает новую пару токенов
  * @summary Обновить access и refresh токены
  */
 export const AuthControllerRefreshBody = zod.object({
-  "refreshToken": zod.string()
-})
+  refreshToken: zod.string(),
+});
 
 export const AuthControllerRefreshResponse = zod.object({
-  "accessToken": zod.string(),
-  "refreshToken": zod.string()
-})
-
+  accessToken: zod.string(),
+  refreshToken: zod.string(),
+});
 
 /**
  * @summary Получить профиль текущего пользователя
  */
 export const AuthControllerGetProfileResponse = zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "username": zod.string().describe('Имя пользователя для входа в систему'),
-  "email": zod.string()
-})
+  id: zod.string(),
+  name: zod.string(),
+  username: zod.string().describe('Имя пользователя для входа в систему'),
+  email: zod.string(),
+});

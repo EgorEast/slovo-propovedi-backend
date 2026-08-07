@@ -164,8 +164,14 @@ export class PlaylistService {
   private normalizePlaylist(p: PlaylistEntity) {
     return {
       ...p,
-      sections: (p.sections ?? []).map((s) => ({ ...s, playlists: s.playlists ?? [] })),
-      sermons: (p.sermons ?? []).map((s) => ({ ...s, playlists: s.playlists ?? [] })),
+      sections: (p.sections ?? []).map((s) => ({
+        ...s,
+        playlists: s.playlists ?? [],
+      })),
+      sermons: (p.sermons ?? []).map((s) => ({
+        ...s,
+        playlists: s.playlists ?? [],
+      })),
     };
   }
 
