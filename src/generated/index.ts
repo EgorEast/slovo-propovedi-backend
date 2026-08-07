@@ -13,11 +13,11 @@ import * as zod from 'zod';
  * Файл сохраняется в MinIO
  * @summary Загрузить файл (аудио, видео, изображение и др.)
  */
-export const AppControllerUploadFileBody = zod.object({
+export const AppControllerUploadFileBody = zod.strictObject({
   file: zod.instanceof(File).optional(),
 });
 
-export const AppControllerUploadFileResponse = zod.object({
+export const AppControllerUploadFileResponse = zod.strictObject({
   fileName: zod.string(),
   fileUrl: zod.string(),
 });
@@ -25,22 +25,22 @@ export const AppControllerUploadFileResponse = zod.object({
 /**
  * @summary Получить URL потока для файла
  */
-export const AppControllerGetStreamUrlParams = zod.object({
+export const AppControllerGetStreamUrlParams = zod.strictObject({
   fileName: zod.string(),
 });
 
-export const AppControllerGetStreamUrlResponse = zod.object({
+export const AppControllerGetStreamUrlResponse = zod.strictObject({
   url: zod.string(),
 });
 
 /**
  * @summary Получить публичный URL файла
  */
-export const AppControllerGetFileParams = zod.object({
+export const AppControllerGetFileParams = zod.strictObject({
   fileName: zod.string(),
 });
 
-export const AppControllerGetFileResponse = zod.object({
+export const AppControllerGetFileResponse = zod.strictObject({
   fileName: zod.string(),
   fileUrl: zod.string(),
 });
@@ -48,14 +48,14 @@ export const AppControllerGetFileResponse = zod.object({
 /**
  * @summary Проверить состояние сервиса
  */
-export const HealthControllerCheckResponse = zod.object({
+export const HealthControllerCheckResponse = zod.strictObject({
   status: zod.string(),
 });
 
 /**
  * @summary Создать раздел
  */
-export const SectionControllerCreateBody = zod.object({
+export const SectionControllerCreateBody = zod.strictObject({
   title: zod.string(),
   description: zod.string().optional(),
   itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
@@ -75,7 +75,7 @@ export const sectionControllerCreateResponseBorderRadiusDefault = false;
 export const sectionControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
 
-export const SectionControllerCreateResponse = zod.object({
+export const SectionControllerCreateResponse = zod.strictObject({
   id: zod.string(),
   title: zod.string(),
   description: zod.string().nullish(),
@@ -94,19 +94,19 @@ export const SectionControllerCreateResponse = zod.object({
     .boolean()
     .default(sectionControllerCreateResponseBorderRadiusDefault),
   playlists: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string(),
       artwork: zod.string(),
       sections: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
         }),
       ),
       sermons: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
@@ -131,7 +131,7 @@ export const SectionControllerCreateResponse = zod.object({
             ])
             .nullable(),
           playlists: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
@@ -157,9 +157,9 @@ export const sectionControllerFindAllResponseSectionsItemBorderRadiusDefault =
 export const sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMax = 2;
 
-export const SectionControllerFindAllResponse = zod.object({
+export const SectionControllerFindAllResponse = zod.strictObject({
   sections: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string().nullish(),
@@ -182,19 +182,19 @@ export const SectionControllerFindAllResponse = zod.object({
           sectionControllerFindAllResponseSectionsItemBorderRadiusDefault,
         ),
       playlists: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
           artwork: zod.string(),
           sections: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
             }),
           ),
           sermons: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
@@ -219,7 +219,7 @@ export const SectionControllerFindAllResponse = zod.object({
                 ])
                 .nullable(),
               playlists: zod.array(
-                zod.object({
+                zod.strictObject({
                   id: zod.string(),
                   title: zod.string(),
                   description: zod.string(),
@@ -240,7 +240,7 @@ export const SectionControllerFindAllResponse = zod.object({
 /**
  * @summary Получить раздел по ID
  */
-export const SectionControllerFindOneParams = zod.object({
+export const SectionControllerFindOneParams = zod.strictObject({
   id: zod.uuid(),
 });
 
@@ -251,7 +251,7 @@ export const sectionControllerFindOneResponseBorderRadiusDefault = false;
 export const sectionControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
 
-export const SectionControllerFindOneResponse = zod.object({
+export const SectionControllerFindOneResponse = zod.strictObject({
   id: zod.string(),
   title: zod.string(),
   description: zod.string().nullish(),
@@ -270,19 +270,19 @@ export const SectionControllerFindOneResponse = zod.object({
     .boolean()
     .default(sectionControllerFindOneResponseBorderRadiusDefault),
   playlists: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string(),
       artwork: zod.string(),
       sections: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
         }),
       ),
       sermons: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
@@ -307,7 +307,7 @@ export const SectionControllerFindOneResponse = zod.object({
             ])
             .nullable(),
           playlists: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
@@ -325,11 +325,11 @@ export const SectionControllerFindOneResponse = zod.object({
 /**
  * @summary Обновить раздел (включая связанные плейлисты)
  */
-export const SectionControllerUpdateParams = zod.object({
+export const SectionControllerUpdateParams = zod.strictObject({
   id: zod.uuid(),
 });
 
-export const SectionControllerUpdateBody = zod.object({
+export const SectionControllerUpdateBody = zod.strictObject({
   title: zod.string().optional(),
   description: zod.string().optional(),
   playlistsIds: zod.array(zod.string()).optional(),
@@ -350,7 +350,7 @@ export const sectionControllerUpdateResponseBorderRadiusDefault = false;
 export const sectionControllerUpdateResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerUpdateResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
 
-export const SectionControllerUpdateResponse = zod.object({
+export const SectionControllerUpdateResponse = zod.strictObject({
   id: zod.string(),
   title: zod.string(),
   description: zod.string().nullish(),
@@ -369,19 +369,19 @@ export const SectionControllerUpdateResponse = zod.object({
     .boolean()
     .default(sectionControllerUpdateResponseBorderRadiusDefault),
   playlists: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string(),
       artwork: zod.string(),
       sections: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
         }),
       ),
       sermons: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
@@ -406,7 +406,7 @@ export const SectionControllerUpdateResponse = zod.object({
             ])
             .nullable(),
           playlists: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
@@ -424,18 +424,18 @@ export const SectionControllerUpdateResponse = zod.object({
 /**
  * @summary Удалить раздел
  */
-export const SectionControllerRemoveParams = zod.object({
+export const SectionControllerRemoveParams = zod.strictObject({
   id: zod.uuid(),
 });
 
-export const SectionControllerRemoveResponse = zod.object({
+export const SectionControllerRemoveResponse = zod.strictObject({
   status: zod.string(),
 });
 
 /**
  * @summary Создать плейлист
  */
-export const PlaylistControllerCreateBody = zod.object({
+export const PlaylistControllerCreateBody = zod.strictObject({
   title: zod.string(),
   description: zod.string(),
   artwork: zod.string(),
@@ -453,13 +453,13 @@ export const playlistControllerCreateResponseSectionsItemPlaylistsItemSermonsIte
 export const playlistControllerCreateResponseSermonsItemVerseTwoMin = 2;
 export const playlistControllerCreateResponseSermonsItemVerseTwoMax = 2;
 
-export const PlaylistControllerCreateResponse = zod.object({
+export const PlaylistControllerCreateResponse = zod.strictObject({
   id: zod.string(),
   title: zod.string(),
   description: zod.string(),
   artwork: zod.string(),
   sections: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string().nullish(),
@@ -482,19 +482,19 @@ export const PlaylistControllerCreateResponse = zod.object({
           playlistControllerCreateResponseSectionsItemBorderRadiusDefault,
         ),
       playlists: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
           artwork: zod.string(),
           sections: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
             }),
           ),
           sermons: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
@@ -526,7 +526,7 @@ export const PlaylistControllerCreateResponse = zod.object({
     }),
   ),
   sermons: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string(),
@@ -565,15 +565,15 @@ export const playlistControllerFindAllResponsePlaylistsItemSectionsItemPlaylists
 export const playlistControllerFindAllResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const playlistControllerFindAllResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
 
-export const PlaylistControllerFindAllResponse = zod.object({
+export const PlaylistControllerFindAllResponse = zod.strictObject({
   playlists: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string(),
       artwork: zod.string(),
       sections: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string().nullish(),
@@ -596,19 +596,19 @@ export const PlaylistControllerFindAllResponse = zod.object({
               playlistControllerFindAllResponsePlaylistsItemSectionsItemBorderRadiusDefault,
             ),
           playlists: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
               artwork: zod.string(),
               sections: zod.array(
-                zod.object({
+                zod.strictObject({
                   id: zod.string(),
                   title: zod.string(),
                 }),
               ),
               sermons: zod.array(
-                zod.object({
+                zod.strictObject({
                   id: zod.string(),
                   title: zod.string(),
                   description: zod.string(),
@@ -640,7 +640,7 @@ export const PlaylistControllerFindAllResponse = zod.object({
         }),
       ),
       sermons: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
@@ -675,7 +675,7 @@ export const PlaylistControllerFindAllResponse = zod.object({
 /**
  * @summary Получить плейлист по ID (с проповедями)
  */
-export const PlaylistControllerFindOneParams = zod.object({
+export const PlaylistControllerFindOneParams = zod.strictObject({
   id: zod.uuid(),
 });
 
@@ -690,13 +690,13 @@ export const playlistControllerFindOneResponseSectionsItemPlaylistsItemSermonsIt
 export const playlistControllerFindOneResponseSermonsItemVerseTwoMin = 2;
 export const playlistControllerFindOneResponseSermonsItemVerseTwoMax = 2;
 
-export const PlaylistControllerFindOneResponse = zod.object({
+export const PlaylistControllerFindOneResponse = zod.strictObject({
   id: zod.string(),
   title: zod.string(),
   description: zod.string(),
   artwork: zod.string(),
   sections: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string().nullish(),
@@ -719,19 +719,19 @@ export const PlaylistControllerFindOneResponse = zod.object({
           playlistControllerFindOneResponseSectionsItemBorderRadiusDefault,
         ),
       playlists: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
           artwork: zod.string(),
           sections: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
             }),
           ),
           sermons: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
@@ -763,7 +763,7 @@ export const PlaylistControllerFindOneResponse = zod.object({
     }),
   ),
   sermons: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string(),
@@ -791,11 +791,11 @@ export const PlaylistControllerFindOneResponse = zod.object({
 /**
  * @summary Обновить плейлист
  */
-export const PlaylistControllerUpdateParams = zod.object({
+export const PlaylistControllerUpdateParams = zod.strictObject({
   id: zod.uuid(),
 });
 
-export const PlaylistControllerUpdateBody = zod.object({
+export const PlaylistControllerUpdateBody = zod.strictObject({
   title: zod.string().optional(),
   description: zod.string().optional(),
   artwork: zod.string().optional(),
@@ -814,13 +814,13 @@ export const playlistControllerUpdateResponseSectionsItemPlaylistsItemSermonsIte
 export const playlistControllerUpdateResponseSermonsItemVerseTwoMin = 2;
 export const playlistControllerUpdateResponseSermonsItemVerseTwoMax = 2;
 
-export const PlaylistControllerUpdateResponse = zod.object({
+export const PlaylistControllerUpdateResponse = zod.strictObject({
   id: zod.string(),
   title: zod.string(),
   description: zod.string(),
   artwork: zod.string(),
   sections: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string().nullish(),
@@ -843,19 +843,19 @@ export const PlaylistControllerUpdateResponse = zod.object({
           playlistControllerUpdateResponseSectionsItemBorderRadiusDefault,
         ),
       playlists: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
           artwork: zod.string(),
           sections: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
             }),
           ),
           sermons: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
@@ -887,7 +887,7 @@ export const PlaylistControllerUpdateResponse = zod.object({
     }),
   ),
   sermons: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string(),
@@ -915,11 +915,11 @@ export const PlaylistControllerUpdateResponse = zod.object({
 /**
  * @summary Удалить плейлист
  */
-export const PlaylistControllerRemoveParams = zod.object({
+export const PlaylistControllerRemoveParams = zod.strictObject({
   id: zod.uuid(),
 });
 
-export const PlaylistControllerRemoveResponse = zod.object({
+export const PlaylistControllerRemoveResponse = zod.strictObject({
   status: zod.string(),
 });
 
@@ -929,7 +929,7 @@ export const PlaylistControllerRemoveResponse = zod.object({
 export const sermonControllerCreateBodyVerseTwoMin = 2;
 export const sermonControllerCreateBodyVerseTwoMax = 2;
 
-export const SermonControllerCreateBody = zod.object({
+export const SermonControllerCreateBody = zod.strictObject({
   title: zod.string(),
   description: zod.string(),
   textFileUrl: zod.string().optional(),
@@ -960,7 +960,7 @@ export const sermonControllerCreateResponsePlaylistsItemSectionsItemWhereIsSlide
 export const sermonControllerCreateResponsePlaylistsItemSectionsItemBorderRadiusDefault =
   false;
 
-export const SermonControllerCreateResponse = zod.object({
+export const SermonControllerCreateResponse = zod.strictObject({
   id: zod.string(),
   title: zod.string(),
   description: zod.string(),
@@ -981,13 +981,13 @@ export const SermonControllerCreateResponse = zod.object({
     ])
     .nullable(),
   playlists: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string(),
       artwork: zod.string(),
       sections: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string().nullish(),
@@ -1010,13 +1010,13 @@ export const SermonControllerCreateResponse = zod.object({
               sermonControllerCreateResponsePlaylistsItemSectionsItemBorderRadiusDefault,
             ),
           playlists: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
               artwork: zod.string(),
               sections: zod.array(
-                zod.object({
+                zod.strictObject({
                   id: zod.string(),
                   title: zod.string(),
                 }),
@@ -1036,7 +1036,7 @@ export const SermonControllerCreateResponse = zod.object({
  */
 export const sermonControllerFindAllQueryTakeMax = 100;
 
-export const SermonControllerFindAllQueryParams = zod.object({
+export const SermonControllerFindAllQueryParams = zod.strictObject({
   take: zod.int().min(1).max(sermonControllerFindAllQueryTakeMax).optional(),
   cursor: zod.uuid().optional(),
 });
@@ -1050,9 +1050,9 @@ export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItem
 export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemBorderRadiusDefault =
   false;
 
-export const SermonControllerFindAllResponse = zod.object({
+export const SermonControllerFindAllResponse = zod.strictObject({
   sermons: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string(),
@@ -1073,13 +1073,13 @@ export const SermonControllerFindAllResponse = zod.object({
         ])
         .nullable(),
       playlists: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
           artwork: zod.string(),
           sections: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string().nullish(),
@@ -1102,13 +1102,13 @@ export const SermonControllerFindAllResponse = zod.object({
                   sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemBorderRadiusDefault,
                 ),
               playlists: zod.array(
-                zod.object({
+                zod.strictObject({
                   id: zod.string(),
                   title: zod.string(),
                   description: zod.string(),
                   artwork: zod.string(),
                   sections: zod.array(
-                    zod.object({
+                    zod.strictObject({
                       id: zod.string(),
                       title: zod.string(),
                     }),
@@ -1130,18 +1130,18 @@ export const SermonControllerFindAllResponse = zod.object({
 /**
  * @summary Получить URL потока для аудио проповеди
  */
-export const SermonControllerGetStreamUrlParams = zod.object({
+export const SermonControllerGetStreamUrlParams = zod.strictObject({
   id: zod.uuid(),
 });
 
-export const SermonControllerGetStreamUrlResponse = zod.object({
+export const SermonControllerGetStreamUrlResponse = zod.strictObject({
   url: zod.string(),
 });
 
 /**
  * @summary Получить одну проповедь по ID
  */
-export const SermonControllerFindOneParams = zod.object({
+export const SermonControllerFindOneParams = zod.strictObject({
   id: zod.uuid(),
 });
 
@@ -1154,7 +1154,7 @@ export const sermonControllerFindOneResponsePlaylistsItemSectionsItemWhereIsSlid
 export const sermonControllerFindOneResponsePlaylistsItemSectionsItemBorderRadiusDefault =
   false;
 
-export const SermonControllerFindOneResponse = zod.object({
+export const SermonControllerFindOneResponse = zod.strictObject({
   id: zod.string(),
   title: zod.string(),
   description: zod.string(),
@@ -1175,13 +1175,13 @@ export const SermonControllerFindOneResponse = zod.object({
     ])
     .nullable(),
   playlists: zod.array(
-    zod.object({
+    zod.strictObject({
       id: zod.string(),
       title: zod.string(),
       description: zod.string(),
       artwork: zod.string(),
       sections: zod.array(
-        zod.object({
+        zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string().nullish(),
@@ -1204,13 +1204,13 @@ export const SermonControllerFindOneResponse = zod.object({
               sermonControllerFindOneResponsePlaylistsItemSectionsItemBorderRadiusDefault,
             ),
           playlists: zod.array(
-            zod.object({
+            zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
               artwork: zod.string(),
               sections: zod.array(
-                zod.object({
+                zod.strictObject({
                   id: zod.string(),
                   title: zod.string(),
                 }),
@@ -1228,14 +1228,14 @@ export const SermonControllerFindOneResponse = zod.object({
 /**
  * @summary Обновить проповедь
  */
-export const SermonControllerUpdateParams = zod.object({
+export const SermonControllerUpdateParams = zod.strictObject({
   id: zod.uuid(),
 });
 
 export const sermonControllerUpdateBodyVerseTwoMin = 2;
 export const sermonControllerUpdateBodyVerseTwoMax = 2;
 
-export const SermonControllerUpdateBody = zod.object({
+export const SermonControllerUpdateBody = zod.strictObject({
   title: zod.string().optional(),
   description: zod.string().optional(),
   textFileUrl: zod.string().optional(),
@@ -1257,18 +1257,18 @@ export const SermonControllerUpdateBody = zod.object({
   playlistsIds: zod.array(zod.string()).optional(),
 });
 
-export const SermonControllerUpdateResponse = zod.object({
+export const SermonControllerUpdateResponse = zod.strictObject({
   status: zod.string(),
 });
 
 /**
  * @summary Удалить проповедь
  */
-export const SermonControllerRemoveParams = zod.object({
+export const SermonControllerRemoveParams = zod.strictObject({
   id: zod.uuid(),
 });
 
-export const SermonControllerRemoveResponse = zod.object({
+export const SermonControllerRemoveResponse = zod.strictObject({
   status: zod.string(),
 });
 
@@ -1276,15 +1276,15 @@ export const SermonControllerRemoveResponse = zod.object({
  * Возвращает JWT токен для дальнейших запросов
  * @summary Вход в админ-панель
  */
-export const AuthControllerSignInBody = zod.object({
+export const AuthControllerSignInBody = zod.strictObject({
   username: zod.string().describe('Имя пользователя для входа'),
   password: zod.string(),
 });
 
-export const AuthControllerSignInResponse = zod.object({
+export const AuthControllerSignInResponse = zod.strictObject({
   accessToken: zod.string(),
   refreshToken: zod.string(),
-  user: zod.object({
+  user: zod.strictObject({
     id: zod.string(),
     name: zod.string(),
     username: zod.string().describe('Имя пользователя для входа в систему'),
@@ -1296,11 +1296,11 @@ export const AuthControllerSignInResponse = zod.object({
  * Принимает refresh токен и возвращает новую пару токенов
  * @summary Обновить access и refresh токены
  */
-export const AuthControllerRefreshBody = zod.object({
+export const AuthControllerRefreshBody = zod.strictObject({
   refreshToken: zod.string(),
 });
 
-export const AuthControllerRefreshResponse = zod.object({
+export const AuthControllerRefreshResponse = zod.strictObject({
   accessToken: zod.string(),
   refreshToken: zod.string(),
 });
@@ -1308,7 +1308,7 @@ export const AuthControllerRefreshResponse = zod.object({
 /**
  * @summary Получить профиль текущего пользователя
  */
-export const AuthControllerGetProfileResponse = zod.object({
+export const AuthControllerGetProfileResponse = zod.strictObject({
   id: zod.string(),
   name: zod.string(),
   username: zod.string().describe('Имя пользователя для входа в систему'),

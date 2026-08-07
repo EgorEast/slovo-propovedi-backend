@@ -11,6 +11,15 @@ export default defineConfig({
         zod: {
           variant: 'full',
           version: 4,
+          // orval 8.23.0 requires per-context boolean keys (a plain
+          // `strict: true` silently normalizes to all-false).
+          strict: {
+            param: true,
+            query: true,
+            header: true,
+            body: true,
+            response: true,
+          },
         },
       },
     },
