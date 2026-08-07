@@ -14,9 +14,12 @@ export class UsersService {
     try {
       return await this.usersRepository.findOne({ where: { username } });
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:findOneByUsername ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -25,9 +28,12 @@ export class UsersService {
     try {
       return await this.usersRepository.findOne({ where: { id } });
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:findOneById ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

@@ -75,7 +75,7 @@ export class PlaylistService {
               createPlaylistDto.sermonsIds,
             );
             if (sermons.length !== createPlaylistDto.sermonsIds.length) {
-              throw new Error('Some sermons not found');
+              throw new NotFoundException('Some sermons not found');
             }
             const joinRows = createPlaylistDto.sermonsIds.map(
               (sermonId, index) =>
@@ -96,9 +96,12 @@ export class PlaylistService {
       // fully persisted playlist.
       return await this.findOne(savedId);
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:createPlaylist ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -114,9 +117,12 @@ export class PlaylistService {
         count,
       };
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:findAllPlaylistItems ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -124,13 +130,16 @@ export class PlaylistService {
   async findByIds(ids: string[]): Promise<PlaylistEntity[]> {
     try {
       if (!ids.length) {
-        throw new Error('ids in empty');
+        throw new BadRequestException('ids in empty');
       }
       return await this.playlistRepository.find({ where: { id: In(ids) } });
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:findByIds playlist ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -144,9 +153,12 @@ export class PlaylistService {
       });
       return playlist ? this.normalizePlaylist(playlist) : null;
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:findOnePlaylistItem ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -163,7 +175,7 @@ export class PlaylistService {
       });
 
       if (!playlist) {
-        throw new Error('Playlist not found');
+        throw new NotFoundException('Playlist not found');
       }
 
       if (updatePlaylistDto.title !== undefined) {
@@ -196,9 +208,12 @@ export class PlaylistService {
       });
       return this.normalizePlaylist(saved ?? playlist);
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:update ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -208,9 +223,12 @@ export class PlaylistService {
       await this.playlistRepository.delete(id);
       return { status: 'success' };
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:remove ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -290,7 +308,7 @@ export class PlaylistService {
     if (sermonIds.length > 0) {
       const sermons = await this.sermonService.findByIds(sermonIds);
       if (sermons.length !== sermonIds.length) {
-        throw new Error('Some sermons not found');
+        throw new NotFoundException('Some sermons not found');
       }
     }
 

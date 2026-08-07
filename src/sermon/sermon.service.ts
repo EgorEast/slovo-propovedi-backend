@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -79,9 +80,12 @@ export class SermonService {
       );
       return await this.findOne(savedSermon.id);
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:createSermon ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -133,9 +137,12 @@ export class SermonService {
         nextCursor: hasMore ? sermons[sermons.length - 1].id : null,
       };
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:findAllSermonItems ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -163,9 +170,12 @@ export class SermonService {
       });
       return sermon ? this.normalizeSermonRelations(sermon) : null;
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:findOneSermonItem ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -173,13 +183,16 @@ export class SermonService {
   async findByIds(ids: string[]): Promise<SermonEntity[]> {
     try {
       if (!ids.length) {
-        throw new Error('ids in empty');
+        throw new BadRequestException('ids in empty');
       }
       return await this.sermonRepository.find({ where: { id: In(ids) } });
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:findByIds sermon ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -236,9 +249,12 @@ export class SermonService {
       );
       return { status: 'success' };
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:update ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -248,9 +264,12 @@ export class SermonService {
       await this.sermonRepository.delete(id);
       return { status: 'success' };
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:remove ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

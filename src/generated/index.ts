@@ -91,9 +91,6 @@ export const sectionControllerCreateResponseBorderRadiusDefault = false;
 export const sectionControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
 
-export const sectionControllerCreateResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMin = 2;
-export const sectionControllerCreateResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMax = 2;
-
 export const SectionControllerCreateResponse = zod.strictObject({
   id: zod.string(),
   title: zod.string(),
@@ -131,13 +128,13 @@ export const SectionControllerCreateResponse = zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
-          textFileUrl: zod.string().nullable(),
-          audioUrl: zod.string().nullable(),
-          youtubeUrl: zod.string().nullable(),
+          textFileUrl: zod.string().nullish(),
+          audioUrl: zod.string().nullish(),
+          youtubeUrl: zod.string().nullish(),
           artist: zod.string(),
           artwork: zod.string(),
-          book: zod.string().nullable(),
-          chapter: zod.number().nullable(),
+          book: zod.string().nullish(),
+          chapter: zod.int().nullish(),
           verse: zod
             .union([
               zod.int(),
@@ -150,44 +147,8 @@ export const SectionControllerCreateResponse = zod.strictObject({
                   sectionControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMax,
                 ),
             ])
-            .nullable(),
-          playlists: zod.array(
-            zod.strictObject({
-              id: zod.string(),
-              title: zod.string(),
-              description: zod.string(),
-              artwork: zod.string(),
-              sections: zod.array(zod.unknown()),
-              sermons: zod.array(
-                zod.strictObject({
-                  id: zod.string(),
-                  title: zod.string(),
-                  description: zod.string(),
-                  textFileUrl: zod.string().nullish(),
-                  audioUrl: zod.string().nullish(),
-                  youtubeUrl: zod.string().nullish(),
-                  artist: zod.string(),
-                  artwork: zod.string(),
-                  book: zod.string().nullish(),
-                  chapter: zod.int().nullish(),
-                  verse: zod
-                    .union([
-                      zod.int(),
-                      zod
-                        .array(zod.int())
-                        .min(
-                          sectionControllerCreateResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMin,
-                        )
-                        .max(
-                          sectionControllerCreateResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMax,
-                        ),
-                    ])
-                    .nullish(),
-                  position: zod.int(),
-                }),
-              ),
-            }),
-          ),
+            .nullish(),
+          position: zod.int(),
         }),
       ),
     }),
@@ -204,9 +165,6 @@ export const sectionControllerFindAllResponseSectionsItemBorderRadiusDefault =
   false;
 export const sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMax = 2;
-
-export const sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMin = 2;
-export const sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMax = 2;
 
 export const SectionControllerFindAllResponse = zod.strictObject({
   sections: zod.array(
@@ -251,13 +209,13 @@ export const SectionControllerFindAllResponse = zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
-              textFileUrl: zod.string().nullable(),
-              audioUrl: zod.string().nullable(),
-              youtubeUrl: zod.string().nullable(),
+              textFileUrl: zod.string().nullish(),
+              audioUrl: zod.string().nullish(),
+              youtubeUrl: zod.string().nullish(),
               artist: zod.string(),
               artwork: zod.string(),
-              book: zod.string().nullable(),
-              chapter: zod.number().nullable(),
+              book: zod.string().nullish(),
+              chapter: zod.int().nullish(),
               verse: zod
                 .union([
                   zod.int(),
@@ -270,44 +228,8 @@ export const SectionControllerFindAllResponse = zod.strictObject({
                       sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMax,
                     ),
                 ])
-                .nullable(),
-              playlists: zod.array(
-                zod.strictObject({
-                  id: zod.string(),
-                  title: zod.string(),
-                  description: zod.string(),
-                  artwork: zod.string(),
-                  sections: zod.array(zod.unknown()),
-                  sermons: zod.array(
-                    zod.strictObject({
-                      id: zod.string(),
-                      title: zod.string(),
-                      description: zod.string(),
-                      textFileUrl: zod.string().nullish(),
-                      audioUrl: zod.string().nullish(),
-                      youtubeUrl: zod.string().nullish(),
-                      artist: zod.string(),
-                      artwork: zod.string(),
-                      book: zod.string().nullish(),
-                      chapter: zod.int().nullish(),
-                      verse: zod
-                        .union([
-                          zod.int(),
-                          zod
-                            .array(zod.int())
-                            .min(
-                              sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMin,
-                            )
-                            .max(
-                              sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMax,
-                            ),
-                        ])
-                        .nullish(),
-                      position: zod.int(),
-                    }),
-                  ),
-                }),
-              ),
+                .nullish(),
+              position: zod.int(),
             }),
           ),
         }),
@@ -342,9 +264,6 @@ export const sectionControllerFindOneResponseWhereIsSlideTitleLocatedDefault = `
 export const sectionControllerFindOneResponseBorderRadiusDefault = false;
 export const sectionControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
-
-export const sectionControllerFindOneResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMin = 2;
-export const sectionControllerFindOneResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMax = 2;
 
 export const SectionControllerFindOneResponse = zod.strictObject({
   id: zod.string(),
@@ -383,13 +302,13 @@ export const SectionControllerFindOneResponse = zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
-          textFileUrl: zod.string().nullable(),
-          audioUrl: zod.string().nullable(),
-          youtubeUrl: zod.string().nullable(),
+          textFileUrl: zod.string().nullish(),
+          audioUrl: zod.string().nullish(),
+          youtubeUrl: zod.string().nullish(),
           artist: zod.string(),
           artwork: zod.string(),
-          book: zod.string().nullable(),
-          chapter: zod.number().nullable(),
+          book: zod.string().nullish(),
+          chapter: zod.int().nullish(),
           verse: zod
             .union([
               zod.int(),
@@ -402,44 +321,8 @@ export const SectionControllerFindOneResponse = zod.strictObject({
                   sectionControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMax,
                 ),
             ])
-            .nullable(),
-          playlists: zod.array(
-            zod.strictObject({
-              id: zod.string(),
-              title: zod.string(),
-              description: zod.string(),
-              artwork: zod.string(),
-              sections: zod.array(zod.unknown()),
-              sermons: zod.array(
-                zod.strictObject({
-                  id: zod.string(),
-                  title: zod.string(),
-                  description: zod.string(),
-                  textFileUrl: zod.string().nullish(),
-                  audioUrl: zod.string().nullish(),
-                  youtubeUrl: zod.string().nullish(),
-                  artist: zod.string(),
-                  artwork: zod.string(),
-                  book: zod.string().nullish(),
-                  chapter: zod.int().nullish(),
-                  verse: zod
-                    .union([
-                      zod.int(),
-                      zod
-                        .array(zod.int())
-                        .min(
-                          sectionControllerFindOneResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMin,
-                        )
-                        .max(
-                          sectionControllerFindOneResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMax,
-                        ),
-                    ])
-                    .nullish(),
-                  position: zod.int(),
-                }),
-              ),
-            }),
-          ),
+            .nullish(),
+          position: zod.int(),
         }),
       ),
     }),
@@ -473,9 +356,6 @@ export const sectionControllerUpdateResponseWhereIsSlideTitleLocatedDefault = `u
 export const sectionControllerUpdateResponseBorderRadiusDefault = false;
 export const sectionControllerUpdateResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sectionControllerUpdateResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
-
-export const sectionControllerUpdateResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMin = 2;
-export const sectionControllerUpdateResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMax = 2;
 
 export const SectionControllerUpdateResponse = zod.strictObject({
   id: zod.string(),
@@ -514,13 +394,13 @@ export const SectionControllerUpdateResponse = zod.strictObject({
           id: zod.string(),
           title: zod.string(),
           description: zod.string(),
-          textFileUrl: zod.string().nullable(),
-          audioUrl: zod.string().nullable(),
-          youtubeUrl: zod.string().nullable(),
+          textFileUrl: zod.string().nullish(),
+          audioUrl: zod.string().nullish(),
+          youtubeUrl: zod.string().nullish(),
           artist: zod.string(),
           artwork: zod.string(),
-          book: zod.string().nullable(),
-          chapter: zod.number().nullable(),
+          book: zod.string().nullish(),
+          chapter: zod.int().nullish(),
           verse: zod
             .union([
               zod.int(),
@@ -533,44 +413,8 @@ export const SectionControllerUpdateResponse = zod.strictObject({
                   sectionControllerUpdateResponsePlaylistsItemSermonsItemVerseTwoMax,
                 ),
             ])
-            .nullable(),
-          playlists: zod.array(
-            zod.strictObject({
-              id: zod.string(),
-              title: zod.string(),
-              description: zod.string(),
-              artwork: zod.string(),
-              sections: zod.array(zod.unknown()),
-              sermons: zod.array(
-                zod.strictObject({
-                  id: zod.string(),
-                  title: zod.string(),
-                  description: zod.string(),
-                  textFileUrl: zod.string().nullish(),
-                  audioUrl: zod.string().nullish(),
-                  youtubeUrl: zod.string().nullish(),
-                  artist: zod.string(),
-                  artwork: zod.string(),
-                  book: zod.string().nullish(),
-                  chapter: zod.int().nullish(),
-                  verse: zod
-                    .union([
-                      zod.int(),
-                      zod
-                        .array(zod.int())
-                        .min(
-                          sectionControllerUpdateResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMin,
-                        )
-                        .max(
-                          sectionControllerUpdateResponsePlaylistsItemSermonsItemPlaylistsItemSermonsItemVerseTwoMax,
-                        ),
-                    ])
-                    .nullish(),
-                  position: zod.int(),
-                }),
-              ),
-            }),
-          ),
+            .nullish(),
+          position: zod.int(),
         }),
       ),
     }),
@@ -672,13 +516,13 @@ export const PlaylistControllerCreateResponse = zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
-              textFileUrl: zod.string().nullable(),
-              audioUrl: zod.string().nullable(),
-              youtubeUrl: zod.string().nullable(),
+              textFileUrl: zod.string().nullish(),
+              audioUrl: zod.string().nullish(),
+              youtubeUrl: zod.string().nullish(),
               artist: zod.string(),
               artwork: zod.string(),
-              book: zod.string().nullable(),
-              chapter: zod.number().nullable(),
+              book: zod.string().nullish(),
+              chapter: zod.int().nullish(),
               verse: zod
                 .union([
                   zod.int(),
@@ -691,8 +535,8 @@ export const PlaylistControllerCreateResponse = zod.strictObject({
                       playlistControllerCreateResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMax,
                     ),
                 ])
-                .nullable(),
-              playlists: zod.array(zod.unknown()),
+                .nullish(),
+              position: zod.int(),
             }),
           ),
         }),
@@ -788,13 +632,13 @@ export const PlaylistControllerFindAllResponse = zod.strictObject({
                   id: zod.string(),
                   title: zod.string(),
                   description: zod.string(),
-                  textFileUrl: zod.string().nullable(),
-                  audioUrl: zod.string().nullable(),
-                  youtubeUrl: zod.string().nullable(),
+                  textFileUrl: zod.string().nullish(),
+                  audioUrl: zod.string().nullish(),
+                  youtubeUrl: zod.string().nullish(),
                   artist: zod.string(),
                   artwork: zod.string(),
-                  book: zod.string().nullable(),
-                  chapter: zod.number().nullable(),
+                  book: zod.string().nullish(),
+                  chapter: zod.int().nullish(),
                   verse: zod
                     .union([
                       zod.int(),
@@ -807,8 +651,8 @@ export const PlaylistControllerFindAllResponse = zod.strictObject({
                           playlistControllerFindAllResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMax,
                         ),
                     ])
-                    .nullable(),
-                  playlists: zod.array(zod.unknown()),
+                    .nullish(),
+                  position: zod.int(),
                 }),
               ),
             }),
@@ -913,13 +757,13 @@ export const PlaylistControllerFindOneResponse = zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
-              textFileUrl: zod.string().nullable(),
-              audioUrl: zod.string().nullable(),
-              youtubeUrl: zod.string().nullable(),
+              textFileUrl: zod.string().nullish(),
+              audioUrl: zod.string().nullish(),
+              youtubeUrl: zod.string().nullish(),
               artist: zod.string(),
               artwork: zod.string(),
-              book: zod.string().nullable(),
-              chapter: zod.number().nullable(),
+              book: zod.string().nullish(),
+              chapter: zod.int().nullish(),
               verse: zod
                 .union([
                   zod.int(),
@@ -932,8 +776,8 @@ export const PlaylistControllerFindOneResponse = zod.strictObject({
                       playlistControllerFindOneResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMax,
                     ),
                 ])
-                .nullable(),
-              playlists: zod.array(zod.unknown()),
+                .nullish(),
+              position: zod.int(),
             }),
           ),
         }),
@@ -1039,13 +883,13 @@ export const PlaylistControllerUpdateResponse = zod.strictObject({
               id: zod.string(),
               title: zod.string(),
               description: zod.string(),
-              textFileUrl: zod.string().nullable(),
-              audioUrl: zod.string().nullable(),
-              youtubeUrl: zod.string().nullable(),
+              textFileUrl: zod.string().nullish(),
+              audioUrl: zod.string().nullish(),
+              youtubeUrl: zod.string().nullish(),
               artist: zod.string(),
               artwork: zod.string(),
-              book: zod.string().nullable(),
-              chapter: zod.number().nullable(),
+              book: zod.string().nullish(),
+              chapter: zod.int().nullish(),
               verse: zod
                 .union([
                   zod.int(),
@@ -1058,8 +902,8 @@ export const PlaylistControllerUpdateResponse = zod.strictObject({
                       playlistControllerUpdateResponseSectionsItemPlaylistsItemSermonsItemVerseTwoMax,
                     ),
                 ])
-                .nullable(),
-              playlists: zod.array(zod.unknown()),
+                .nullish(),
+              position: zod.int(),
             }),
           ),
         }),
@@ -1155,6 +999,9 @@ export const sermonControllerCreateResponsePlaylistsItemSectionsItemIsDescriptio
 export const sermonControllerCreateResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
 export const sermonControllerCreateResponsePlaylistsItemSectionsItemBorderRadiusDefault =
   false;
+export const sermonControllerCreateResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMin = 2;
+export const sermonControllerCreateResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMax = 2;
+
 export const sermonControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sermonControllerCreateResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
 
@@ -1221,7 +1068,34 @@ export const SermonControllerCreateResponse = zod.strictObject({
                   title: zod.string(),
                 }),
               ),
-              sermons: zod.array(zod.unknown()),
+              sermons: zod.array(
+                zod.strictObject({
+                  id: zod.string(),
+                  title: zod.string(),
+                  description: zod.string(),
+                  textFileUrl: zod.string().nullish(),
+                  audioUrl: zod.string().nullish(),
+                  youtubeUrl: zod.string().nullish(),
+                  artist: zod.string(),
+                  artwork: zod.string(),
+                  book: zod.string().nullish(),
+                  chapter: zod.int().nullish(),
+                  verse: zod
+                    .union([
+                      zod.int(),
+                      zod
+                        .array(zod.int())
+                        .min(
+                          sermonControllerCreateResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMin,
+                        )
+                        .max(
+                          sermonControllerCreateResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMax,
+                        ),
+                    ])
+                    .nullish(),
+                  position: zod.int(),
+                }),
+              ),
             }),
           ),
         }),
@@ -1276,6 +1150,9 @@ export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItem
 export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
 export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemBorderRadiusDefault =
   false;
+export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMin = 2;
+export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMax = 2;
+
 export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSermonsItemVerseTwoMax = 2;
 
@@ -1344,7 +1221,34 @@ export const SermonControllerFindAllResponse = zod.strictObject({
                       title: zod.string(),
                     }),
                   ),
-                  sermons: zod.array(zod.unknown()),
+                  sermons: zod.array(
+                    zod.strictObject({
+                      id: zod.string(),
+                      title: zod.string(),
+                      description: zod.string(),
+                      textFileUrl: zod.string().nullish(),
+                      audioUrl: zod.string().nullish(),
+                      youtubeUrl: zod.string().nullish(),
+                      artist: zod.string(),
+                      artwork: zod.string(),
+                      book: zod.string().nullish(),
+                      chapter: zod.int().nullish(),
+                      verse: zod
+                        .union([
+                          zod.int(),
+                          zod
+                            .array(zod.int())
+                            .min(
+                              sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMin,
+                            )
+                            .max(
+                              sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMax,
+                            ),
+                        ])
+                        .nullish(),
+                      position: zod.int(),
+                    }),
+                  ),
                 }),
               ),
             }),
@@ -1411,6 +1315,9 @@ export const sermonControllerFindOneResponsePlaylistsItemSectionsItemIsDescripti
 export const sermonControllerFindOneResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
 export const sermonControllerFindOneResponsePlaylistsItemSectionsItemBorderRadiusDefault =
   false;
+export const sermonControllerFindOneResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMin = 2;
+export const sermonControllerFindOneResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMax = 2;
+
 export const sermonControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMin = 2;
 export const sermonControllerFindOneResponsePlaylistsItemSermonsItemVerseTwoMax = 2;
 
@@ -1477,7 +1384,34 @@ export const SermonControllerFindOneResponse = zod.strictObject({
                   title: zod.string(),
                 }),
               ),
-              sermons: zod.array(zod.unknown()),
+              sermons: zod.array(
+                zod.strictObject({
+                  id: zod.string(),
+                  title: zod.string(),
+                  description: zod.string(),
+                  textFileUrl: zod.string().nullish(),
+                  audioUrl: zod.string().nullish(),
+                  youtubeUrl: zod.string().nullish(),
+                  artist: zod.string(),
+                  artwork: zod.string(),
+                  book: zod.string().nullish(),
+                  chapter: zod.int().nullish(),
+                  verse: zod
+                    .union([
+                      zod.int(),
+                      zod
+                        .array(zod.int())
+                        .min(
+                          sermonControllerFindOneResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMin,
+                        )
+                        .max(
+                          sermonControllerFindOneResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemVerseTwoMax,
+                        ),
+                    ])
+                    .nullish(),
+                  position: zod.int(),
+                }),
+              ),
             }),
           ),
         }),

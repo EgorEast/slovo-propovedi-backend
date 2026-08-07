@@ -80,9 +80,12 @@ export class SectionService {
         },
       );
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:createSectionItem ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -90,13 +93,16 @@ export class SectionService {
   async findByIds(ids: string[]): Promise<SectionEntity[]> {
     try {
       if (!ids.length) {
-        throw new Error('ids in empty');
+        throw new BadRequestException('ids in empty');
       }
       return await this.sectionRepository.find({ where: { id: In(ids) } });
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:findByIds section ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -112,9 +118,12 @@ export class SectionService {
         count: count,
       };
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:findAllSectionItems ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -131,9 +140,12 @@ export class SectionService {
       }
       return this.normalizeSection(section);
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:findOneSectionItem ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -150,7 +162,7 @@ export class SectionService {
       });
 
       if (!section) {
-        throw new Error('Section not found');
+        throw new NotFoundException('Section not found');
       }
 
       if (updateSectionDto.title !== undefined) {
@@ -192,13 +204,16 @@ export class SectionService {
         order: SECTION_ORDER,
       });
       if (!reloaded) {
-        throw new Error('Section not found after update');
+        throw new NotFoundException('Section not found after update');
       }
       return this.normalizeSection(reloaded);
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:update ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -208,9 +223,12 @@ export class SectionService {
       await this.sectionRepository.delete(id);
       return { status: 'success' };
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         'from:remove ' + error.message,
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -333,7 +351,7 @@ export class SectionService {
     if (playlistIds.length > 0) {
       const playlists = await this.playlistService.findByIds(playlistIds);
       if (playlists.length !== playlistIds.length) {
-        throw new Error('Some playlists not found');
+        throw new NotFoundException('Some playlists not found');
       }
     }
 
@@ -405,7 +423,7 @@ export class SectionService {
         book: sermonJoin.sermon.book,
         chapter: sermonJoin.sermon.chapter,
         verse: sermonJoin.sermon.verse,
-        playlists: [],
+        position: sermonJoin.position,
       })),
     };
   }
