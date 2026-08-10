@@ -2,7 +2,7 @@ import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { SectionPlaylistJoinEntity } from './section-playlist-join.entity';
 
 export type ItemsSize = 'small' | 'middle' | 'large' | 'xLarge';
-export type Transform = 'high' | 'short';
+export type Transform = 'high' | 'short' | 'middle';
 export type WhereIsSlideTitleLocated = 'on' | 'under' | 'bothOnAndUnder';
 
 @Entity('section')

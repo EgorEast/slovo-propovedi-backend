@@ -10,8 +10,8 @@
 import * as zod from 'zod';
 
 /**
- * Файл сохраняется в MinIO
- * @summary Загрузить файл (аудио, видео, изображение и др.)
+ * Файл сохраняется в MinIO. Допустимые форматы: JPEG, PNG, WebP (изображения), MP3 (аудио), PDF, FB2 (документы).
+ * @summary Загрузить файл (изображение, аудио MP3, PDF, FB2)
  */
 export const AppControllerUploadFileBody = zod.strictObject({
   file: zod.instanceof(File).optional(),
@@ -76,7 +76,7 @@ export const SectionControllerCreateBody = zod.strictObject({
   description: zod.string().optional(),
   itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
   itemsRows: zod.number().optional(),
-  transform: zod.enum(['high', 'short']),
+  transform: zod.enum(['high', 'middle', 'short']),
   isDescriptionTitleOnSlideLarge: zod.boolean().optional(),
   whereIsSlideTitleLocated: zod
     .enum(['on', 'under', 'bothOnAndUnder'])
@@ -98,7 +98,7 @@ export const SectionControllerCreateResponse = zod.strictObject({
   position: zod.int(),
   itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
   itemsRows: zod.number().nullish(),
-  transform: zod.enum(['high', 'short']),
+  transform: zod.enum(['high', 'middle', 'short']),
   isDescriptionTitleOnSlideLarge: zod
     .boolean()
     .default(
@@ -175,7 +175,7 @@ export const SectionControllerFindAllResponse = zod.strictObject({
       position: zod.int(),
       itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
       itemsRows: zod.number().nullish(),
-      transform: zod.enum(['high', 'short']),
+      transform: zod.enum(['high', 'middle', 'short']),
       isDescriptionTitleOnSlideLarge: zod
         .boolean()
         .default(
@@ -272,7 +272,7 @@ export const SectionControllerFindOneResponse = zod.strictObject({
   position: zod.int(),
   itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
   itemsRows: zod.number().nullish(),
-  transform: zod.enum(['high', 'short']),
+  transform: zod.enum(['high', 'middle', 'short']),
   isDescriptionTitleOnSlideLarge: zod
     .boolean()
     .default(
@@ -342,7 +342,7 @@ export const SectionControllerUpdateBody = zod.strictObject({
   playlistsIds: zod.array(zod.string()).optional(),
   itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']).optional(),
   itemsRows: zod.number().optional(),
-  transform: zod.enum(['high', 'short']).optional(),
+  transform: zod.enum(['high', 'middle', 'short']).optional(),
   isDescriptionTitleOnSlideLarge: zod.boolean().optional(),
   whereIsSlideTitleLocated: zod
     .enum(['on', 'under', 'bothOnAndUnder'])
@@ -364,7 +364,7 @@ export const SectionControllerUpdateResponse = zod.strictObject({
   position: zod.int(),
   itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
   itemsRows: zod.number().nullish(),
-  transform: zod.enum(['high', 'short']),
+  transform: zod.enum(['high', 'middle', 'short']),
   isDescriptionTitleOnSlideLarge: zod
     .boolean()
     .default(
@@ -482,7 +482,7 @@ export const PlaylistControllerCreateResponse = zod.strictObject({
       position: zod.int(),
       itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
       itemsRows: zod.number().nullish(),
-      transform: zod.enum(['high', 'short']),
+      transform: zod.enum(['high', 'middle', 'short']),
       isDescriptionTitleOnSlideLarge: zod
         .boolean()
         .default(
@@ -598,7 +598,7 @@ export const PlaylistControllerFindAllResponse = zod.strictObject({
           position: zod.int(),
           itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
           itemsRows: zod.number().nullish(),
-          transform: zod.enum(['high', 'short']),
+          transform: zod.enum(['high', 'middle', 'short']),
           isDescriptionTitleOnSlideLarge: zod
             .boolean()
             .default(
@@ -723,7 +723,7 @@ export const PlaylistControllerFindOneResponse = zod.strictObject({
       position: zod.int(),
       itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
       itemsRows: zod.number().nullish(),
-      transform: zod.enum(['high', 'short']),
+      transform: zod.enum(['high', 'middle', 'short']),
       isDescriptionTitleOnSlideLarge: zod
         .boolean()
         .default(
@@ -849,7 +849,7 @@ export const PlaylistControllerUpdateResponse = zod.strictObject({
       position: zod.int(),
       itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
       itemsRows: zod.number().nullish(),
-      transform: zod.enum(['high', 'short']),
+      transform: zod.enum(['high', 'middle', 'short']),
       isDescriptionTitleOnSlideLarge: zod
         .boolean()
         .default(
@@ -1039,7 +1039,7 @@ export const SermonControllerCreateResponse = zod.strictObject({
           position: zod.int(),
           itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
           itemsRows: zod.number().nullish(),
-          transform: zod.enum(['high', 'short']),
+          transform: zod.enum(['high', 'middle', 'short']),
           isDescriptionTitleOnSlideLarge: zod
             .boolean()
             .default(
@@ -1192,7 +1192,7 @@ export const SermonControllerFindAllResponse = zod.strictObject({
               position: zod.int(),
               itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
               itemsRows: zod.number().nullish(),
-              transform: zod.enum(['high', 'short']),
+              transform: zod.enum(['high', 'middle', 'short']),
               isDescriptionTitleOnSlideLarge: zod
                 .boolean()
                 .default(
@@ -1355,7 +1355,7 @@ export const SermonControllerFindOneResponse = zod.strictObject({
           position: zod.int(),
           itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
           itemsRows: zod.number().nullish(),
-          transform: zod.enum(['high', 'short']),
+          transform: zod.enum(['high', 'middle', 'short']),
           isDescriptionTitleOnSlideLarge: zod
             .boolean()
             .default(

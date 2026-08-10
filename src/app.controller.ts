@@ -18,6 +18,25 @@ import { GetFilesResponseDto } from './app/dto/get-files-response.dto';
 import { StreamUrlResponseDto } from './app/dto/stream-url-response.dto';
 import { FileNameParamDto } from './shared/dto/file-name-param.dto';
 
+// Uploads are restricted to these extensions; anything else is rejected at
+// the boundary before the file reaches storage.
+const ALLOWED_FILE_EXTENSIONS = [
+  '.jpeg',
+  '.jpg',
+  '.png',
+  '.webp',
+  '.mp3',
+  '.pdf',
+  '.fb2',
+];
+
+// Extracts the lowercased extension (with the leading dot) from a file name.
+// Names without a dot have no extension and yield an empty string.
+function getFileExtension(fileName: string): string {
+  const dotIndex = fileName.lastIndexOf('.');
+  return dotIndex === -1 ? '' : fileName.slice(dotIndex).toLowerCase();
+}
+
 @Controller()
 export class AppController {
   constructor(private readonly minioService: MinioService) {}
@@ -35,9 +54,17 @@ export class AppController {
     // The param is annotated with the ZodDto solely so the strict global pipe
     // accepts it; at runtime it is still the Express.Multer.File produced by
     // FileInterceptor (z.any() is a passthrough).
-    const fileName = await this.minioService.uploadFile(
-      file as Express.Multer.File,
-    );
+    const multerFile = file as Express.Multer.File;
+
+    // Reject any extension outside the allow-list before the file is stored.
+    const extension = getFileExtension(multerFile.originalname);
+    if (!ALLOWED_FILE_EXTENSIONS.includes(extension)) {
+      throw new BadRequestException(
+        'Недопустимый тип файла. Разрешены только: JPEG, PNG, WebP, MP3, PDF, FB2.',
+      );
+    }
+
+    const fileName = await this.minioService.uploadFile(multerFile);
     const fileUrl = await this.minioService.getFileUrl(fileName);
     return { fileName, fileUrl } as FileResponseDto;
   }
