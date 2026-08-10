@@ -23,6 +23,8 @@ import { SermonService } from 'src/sermon/sermon.service';
 const PLAYLIST_RELATIONS = [
   'sermonJoins',
   'sermonJoins.sermon',
+  'sermonJoins.sermon.playlistJoins',
+  'sermonJoins.sermon.playlistJoins.playlist',
   'sectionJoins',
   'sectionJoins.section',
 ];
@@ -424,6 +426,8 @@ export class PlaylistService {
         chapter: sermonJoin.sermon.chapter,
         verse: sermonJoin.sermon.verse,
         position: sermonJoin.position,
+        playlists: (sermonJoin.sermon.playlistJoins ?? [])
+          .map((pj) => ({ id: pj.playlist.id, title: pj.playlist.title })),
       })),
     };
   }

@@ -28,6 +28,8 @@ const SERMON_RELATIONS = [
   'playlistJoins.playlist.sectionJoins.section',
   'playlistJoins.playlist.sermonJoins',
   'playlistJoins.playlist.sermonJoins.sermon',
+  'playlistJoins.playlist.sermonJoins.sermon.playlistJoins',
+  'playlistJoins.playlist.sermonJoins.sermon.playlistJoins.playlist',
 ];
 
 // DB-level ordering for the relation paths normalizePlaylistRelations exposes
@@ -117,6 +119,14 @@ export class SermonService {
         .leftJoinAndSelect('playlistSectionJoins.section', 'playlistSections')
         .leftJoinAndSelect('playlists.sermonJoins', 'playlistSermonJoins')
         .leftJoinAndSelect('playlistSermonJoins.sermon', 'playlistSermons')
+        .leftJoinAndSelect(
+          'playlistSermons.playlistJoins',
+          'playlistSermonPlaylistJoins',
+        )
+        .leftJoinAndSelect(
+          'playlistSermonPlaylistJoins.playlist',
+          'playlistSermonPlaylists',
+        )
         .orderBy('sermon.id', 'DESC')
         .addOrderBy('playlistJoins.position', 'ASC')
         .addOrderBy('playlistSectionJoins.position', 'ASC')
@@ -332,6 +342,10 @@ export class SermonService {
         chapter: sermonJoin.sermon.chapter,
         verse: sermonJoin.sermon.verse,
         position: sermonJoin.position,
+        playlists: (sermonJoin.sermon.playlistJoins ?? []).map((playlistJoin) => ({
+          id: playlistJoin.playlist.id,
+          title: playlistJoin.playlist.title,
+        })),
       })),
     };
   }

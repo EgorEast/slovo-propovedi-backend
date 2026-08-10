@@ -25,6 +25,8 @@ const SECTION_RELATIONS = [
   'playlistJoins.playlist.sectionJoins.section',
   'playlistJoins.playlist.sermonJoins',
   'playlistJoins.playlist.sermonJoins.sermon',
+  'playlistJoins.playlist.sermonJoins.sermon.playlistJoins',
+  'playlistJoins.playlist.sermonJoins.sermon.playlistJoins.playlist',
 ];
 
 // DB-level ordering for every relation path the normalize functions expose.
@@ -424,6 +426,10 @@ export class SectionService {
         chapter: sermonJoin.sermon.chapter,
         verse: sermonJoin.sermon.verse,
         position: sermonJoin.position,
+        playlists: (sermonJoin.sermon.playlistJoins ?? []).map((playlistJoin) => ({
+          id: playlistJoin.playlist.id,
+          title: playlistJoin.playlist.title,
+        })),
       })),
     };
   }

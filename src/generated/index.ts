@@ -149,6 +149,12 @@ export const SectionControllerCreateResponse = zod.strictObject({
             ])
             .nullish(),
           position: zod.int(),
+          playlists: zod.array(
+            zod.strictObject({
+              id: zod.string(),
+              title: zod.string(),
+            }),
+          ),
         }),
       ),
     }),
@@ -230,6 +236,12 @@ export const SectionControllerFindAllResponse = zod.strictObject({
                 ])
                 .nullish(),
               position: zod.int(),
+              playlists: zod.array(
+                zod.strictObject({
+                  id: zod.string(),
+                  title: zod.string(),
+                }),
+              ),
             }),
           ),
         }),
@@ -323,6 +335,12 @@ export const SectionControllerFindOneResponse = zod.strictObject({
             ])
             .nullish(),
           position: zod.int(),
+          playlists: zod.array(
+            zod.strictObject({
+              id: zod.string(),
+              title: zod.string(),
+            }),
+          ),
         }),
       ),
     }),
@@ -415,6 +433,12 @@ export const SectionControllerUpdateResponse = zod.strictObject({
             ])
             .nullish(),
           position: zod.int(),
+          playlists: zod.array(
+            zod.strictObject({
+              id: zod.string(),
+              title: zod.string(),
+            }),
+          ),
         }),
       ),
     }),
@@ -537,6 +561,12 @@ export const PlaylistControllerCreateResponse = zod.strictObject({
                 ])
                 .nullish(),
               position: zod.int(),
+              playlists: zod.array(
+                zod.strictObject({
+                  id: zod.string(),
+                  title: zod.string(),
+                }),
+              ),
             }),
           ),
         }),
@@ -565,6 +595,12 @@ export const PlaylistControllerCreateResponse = zod.strictObject({
         ])
         .nullish(),
       position: zod.int(),
+      playlists: zod.array(
+        zod.strictObject({
+          id: zod.string(),
+          title: zod.string(),
+        }),
+      ),
     }),
   ),
 });
@@ -653,6 +689,12 @@ export const PlaylistControllerFindAllResponse = zod.strictObject({
                     ])
                     .nullish(),
                   position: zod.int(),
+                  playlists: zod.array(
+                    zod.strictObject({
+                      id: zod.string(),
+                      title: zod.string(),
+                    }),
+                  ),
                 }),
               ),
             }),
@@ -685,6 +727,12 @@ export const PlaylistControllerFindAllResponse = zod.strictObject({
             ])
             .nullish(),
           position: zod.int(),
+          playlists: zod.array(
+            zod.strictObject({
+              id: zod.string(),
+              title: zod.string(),
+            }),
+          ),
         }),
       ),
     }),
@@ -778,6 +826,12 @@ export const PlaylistControllerFindOneResponse = zod.strictObject({
                 ])
                 .nullish(),
               position: zod.int(),
+              playlists: zod.array(
+                zod.strictObject({
+                  id: zod.string(),
+                  title: zod.string(),
+                }),
+              ),
             }),
           ),
         }),
@@ -806,6 +860,12 @@ export const PlaylistControllerFindOneResponse = zod.strictObject({
         ])
         .nullish(),
       position: zod.int(),
+      playlists: zod.array(
+        zod.strictObject({
+          id: zod.string(),
+          title: zod.string(),
+        }),
+      ),
     }),
   ),
 });
@@ -904,6 +964,12 @@ export const PlaylistControllerUpdateResponse = zod.strictObject({
                 ])
                 .nullish(),
               position: zod.int(),
+              playlists: zod.array(
+                zod.strictObject({
+                  id: zod.string(),
+                  title: zod.string(),
+                }),
+              ),
             }),
           ),
         }),
@@ -932,6 +998,12 @@ export const PlaylistControllerUpdateResponse = zod.strictObject({
         ])
         .nullish(),
       position: zod.int(),
+      playlists: zod.array(
+        zod.strictObject({
+          id: zod.string(),
+          title: zod.string(),
+        }),
+      ),
     }),
   ),
 });
@@ -1094,6 +1166,12 @@ export const SermonControllerCreateResponse = zod.strictObject({
                     ])
                     .nullish(),
                   position: zod.int(),
+                  playlists: zod.array(
+                    zod.strictObject({
+                      id: zod.string(),
+                      title: zod.string(),
+                    }),
+                  ),
                 }),
               ),
             }),
@@ -1126,6 +1204,12 @@ export const SermonControllerCreateResponse = zod.strictObject({
             ])
             .nullish(),
           position: zod.int(),
+          playlists: zod.array(
+            zod.strictObject({
+              id: zod.string(),
+              title: zod.string(),
+            }),
+          ),
         }),
       ),
     }),
@@ -1247,6 +1331,12 @@ export const SermonControllerFindAllResponse = zod.strictObject({
                         ])
                         .nullish(),
                       position: zod.int(),
+                      playlists: zod.array(
+                        zod.strictObject({
+                          id: zod.string(),
+                          title: zod.string(),
+                        }),
+                      ),
                     }),
                   ),
                 }),
@@ -1279,6 +1369,12 @@ export const SermonControllerFindAllResponse = zod.strictObject({
                 ])
                 .nullish(),
               position: zod.int(),
+              playlists: zod.array(
+                zod.strictObject({
+                  id: zod.string(),
+                  title: zod.string(),
+                }),
+              ),
             }),
           ),
         }),
@@ -1410,6 +1506,12 @@ export const SermonControllerFindOneResponse = zod.strictObject({
                     ])
                     .nullish(),
                   position: zod.int(),
+                  playlists: zod.array(
+                    zod.strictObject({
+                      id: zod.string(),
+                      title: zod.string(),
+                    }),
+                  ),
                 }),
               ),
             }),
@@ -1442,6 +1544,12 @@ export const SermonControllerFindOneResponse = zod.strictObject({
             ])
             .nullish(),
           position: zod.int(),
+          playlists: zod.array(
+            zod.strictObject({
+              id: zod.string(),
+              title: zod.string(),
+            }),
+          ),
         }),
       ),
     }),
