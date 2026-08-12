@@ -426,8 +426,10 @@ export class PlaylistService {
         chapter: sermonJoin.sermon.chapter,
         verse: sermonJoin.sermon.verse,
         position: sermonJoin.position,
-        playlists: (sermonJoin.sermon.playlistJoins ?? [])
-          .map((pj) => ({ id: pj.playlist.id, title: pj.playlist.title })),
+        playlists: (sermonJoin.sermon.playlistJoins ?? []).map((pj) => ({
+          id: pj.playlist.id,
+          title: pj.playlist.title,
+        })),
       })),
     };
   }

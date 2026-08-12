@@ -426,10 +426,12 @@ export class SectionService {
         chapter: sermonJoin.sermon.chapter,
         verse: sermonJoin.sermon.verse,
         position: sermonJoin.position,
-        playlists: (sermonJoin.sermon.playlistJoins ?? []).map((playlistJoin) => ({
-          id: playlistJoin.playlist.id,
-          title: playlistJoin.playlist.title,
-        })),
+        playlists: (sermonJoin.sermon.playlistJoins ?? []).map(
+          (playlistJoin) => ({
+            id: playlistJoin.playlist.id,
+            title: playlistJoin.playlist.title,
+          }),
+        ),
       })),
     };
   }
