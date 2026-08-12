@@ -39,7 +39,11 @@ export class SermonController {
   async findAll(
     @Query() query: FindAllSermonsQueryDto,
   ): Promise<AllSermonsResponseDto> {
-    return await this.sermonService.findAll(query.take, query.cursor);
+    return await this.sermonService.findAll(
+      query.take,
+      query.cursor,
+      query.search,
+    );
   }
 
   @Get(':id/stream-url')

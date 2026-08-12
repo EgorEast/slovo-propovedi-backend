@@ -5,7 +5,7 @@
  * REST API для административной панели проекта "Слово.Проповеди".
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.2.0
+ * OpenAPI spec version: 0.4.0
  */
 import * as zod from 'zod';
 
@@ -1222,6 +1222,11 @@ export const sermonControllerFindAllQueryTakeMax = 100;
 export const SermonControllerFindAllQueryParams = zod.strictObject({
   take: zod.int().min(1).max(sermonControllerFindAllQueryTakeMax).optional(),
   cursor: zod.uuid().optional(),
+  search: zod
+    .string()
+    .min(1)
+    .optional()
+    .describe('Поисковый запрос по названию, проповеднику, книге и описанию'),
 });
 
 export const sermonControllerFindAllResponseSermonsItemVerseTwoMin = 2;

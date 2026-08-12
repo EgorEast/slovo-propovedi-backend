@@ -11,7 +11,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { SermonEntity } from './entities/sermon.entity';
 import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
 import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-join.entity';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, ILike, In, Repository } from 'typeorm';
 import {
   AllSermonsResponse,
   NormalizedSermonResponse,
@@ -44,6 +44,10 @@ const SERMON_RELATION_ORDER = {
     },
   },
 } as const;
+
+// ILIKE treats % _ and \ as metacharacters — escape them so user input such as
+// "100%" or "foo_bar" matches literally (Postgres's default LIKE escape is \).
+const escapeLike = (s: string) => s.replace(/[\\%_]/g, '\\$&');
 
 @Injectable()
 export class SermonService {
@@ -92,14 +96,38 @@ export class SermonService {
     }
   }
 
-  async findAll(take?: number, cursor?: string): Promise<AllSermonsResponse> {
+  // Fields the `search` query matches against, shared by the full-fetch
+  // (TypeORM ILike array) and keyset (QueryBuilder ILIKE) code paths so the
+  // list of searchable fields lives in exactly one place.
+  private static readonly SEARCH_FIELDS = [
+    'title',
+    'artist',
+    'book',
+    'description',
+  ] as const;
+
+  async findAll(
+    take?: number,
+    cursor?: string,
+    search?: string,
+  ): Promise<AllSermonsResponse> {
     try {
+      // Parse the search term at the boundary: escape ILIKE metacharacters and
+      // wrap once, so the full-fetch and keyset paths share one identical value.
+      const q = search ? `%${escapeLike(search)}%` : undefined;
+
       if (!take) {
         // Backward-compatible full fetch — used by the admin UI when no
         // pagination params are supplied.
+        const where = q
+          ? SermonService.SEARCH_FIELDS.map((field) => ({
+              [field]: ILike(q),
+            }))
+          : undefined;
         const [sermons, count] = await this.sermonRepository.findAndCount({
           relations: SERMON_RELATIONS,
           order: { id: 'DESC', ...SERMON_RELATION_ORDER },
+          where,
         });
         return {
           sermons: sermons.map((s) => this.normalizeSermonRelations(s)),
@@ -135,6 +163,13 @@ export class SermonService {
 
       if (cursor) {
         queryBuilder.andWhere('sermon.id < :cursor', { cursor });
+      }
+
+      if (q) {
+        const searchCondition = SermonService.SEARCH_FIELDS.map(
+          (field) => `sermon.${field} ILIKE :q`,
+        ).join(' OR ');
+        queryBuilder.andWhere(searchCondition, { q });
       }
 
       const rows = await queryBuilder.getMany();
@@ -342,10 +377,12 @@ export class SermonService {
         chapter: sermonJoin.sermon.chapter,
         verse: sermonJoin.sermon.verse,
         position: sermonJoin.position,
-        playlists: (sermonJoin.sermon.playlistJoins ?? []).map((playlistJoin) => ({
-          id: playlistJoin.playlist.id,
-          title: playlistJoin.playlist.title,
-        })),
+        playlists: (sermonJoin.sermon.playlistJoins ?? []).map(
+          (playlistJoin) => ({
+            id: playlistJoin.playlist.id,
+            title: playlistJoin.playlist.title,
+          }),
+        ),
       })),
     };
   }
