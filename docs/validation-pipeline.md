@@ -1,62 +1,42 @@
-# Validation Pipeline — OpenAPI-First Workflow
+# Пайплайн валидации — OpenAPI-first
 
-This project uses an **OpenAPI-first** approach: the YAML spec is the single source of truth for all API contracts. Zod schemas and DTOs are generated from it.
+Проект использует подход **OpenAPI-first**: внешняя спецификация определяет контракт, а источник истины валидации на границе — **сгенерированные zod-схемы** (`src/generated/index.ts`), которые экспонируются через `createZodDto` DTO. Прозо-документация описывает контракт; решают схемы.
 
-## Workflow
+Спецификация живёт во **внешнем swagger-репозитории** `slovo-propovedi-docs` и публикуется по адресу `https://docs.slovo-propovedi.ru/openAPI.yaml`. В этом репозитории файла нет (gitignored, локально отсутствует). Версия спецификации не фиксируется — см. `info.version` внешнего `openAPI.yaml`.
 
-### 1. Edit the OpenAPI spec
+## Рабочий процесс
 
-Make changes in `openAPI.yaml` (repo root). This is the source of truth.
+1. **Редактирование спецификации** — изменения вносятся в `openAPI.yaml` репозитория `slovo-propovedi-docs` (внешний), затем публикуются по указанному URL.
 
-### 2. Regenerate backend schemas
+2. **Регенерация zod-схем** — из корня этого репозитория:
 
-```bash
-cd backend
-npm run gen:schemas
-```
+   ```bash
+   npm run gen:schemas
+   ```
 
-This reads `openAPI.yaml` and generates Zod schemas into `src/generated/index.ts`.
+   Команда читает спецификацию по URL (через `scripts/gen-schemas.mjs`, Orval, конфиг `orval.config.mjs`) и генерирует zod-схемы в `src/generated/index.ts`. Эти схемы используются в `@ZodResponse()` и DTO контроллеров.
 
-### 3. CI freshness check
+3. **CI-проверка свежести** — в CI проверяется, что сгенерированные схемы актуальны:
 
-In CI, verify generated schemas are up-to-date:
+   ```bash
+   npm run gen:schemas && git diff --exit-code -- src/generated/ || (echo "::error::Generated schemas are stale. Run: npm run gen:schemas" && exit 1)
+   ```
 
-```bash
-npm run gen:schemas && git diff --exit-code -- src/generated/ || (echo "::error::Generated schemas are stale. Run: npm run gen:schemas" && exit 1)
-```
+   Если проверка падает — кто-то изменил спецификацию, но забыл перегенерировать схемы.
 
-If this fails, someone edited `openAPI.yaml` but forgot to regenerate.
+При изменении спецификации схемы регенерируются в этом репозитории (`npm run gen:schemas`); фронтенд-SDK регенерируется отдельно в своём репозитории (`slovo-propovedi-admin`). Сгенерированные файлы коммитятся вместе с кодом.
 
-### 4. Regenerate frontend API client
+## Слои валидации
 
-From `frontend/web-app/`:
+| Слой | Инструмент | Назначение |
+|------|------------|------------|
+| Входные данные (body/query/params) | `ZodValidationPipe` (strict) | Валидирует входящие данные против zod DTO; глобальный pipe (`useGlobalPipes`) с `strictSchemaDeclaration: true` |
+| Сериализация ответов | `ZodSerializerInterceptor` + `@ZodResponse()` | Проверяет, что исходящие данные соответствуют спецификации |
 
-```bash
-npm run generate-api
-```
+`strictSchemaDeclaration: true` (в `src/main.ts`) требует, чтобы метатип каждого параметра маршрута был zod DTO — иначе глобальный pipe выбрасывает 500. Так ни одни невалидированные данные не проходят на границе.
 
-This uses Orval to generate a typed API client from `openAPI.yaml`.
+## Связанные документы
 
-### Key rule
-
-When `openAPI.yaml` changes, **both** backend and frontend must be regenerated:
-
-```bash
-# Backend
-cd backend && npm run gen:schemas
-
-# Frontend
-cd frontend/web-app && npm run generate-api
-```
-
-Commit both the yaml and all generated files together.
-
-## Validation layers
-
-| Layer | Tool | Purpose |
-|-------|------|---------|
-| Request body/query/params | `ZodValidationPipe` (strict mode) | Validates incoming data against Zod DTOs |
-| Response serialization | `@ZodResponse()` | Validates outgoing data matches the spec |
-| Legacy routes | `ValidationPipe` (class-validator) | Fallback for any non-migrated routes |
-
-`strictSchemaDeclaration: true` ensures every DTO at every boundary is a Zod DTO — no unvalidated data can slip through.
+- [./contracts/rest-api.md](./contracts/rest-api.md) — кодогенерация Orval и конвейер схем
+- [./conventions.md](./conventions.md) — OpenAPI-first workflow, команды регенерации, DoD
+- [./architecture.md](./architecture.md) — bootstrap, env, runtime
