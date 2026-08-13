@@ -1,5 +1,19 @@
-// Dockerfile
-// .dockerignore
+# Build artifacts
 node_modules
-// npm-debug.log
-// dist
+dist
+coverage
+
+# Environment files (secrets!)
+.env
+.env.*
+
+# VCS and CI
+.git
+.forgejo
+
+# Test files
+test
+
+# Docs
+*.md
+npm-debug.log

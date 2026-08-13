@@ -1,0 +1,157 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify version consistency
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
+            echo "::error::Run: npm run bump-version -- <patch|minor|major> && git push origin main --follow-tags"
+            exit 1
+          fi
+
+      - name: Wait for CI to pass
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          STATUS_URL="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/status"
+          for i in $(seq 1 40); do
+            RESPONSE=$(curl -sf -H "Authorization: token $GITHUB_TOKEN" "$STATUS_URL" 2>/dev/null || echo "")
+            STATE=$(echo "$RESPONSE" | jq -r '.state // empty' 2>/dev/null || echo "")
+            if [ "$STATE" = "success" ]; then
+              echo "CI passed!"
+              break
+            fi
+            if [ "$STATE" = "failure" ] || [ "$STATE" = "error" ]; then
+              echo "::error::CI checks failed. Aborting deploy."
+              exit 1
+            fi
+            echo "Waiting for CI... (attempt $i/40, state: ${STATE:-unknown})"
+            sleep 15
+          done
+          if [ "$STATE" != "success" ]; then
+            echo "::error::Timed out waiting for CI to pass."
+            exit 1
+          fi
+
+      - name: Setup SSH
+        env:
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy to VPS
+        env:
+          VPS_SSH_USER: ${{ secrets.VPS_SSH_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
+          BACKEND_API_HOSTNAME: api.slovo-propovedi.ru
+          # Secrets for env file generation (NEVER passed to vps-deploy.sh as args)
+          JWT_SECRET: ${{ secrets.BACKEND_JWT_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.BACKEND_JWT_REFRESH_SECRET }}
+          POSTGRES_PASSWORD: ${{ secrets.BACKEND_POSTGRES_PASSWORD }}
+          MINIO_SECRET_KEY: ${{ secrets.BACKEND_MINIO_SECRET_KEY }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no"
+          SSH_TARGET="$VPS_SSH_USER@$VPS_HOST"
+
+          # Step 1: Sync source code to VPS
+          tar czf - \
+            --exclude='.git' \
+            --exclude=node_modules \
+            --exclude=dist \
+            --exclude=volumes \
+            --exclude=coverage \
+            --exclude=.env \
+            --exclude=.env.* \
+            . | ssh $SSH_OPTS "$SSH_TARGET" \
+            "rm -rf /slovo/backend/container-src && mkdir -p /slovo/backend/container-src && tar xzf - -C /slovo/backend/container-src"
+
+          # Step 2: Copy deploy script
+          scp $SSH_OPTS scripts/vps-deploy.sh "$SSH_TARGET:/tmp/vps-deploy.sh"
+
+          # Step 3: Generate env file ON RUNNER, pipe to VPS via SSH stdin (secrets never in process list)
+          {
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'JWT_REFRESH_SECRET=%s\n' "$JWT_REFRESH_SECRET"
+            printf 'POSTGRES_HOST=%s\n' "slovo-pgbouncer"
+            printf 'POSTGRES_PORT=%s\n' "5432"
+            printf 'POSTGRES_USER=%s\n' "slovo"
+            printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD"
+            printf 'POSTGRES_DB=%s\n' "slovo"
+            printf 'MINIO_ENDPOINT=%s\n' "slovo-minio"
+            printf 'MINIO_MAIN_PORT_IN=%s\n' "9000"
+            printf 'MINIO_ACCESS_KEY=%s\n' "slovo_minio"
+            printf 'MINIO_SECRET_KEY=%s\n' "$MINIO_SECRET_KEY"
+            printf 'MINIO_PUBLIC_URI=%s\n' "https://minio-api.slovo-propovedi.ru"
+            printf 'DOCS_ENABLED=%s\n' "false"
+            printf 'DOCS_UI_ORIGIN=%s\n' "https://docs.slovo-propovedi.ru"
+            printf 'NODE_OPTIONS=%s\n' "--max-old-space-size=256"
+          } | ssh $SSH_OPTS "$SSH_TARGET" \
+            "mkdir -p /slovo/backend && cat > /slovo/backend/env && chmod 0640 /slovo/backend/env && chown slovo:slovo /slovo/backend/env"
+
+          # Step 4: Run deploy script (NO secrets passed — env file already written)
+          ssh $SSH_OPTS "$SSH_TARGET" \
+            "DEPLOY_TAG='${{ github.ref_name }}' ACME_EMAIL='$ACME_EMAIL' BACKEND_API_HOSTNAME='$BACKEND_API_HOSTNAME' bash /tmp/vps-deploy.sh"
+
+      - name: Extract changelog section
+        id: changelog
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          # Extract the section for this version from CHANGELOG.md
+          awk -v ver="$TAG_VERSION" '
+            /^## \[/ { in_section = ($0 ~ "\\[" ver "\\]") }
+            in_section { print }
+          ' CHANGELOG.md > release-body.md
+
+          if [ ! -s release-body.md ]; then
+            echo "::error::No changelog section found for version $TAG_VERSION"
+            exit 1
+          fi
+
+      - name: Create Forgejo Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          BODY=$(cat release-body.md)
+          PAYLOAD=$(jq -n \
+            --arg tag "$GITHUB_REF_NAME" \
+            --arg name "Release $TAG_VERSION" \
+            --arg body "$BODY" \
+            '{tag_name: $tag, name: $name, body: $body}')
+
+          HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}/releases")
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Failed to create release (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+          echo "Release created successfully!"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f release-body.md
+          rm -f ~/.ssh/id_ed25519
