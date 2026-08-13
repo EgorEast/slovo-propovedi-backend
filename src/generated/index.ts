@@ -5,7 +5,7 @@
  * REST API для административной панели проекта "Слово.Проповеди".
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.4.0
+ * OpenAPI spec version: 0.5.0
  */
 import * as zod from 'zod';
 
@@ -1648,3 +1648,71 @@ export const AuthControllerGetProfileResponse = zod.strictObject({
   username: zod.string().describe('Имя пользователя для входа в систему'),
   email: zod.string(),
 });
+
+export const UsersControllerFindAllResponseItem = zod.strictObject({
+  id: zod.string(),
+  name: zod.string(),
+  username: zod.string().describe('Имя пользователя для входа в систему'),
+  email: zod.string(),
+});
+export const UsersControllerFindAllResponse = zod.array(
+  UsersControllerFindAllResponseItem,
+);
+
+export const UsersControllerCreateBody = zod.strictObject({
+  name: zod.string(),
+  email: zod.string(),
+  username: zod.string(),
+  password: zod.string(),
+});
+
+export const UsersControllerCreateResponse = zod.strictObject({
+  id: zod.string(),
+  name: zod.string(),
+  username: zod.string().describe('Имя пользователя для входа в систему'),
+  email: zod.string(),
+});
+
+export const UsersControllerFindOneParams = zod.strictObject({
+  id: zod.uuid(),
+});
+
+export const UsersControllerFindOneResponse = zod.strictObject({
+  id: zod.string(),
+  name: zod.string(),
+  username: zod.string().describe('Имя пользователя для входа в систему'),
+  email: zod.string(),
+});
+
+export const UsersControllerUpdateParams = zod.strictObject({
+  id: zod.uuid(),
+});
+
+export const UsersControllerUpdateBody = zod.strictObject({
+  name: zod.string().optional(),
+  email: zod.string().optional(),
+  username: zod.string().optional(),
+});
+
+export const UsersControllerUpdateResponse = zod.strictObject({
+  id: zod.string(),
+  name: zod.string(),
+  username: zod.string().describe('Имя пользователя для входа в систему'),
+  email: zod.string(),
+});
+
+export const UsersControllerRemoveParams = zod.strictObject({
+  id: zod.uuid(),
+});
+
+export const UsersControllerRemoveResponse = zod.void();
+
+export const UsersControllerChangePasswordParams = zod.strictObject({
+  id: zod.uuid(),
+});
+
+export const UsersControllerChangePasswordBody = zod.strictObject({
+  password: zod.string(),
+});
+
+export const UsersControllerChangePasswordResponse = zod.void();
