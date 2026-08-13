@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from './users.service';
 import { User } from './entities/user.entity';
@@ -26,6 +30,7 @@ describe('UsersService', () => {
     delete: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    count: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -36,6 +41,7 @@ describe('UsersService', () => {
       delete: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -207,21 +213,44 @@ describe('UsersService', () => {
   });
 
   describe('remove', () => {
-    it('deletes the user', async () => {
+    it('deletes the user when it exists and is not the last admin', async () => {
       repository.findOne.mockResolvedValue(mockUser);
+      repository.count.mockResolvedValue(3);
       repository.delete.mockResolvedValue({ affected: 1 });
 
-      await service.remove('user-1');
+      await service.remove('user-1', 'other-user');
 
+      expect(repository.count).toHaveBeenCalled();
       expect(repository.delete).toHaveBeenCalledWith('user-1');
     });
 
     it('rejects with NotFoundException when user is not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.remove('missing')).rejects.toThrow(
+      await expect(service.remove('missing', 'other-user')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('rejects with ForbiddenException when deleting self', async () => {
+      await expect(service.remove('user-1', 'user-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+
+      expect(repository.findOne).not.toHaveBeenCalled();
+      expect(repository.count).not.toHaveBeenCalled();
+      expect(repository.delete).not.toHaveBeenCalled();
+    });
+
+    it('rejects with ForbiddenException when deleting the last admin', async () => {
+      repository.findOne.mockResolvedValue(mockUser);
+      repository.count.mockResolvedValue(1);
+
+      await expect(service.remove('user-1', 'other-user')).rejects.toThrow(
+        ForbiddenException,
+      );
+
+      expect(repository.delete).not.toHaveBeenCalled();
     });
   });
 });

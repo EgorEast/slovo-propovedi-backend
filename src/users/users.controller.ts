@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ZodResponse } from 'nestjs-zod';
@@ -19,6 +20,12 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UserListResponseDto } from './dto/user-list-response.dto';
+
+interface AuthenticatedRequest {
+  user: {
+    id: string;
+  };
+}
 
 @Controller('users')
 export class UsersController {
@@ -62,7 +69,7 @@ export class UsersController {
   @Delete(':id')
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param() params: IdParamDto) {
-    return this.usersService.remove(params.id);
+  remove(@Param() params: IdParamDto, @Req() req: AuthenticatedRequest) {
+    return this.usersService.remove(params.id, req.user.id);
   }
 }

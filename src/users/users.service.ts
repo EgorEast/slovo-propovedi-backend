@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -175,12 +176,24 @@ export class UsersService {
     }
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, currentUserId: string): Promise<void> {
     try {
+      if (id === currentUserId) {
+        throw new ForbiddenException('Нельзя удалить собственный аккаунт');
+      }
+
       const user = await this.usersRepository.findOne({ where: { id } });
       if (!user) {
         throw new NotFoundException('Пользователь не найден');
       }
+
+      const total = await this.usersRepository.count();
+      if (total <= 1) {
+        throw new ForbiddenException(
+          'Нельзя удалить последнего администратора',
+        );
+      }
+
       await this.usersRepository.delete(id);
     } catch (error) {
       if (error instanceof HttpException) {
