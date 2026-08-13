@@ -170,6 +170,15 @@ describe('UsersService', () => {
         service.update('missing', { name: 'Renamed' }),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('rejects with ConflictException on unique constraint violation', async () => {
+      repository.findOne.mockResolvedValue({ ...mockUser });
+      repository.save.mockRejectedValue({ code: '23505' });
+
+      await expect(
+        service.update('user-1', { name: 'Renamed' }),
+      ).rejects.toThrow(ConflictException);
+    });
   });
 
   describe('changePassword', () => {
