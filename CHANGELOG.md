@@ -2,6 +2,16 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.2.0] - 2026-08-13
+
+### Features
+- forbid self-delete and last-admin removal (403 guard)
+- full CRUD + change-password backend (controller, service, DTOs, tests)
+
+### Maintenance
+- add standalone docs/ (modules, contracts, architecture, conventions, db), AGENTS.md, update README
+- add update ConflictException coverage for unique violation
+
 ## [0.1.1] - 2026-08-13
 
 ### Bug Fixes
