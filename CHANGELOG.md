@@ -2,6 +2,11 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.1.1] - 2026-08-13
+
+### Bug Fixes
+- filter CI status by context in release workflow
+
 ## [0.1.0] - 2026-08-13
 
 ### Features
