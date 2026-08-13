@@ -27,29 +27,29 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for CI to pass
+      - name: Wait for CI to pass on this commit
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          STATUS_URL="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/status"
+          set -e
+          URL="${{ github.server_url }}/api/v1/repos/${{ github.repository }}/commits/${{ github.sha }}/status"
+
+          # Forgejo appends the triggering event to the context, e.g.
+          # "CI / check-and-build (push)", so match by prefix rather than equality.
           for i in $(seq 1 40); do
-            RESPONSE=$(curl -sf -H "Authorization: token $GITHUB_TOKEN" "$STATUS_URL" 2>/dev/null || echo "")
-            STATE=$(echo "$RESPONSE" | jq -r '.state // empty' 2>/dev/null || echo "")
-            if [ "$STATE" = "success" ]; then
-              echo "CI passed!"
-              break
-            fi
-            if [ "$STATE" = "failure" ] || [ "$STATE" = "error" ]; then
-              echo "::error::CI checks failed. Aborting deploy."
-              exit 1
-            fi
-            echo "Waiting for CI... (attempt $i/40, state: ${STATE:-unknown})"
+            STATE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "$URL" | jq -r '.statuses[] | select(.context | startswith("CI / check-and-build")) | .status' | head -1)
+
+            case "$STATE" in
+              success) echo "CI passed for ${{ github.sha }}"; exit 0 ;;
+              failure|error) echo "::error::CI did not pass for ${{ github.sha }} (status: $STATE). Refusing to deploy."; exit 1 ;;
+            esac
+
+            echo "Waiting for CI status on ${{ github.sha }} (attempt $i/40)..."
             sleep 15
           done
-          if [ "$STATE" != "success" ]; then
-            echo "::error::Timed out waiting for CI to pass."
-            exit 1
-          fi
+
+          echo "::error::Timed out waiting for CI status on ${{ github.sha }}"
+          exit 1
 
       - name: Setup SSH
         env:
