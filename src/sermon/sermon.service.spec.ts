@@ -1,25 +1,41 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
-import { SermonService } from './sermon.service';
+import {
+  buildSearchTsQuery,
+  buildSearchVectorExpression,
+  decodeCompositeCursor,
+  encodeCompositeCursor,
+  SermonService,
+} from './sermon.service';
 import { SermonEntity } from './entities/sermon.entity';
 import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
 import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-join.entity';
 import { MinioService } from 'src/minio/minio.service';
 
-// Mirror of the service's searchable fields — asserting the concrete list here
-// guards the runtime behavior against accidental edits to the constant.
-const SEARCH_FIELDS = ['title', 'artist', 'book', 'description'];
+// Mirror of the service's canonical tsvector expression — asserting the exact
+// string guards the runtime behavior against accidental edits to SEARCH_WEIGHTS
+// (and keeps the migration sql/migrations/005_sermon_search_tsvector.sql honest).
+const SEARCH_VECTOR_EXPRESSION =
+  "setweight(to_tsvector('russian', coalesce(title, '')), 'A') || " +
+  "setweight(to_tsvector('russian', coalesce(artist, '')), 'B') || " +
+  "setweight(to_tsvector('russian', coalesce(book, '')), 'B') || " +
+  "setweight(to_tsvector('russian', coalesce(description, '')), 'D')";
+
+const RANK_EXPRESSION =
+  "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, to_tsquery('russian', :tsquery))";
+
+const SEARCH_CONDITION =
+  "sermon.search_vector @@ to_tsquery('russian', :tsquery)";
 
 describe('SermonService', () => {
   let service: SermonService;
   let sermonRepository: {
-    findAndCount: jest.Mock;
     createQueryBuilder: jest.Mock;
   };
 
   beforeEach(async () => {
     sermonRepository = {
-      findAndCount: jest.fn(),
       createQueryBuilder: jest.fn(),
     };
 
@@ -56,122 +72,267 @@ describe('SermonService', () => {
     expect(service).toBeDefined();
   });
 
+  describe('buildSearchTsQuery (boundary parsing of the raw search string)', () => {
+    it('ANDs every word token and appends the :* prefix for partial words', () => {
+      expect(buildSearchTsQuery('благодать иван')).toBe('благодать:* & иван:*');
+    });
+
+    it('is word-order independent — the same tokens in any order produce the same query', () => {
+      expect(buildSearchTsQuery('иван благодать')).toBe('иван:* & благодать:*');
+    });
+
+    it('keeps Cyrillic letters and digits', () => {
+      expect(buildSearchTsQuery('глава 3')).toBe('глава:* & 3:*');
+    });
+
+    it('strips punctuation and whitespace around tokens', () => {
+      expect(buildSearchTsQuery('благодать, иван!')).toBe(
+        'благодать:* & иван:*',
+      );
+    });
+
+    it('neutralizes tsquery injection attempts (& | ! ( ) : * < >)', () => {
+      expect(buildSearchTsQuery('благодать & | ! ( ) : * < > иван')).toBe(
+        'благодать:* & иван:*',
+      );
+    });
+
+    it('fails fast when nothing but syntax characters remains', () => {
+      expect(() => buildSearchTsQuery('&&& !!! ( )')).toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('buildSearchVectorExpression (single source of truth for weights)', () => {
+    it('weights title A, artist/book B, description D in the migration order', () => {
+      expect(buildSearchVectorExpression()).toBe(SEARCH_VECTOR_EXPRESSION);
+    });
+  });
+
+  describe('composite cursor (rank + id for relevance-ordered pages)', () => {
+    it('round-trips rank and id through the opaque encoding', () => {
+      const cursor = encodeCompositeCursor(
+        0.6229741,
+        '123e4567-e89b-12d3-a456-426614174000',
+      );
+      expect(decodeCompositeCursor(cursor)).toEqual({
+        rank: 0.6229741,
+        id: '123e4567-e89b-12d3-a456-426614174000',
+      });
+    });
+
+    it('fails fast on a stale plain-uuid cursor (old format is invalidated)', () => {
+      expect(() =>
+        decodeCompositeCursor('123e4567-e89b-12d3-a456-426614174000'),
+      ).toThrow(BadRequestException);
+    });
+
+    it('fails fast on garbage input', () => {
+      expect(() => decodeCompositeCursor('!!!not-a-cursor!!!')).toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
   describe('findAll', () => {
+    function mockQueryBuilder() {
+      const queryBuilder = {
+        leftJoinAndSelect: jest.fn(),
+        orderBy: jest.fn(),
+        addOrderBy: jest.fn(),
+        addSelect: jest.fn(),
+        where: jest.fn(),
+        andWhere: jest.fn(),
+        setParameter: jest.fn(),
+        take: jest.fn(),
+        getManyAndCount: jest.fn(),
+        getRawAndEntities: jest.fn(),
+        getMany: jest.fn(),
+      };
+      [
+        'leftJoinAndSelect',
+        'orderBy',
+        'addOrderBy',
+        'addSelect',
+        'where',
+        'andWhere',
+        'setParameter',
+        'take',
+      ].forEach((method) => queryBuilder[method].mockReturnValue(queryBuilder));
+      queryBuilder.getManyAndCount.mockResolvedValue([[], 0]);
+      queryBuilder.getRawAndEntities.mockResolvedValue({
+        entities: [],
+        raw: [],
+      });
+      queryBuilder.getMany.mockResolvedValue([]);
+      sermonRepository.createQueryBuilder.mockReturnValue(queryBuilder);
+      return queryBuilder;
+    }
+
     describe('full-fetch path (no take)', () => {
-      it('applies no search filter when search is absent', async () => {
-        sermonRepository.findAndCount.mockResolvedValue([[], 0]);
+      it('keeps id-DESC ordering and returns the count when search is absent', async () => {
+        const queryBuilder = mockQueryBuilder();
+        queryBuilder.getManyAndCount.mockResolvedValue([[], 5]);
 
-        await service.findAll();
+        const result = await service.findAll();
 
-        expect(sermonRepository.findAndCount).toHaveBeenCalledTimes(1);
-        const options = sermonRepository.findAndCount.mock.calls[0][0];
-        expect(options.where).toBeUndefined();
+        expect(queryBuilder.orderBy).toHaveBeenCalledWith('sermon.id', 'DESC');
+        expect(queryBuilder.where).not.toHaveBeenCalled();
+        expect(queryBuilder.addSelect).not.toHaveBeenCalled();
+        expect(queryBuilder.getManyAndCount).toHaveBeenCalledTimes(1);
+        expect(result).toEqual({ sermons: [], count: 5, nextCursor: null });
       });
 
-      it('applies a parameterized LOWER(...) LIKE OR-array over every searchable field when search is present', async () => {
-        sermonRepository.findAndCount.mockResolvedValue([[], 0]);
+      it('ranks by relevance (rank DESC, id DESC) and filters by FTS when search is present', async () => {
+        const queryBuilder = mockQueryBuilder();
 
-        await service.findAll(undefined, undefined, 'благодать');
+        await service.findAll(undefined, undefined, 'благодать иван');
 
-        const options = sermonRepository.findAndCount.mock.calls[0][0];
-        expect(options.where).toHaveLength(SEARCH_FIELDS.length);
-        options.where.forEach((condition, index) => {
-          const field = SEARCH_FIELDS[index];
-          const raw = condition[field];
-          // Raw injects the SQL with the full "alias.column" path that
-          // TypeORM passes in, and binds the pattern as the :q parameter.
-          const alias = `sermon.${field}`;
-          expect(raw.type).toBe('raw');
-          expect(raw.getSql(alias)).toBe(`LOWER(${alias}) LIKE :q`);
-          expect(raw.objectLiteralParameters).toEqual({ q: '%благодать%' });
-        });
+        expect(queryBuilder.addSelect).toHaveBeenCalledWith(
+          RANK_EXPRESSION,
+          'rank',
+        );
+        expect(queryBuilder.where).toHaveBeenCalledWith(SEARCH_CONDITION);
+        expect(queryBuilder.setParameter).toHaveBeenCalledWith(
+          'tsquery',
+          'благодать:* & иван:*',
+        );
+        expect(queryBuilder.orderBy).toHaveBeenCalledWith('rank', 'DESC');
+        expect(queryBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sermon.id',
+          'DESC',
+        );
       });
 
-      it('lowercases the search term at the boundary so Cyrillic case folding does not depend on the DB locale', async () => {
-        sermonRepository.findAndCount.mockResolvedValue([[], 0]);
+      it('passes the sanitized tsquery to the parameter binding', async () => {
+        const queryBuilder = mockQueryBuilder();
 
         await service.findAll(undefined, undefined, 'Благодать');
 
-        const options = sermonRepository.findAndCount.mock.calls[0][0];
-        const raw = options.where[0].title;
-        expect(raw.objectLiteralParameters).toEqual({ q: '%благодать%' });
+        expect(queryBuilder.setParameter).toHaveBeenCalledWith(
+          'tsquery',
+          'Благодать:*',
+        );
       });
     });
 
     describe('keyset path (take supplied)', () => {
-      function mockQueryBuilder() {
-        const queryBuilder = {
-          leftJoinAndSelect: jest.fn(),
-          orderBy: jest.fn(),
-          addOrderBy: jest.fn(),
-          take: jest.fn(),
-          andWhere: jest.fn(),
-          getMany: jest.fn(),
-        };
-        queryBuilder.leftJoinAndSelect.mockReturnValue(queryBuilder);
-        queryBuilder.orderBy.mockReturnValue(queryBuilder);
-        queryBuilder.addOrderBy.mockReturnValue(queryBuilder);
-        queryBuilder.take.mockReturnValue(queryBuilder);
-        queryBuilder.andWhere.mockReturnValue(queryBuilder);
-        queryBuilder.getMany.mockResolvedValue([]);
-        sermonRepository.createQueryBuilder.mockReturnValue(queryBuilder);
-        return queryBuilder;
-      }
-
-      it('applies no search condition when search is absent', async () => {
-        const queryBuilder = mockQueryBuilder();
-
-        await service.findAll(2);
-
-        expect(sermonRepository.createQueryBuilder).toHaveBeenCalledWith(
-          'sermon',
-        );
-        expect(queryBuilder.andWhere).not.toHaveBeenCalled();
-      });
-
-      it('applies a parameterized LOWER(...) LIKE OR-condition over every searchable field when search is present', async () => {
-        const queryBuilder = mockQueryBuilder();
-
-        await service.findAll(2, undefined, 'благодать');
-
-        const expectedCondition = SEARCH_FIELDS.map(
-          (field) => `LOWER(sermon.${field}) LIKE :q`,
-        ).join(' OR ');
-        expect(queryBuilder.andWhere).toHaveBeenCalledWith(expectedCondition, {
-          q: '%благодать%',
-        });
-      });
-
-      it('lowercases the search term at the boundary on the keyset path too', async () => {
-        const queryBuilder = mockQueryBuilder();
-
-        await service.findAll(2, undefined, 'Благодать');
-
-        const expectedCondition = SEARCH_FIELDS.map(
-          (field) => `LOWER(sermon.${field}) LIKE :q`,
-        ).join(' OR ');
-        expect(queryBuilder.andWhere).toHaveBeenCalledWith(expectedCondition, {
-          q: '%благодать%',
-        });
-      });
-
-      it('applies both the cursor clause and the escaped LOWER(...) LIKE OR-condition when cursor and search are combined', async () => {
+      it('keeps id-DESC order, the id cursor and getMany when search is absent', async () => {
         const queryBuilder = mockQueryBuilder();
         const cursor = '123e4567-e89b-12d3-a456-426614174000';
 
-        await service.findAll(2, cursor, 'благодать');
+        await service.findAll(2, cursor);
 
-        const expectedCondition = SEARCH_FIELDS.map(
-          (field) => `LOWER(sermon.${field}) LIKE :q`,
-        ).join(' OR ');
-        expect(queryBuilder.andWhere).toHaveBeenCalledTimes(2);
+        expect(queryBuilder.orderBy).toHaveBeenCalledWith('sermon.id', 'DESC');
         expect(queryBuilder.andWhere).toHaveBeenCalledWith(
           'sermon.id < :cursor',
-          { cursor },
+          {
+            cursor,
+          },
         );
-        expect(queryBuilder.andWhere).toHaveBeenCalledWith(expectedCondition, {
-          q: '%благодать%',
+        expect(queryBuilder.addSelect).not.toHaveBeenCalled();
+        expect(queryBuilder.take).toHaveBeenCalledWith(3);
+        expect(queryBuilder.getMany).toHaveBeenCalled();
+        expect(queryBuilder.getRawAndEntities).not.toHaveBeenCalled();
+      });
+
+      it('filters by FTS, orders by relevance and builds a composite next cursor when search is present', async () => {
+        const queryBuilder = mockQueryBuilder();
+        const sermonA = {
+          id: 'aaaaaaaa-0000-0000-0000-000000000001',
+          playlistJoins: [],
+        };
+        const sermonB = {
+          id: 'bbbbbbbb-0000-0000-0000-000000000002',
+          playlistJoins: [],
+        };
+        const sermonC = {
+          id: 'cccccccc-0000-0000-0000-000000000003',
+          playlistJoins: [],
+        };
+        queryBuilder.getRawAndEntities.mockResolvedValue({
+          entities: [sermonA, sermonB, sermonC],
+          raw: [
+            { sermon_id: sermonA.id, rank: 0.6229741 },
+            { sermon_id: sermonB.id, rank: 0.6229741 },
+            { sermon_id: sermonC.id, rank: 0.18297999 },
+          ],
         });
+
+        const result = await service.findAll(2, undefined, 'благодать иван');
+
+        expect(queryBuilder.addSelect).toHaveBeenCalledWith(
+          RANK_EXPRESSION,
+          'rank',
+        );
+        expect(queryBuilder.where).toHaveBeenCalledWith(SEARCH_CONDITION);
+        expect(queryBuilder.setParameter).toHaveBeenCalledWith(
+          'tsquery',
+          'благодать:* & иван:*',
+        );
+        expect(queryBuilder.orderBy).toHaveBeenCalledWith('rank', 'DESC');
+        expect(queryBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sermon.id',
+          'DESC',
+        );
+        expect(queryBuilder.take).toHaveBeenCalledWith(3);
+        expect(queryBuilder.getRawAndEntities).toHaveBeenCalled();
+        expect(queryBuilder.getMany).not.toHaveBeenCalled();
+        expect(result.sermons.map((s) => s.id)).toEqual([
+          sermonA.id,
+          sermonB.id,
+        ]);
+        expect(result.count).toBeNull();
+        expect(result.nextCursor).toBe(
+          encodeCompositeCursor(0.6229741, sermonB.id),
+        );
+      });
+
+      it('paginates with the composite row-value comparison when cursor and search are combined', async () => {
+        const queryBuilder = mockQueryBuilder();
+        const cursor = encodeCompositeCursor(
+          0.6229741,
+          'bbbbbbbb-0000-0000-0000-000000000002',
+        );
+
+        await service.findAll(2, cursor, 'благодать');
+
+        expect(queryBuilder.andWhere).toHaveBeenCalledTimes(1);
+        expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+          `(${RANK_EXPRESSION}, sermon.id) < (:rank::float4, :id)`,
+          {
+            rank: 0.6229741,
+            id: 'bbbbbbbb-0000-0000-0000-000000000002',
+          },
+        );
+      });
+
+      it('returns a null next cursor when no further page exists', async () => {
+        const queryBuilder = mockQueryBuilder();
+        const sermonA = {
+          id: 'aaaaaaaa-0000-0000-0000-000000000001',
+          playlistJoins: [],
+        };
+        const sermonB = {
+          id: 'bbbbbbbb-0000-0000-0000-000000000002',
+          playlistJoins: [],
+        };
+        queryBuilder.getRawAndEntities.mockResolvedValue({
+          entities: [sermonA, sermonB],
+          raw: [
+            { sermon_id: sermonA.id, rank: 0.6229741 },
+            { sermon_id: sermonB.id, rank: 0.18297999 },
+          ],
+        });
+
+        const result = await service.findAll(2, undefined, 'благодать');
+
+        expect(result.sermons.map((s) => s.id)).toEqual([
+          sermonA.id,
+          sermonB.id,
+        ]);
+        expect(result.nextCursor).toBeNull();
       });
     });
   });

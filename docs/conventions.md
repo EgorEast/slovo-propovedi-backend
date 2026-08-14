@@ -47,6 +47,11 @@ import { SermonControllerFindAllQueryParams } from '../../generated';
 const FindAllSermonsQuerySchema = SermonControllerFindAllQueryParams.extend({
   take: z.coerce.number().int().min(1).max(100).optional(), // string → number
   search: z.string().trim().min(1).optional(),              // trim + reject empty
+  cursor: z.string().min(1).optional(),                     // generated zod.uuid() → opaque string
+}).superRefine((query, ctx) => {
+  if (query.cursor && !query.search && !z.string().uuid().safeParse(query.cursor).success) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cursor'], message: 'cursor must be a valid uuid when search is absent' });
+  }
 });
 
 export class FindAllSermonsQueryDto extends createZodDto(FindAllSermonsQuerySchema) {}
@@ -54,7 +59,7 @@ export class FindAllSermonsQueryDto extends createZodDto(FindAllSermonsQuerySche
 
 - `take` коэрсится `z.coerce.number()` (query-строка → число) и ограничивается `1..100`;
 - `search` нормализуется `trim()` и отклоняется, если после обрезки пуст;
-- `cursor` уже `zod.uuid()`, принимает строки как есть — переопределять не нужно.
+- `cursor` переопределяется с сгенерированного `zod.uuid()` на непрозрачную строку: search-страницы несут составной курсор `{rank, id}` (base64 JSON), non-search — прежний uuid-id. Условие в `superRefine` сохраняет прежний fail-fast (400) для мусорного курсора, когда поиска нет.
 
 > ✅ Правило: **не переписывать** сгенерированные схемы руками — только `.extend(...)`/override поверх них. Так контракт остаётся в одной точке (`generated`), а ручные правки — локальные уточнения на границе.
 

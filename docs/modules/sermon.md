@@ -1,6 +1,6 @@
 # Модуль `sermon` — проповеди
 
-Проповедь — основная единица контента. Модуль: CRUD, поиск (регистронезависимый по кириллице: `LOWER(...) LIKE`), keyset-пагинация (`take`/`cursor`), presigned-URL аудио, синхронизация членства в плейлистах.
+Проповедь — основная единица контента. Модуль: CRUD, поиск (полнотекстовый, независимый от порядка слов, с ранжированием по релевантности: PostgreSQL FTS `russian` + `ts_rank`), keyset-пагинация (`take`/`cursor`), presigned-URL аудио, синхронизация членства в плейлистах.
 
 **Слой:** backend (module `sermon`)
 **Статус:** актуально
@@ -40,42 +40,78 @@
 
 | Условие | Путь | Как фильтрует |
 |---------|------|----------------|
-| `take` не задан | **полная выборка** | `findAndCount` + `Raw` `LOWER(...) LIKE :q` OR-массив по `SEARCH_FIELDS` |
-| `take` задан | **keyset (cursor)** | QueryBuilder: `sermon.id < :cursor`, `take + 1` строк, escaped `LOWER(sermon.<поле>) LIKE :q` OR-условие |
+| `take` не задан | **полная выборка** | QueryBuilder (`getManyAndCount`): `sermon.search_vector @@ tsquery`, порядок по релевантности |
+| `take` задан | **keyset (cursor)** | QueryBuilder: `take + 1` строк, порядок по релевантности + составной курсор `{ rank, id }` |
 
-Общий список поисковых полей — один источник правды:
+### Полнотекстовый поиск (FTS)
+
+Поиск — **независимый от порядка слов** (AND по всем словам запроса) и **ранжированный по релевантности**, на PostgreSQL full-text search (`russian` конфигурация):
+
+- Все поисковые поля свёрнуты в **генерируемую колонку** `sermon.search_vector` (`GENERATED ALWAYS AS ... STORED`, PostgreSQL >= 12) с весами `setweight`:
+  - `A` — `title` (наивысший приоритет);
+  - `B` — `artist`, `book`;
+  - `D` — `description` (наинизший).
+- Веса — **единый источник правды** в коде: `SEARCH_WEIGHTS` + `buildSearchVectorExpression()` (`src/sermon/sermon.service.ts`); SQL-миграция [`sql/migrations/005_sermon_search_tsvector.sql`](../../sql/migrations/005_sermon_search_tsvector.sql) и `sql/bootstrap.sql` используют то же выражение (дрейф ловится спеками).
+- Ранжирование: `ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, tsquery)` — массив весов в порядке **D, C, B, A** (description 0.1, artist/book 0.4, title 1.0; неиспользуемый C — дефолт 0.2).
+
+### Стратегия tsquery: `to_tsquery` + префикс `:*`
+
+Выбрана **`to_tsquery('russian', ...)` с `:*` на каждом токене**, а не `websearch_to_tsquery` (проверено на throwaway-БД, см. ниже):
+
+| Критерий | `websearch_to_tsquery` | `to_tsquery` + `:*` |
+|----------|------------------------|----------------------|
+| Многословный AND | ✅ | ✅ |
+| Независимость от порядка слов | ✅ | ✅ |
+| Префикс частичного слова (`благода` → `благодать`) | ❌ | ✅ |
+| Русский стеммер: `Иван`→`ива`, `Иванов`→`иван` | ❌ (`иван` не находит `Иванов`) | ✅ (`ива:*` находит оба) |
+
+Русский стеммер асимметричен (`Иван` → лексема `ива`, `Иванов` → `иван`): `websearch_to_tsquery('russian', 'благодать иван')` = `'благода' & 'ива'` — точное совпадение лексем не находит `Иванов`. Префикс `:*` компенсирует асимметрию.
+
+### Санитизация на границе (parse, don't validate)
+
+`buildSearchTsQuery(search)` — **чистая функция на границе**, одна для обоих путей:
 
 ```ts
-private static readonly SEARCH_FIELDS = ['title', 'artist', 'book', 'description'] as const;
+const buildSearchTsQuery = (search: string): string => {
+  const tokens = search.match(/[\p{L}\p{N}]+/gu) ?? [];
+  if (!tokens.length) throw new BadRequestException('search must contain at least one word character');
+  return tokens.map((token) => `${token}:*`).join(' & ');
+};
 ```
 
-- Поисковый термин нормализуется на границе **одной точкой**, общей для обоих путей: `const q = search ? \`%${escapeLike(search).toLowerCase()}%\` : undefined;` — сначала `escapeLike`, затем `.toLowerCase()` (JS `toLowerCase` сворачивает кириллицу независимо от локали БД).
-- `escapeLike` экранирует метасимволы `LIKE` (`\`, `%`, `_`), чтобы пользовательский ввод вроде `"100%"` матчился буквально:
+- Оставляет только «словные» символы (буквы/цифры, включая кириллицу) — синтаксис tsquery (`&`, `|`, `!`, `(`, `)`, `:`, `*`, `<`, `>`) в SQL не проходит.
+- Каждый токен получает `:*` (частичное слово) и соединяется `&` (AND, порядок слов не важен).
+- Пустой результат после санитизации (`"&&&"`) → `BadRequestException` (fail fast).
+
+### Условие и ранжирование (общие для обоих путей)
+
+`tsquery` строится **один раз на запрос** и биндится параметром `:tsquery`; выражение оборачивается в `to_tsquery('russian', ...)`. Стеммер применяется и к запросу, и к вектору — **сырой текст в `@@` не стеммится** и не находит совпадений:
 
 ```ts
-const escapeLike = (s: string) => s.replace(/[\\%_]/g, '\\$&');
+TS_SEARCH_CONDITION = "sermon.search_vector @@ to_tsquery('russian', :tsquery)";
+RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, to_tsquery('russian', :tsquery))";
 ```
 
-- **Регистронезависимость по кириллице не зависит от `ILIKE`** (он сворачивает регистр ровно настолько, насколько это умеет `LC_CTYPE` базы — при `C`/`POSIX` кириллицу не сворачивает вовсе). Вместо этого **обе стороны** приводятся к нижнему регистру:
-  - паттерн — на границе в JS (см. выше);
-  - колонка — в SQL через `LOWER(колонка) LIKE :q`.
-- Полная выборка: `Raw((alias) => \`LOWER(${alias}) LIKE :q\`, { q })` — TypeORM передаёт генератору полный путь `alias.column`, паттерн биндится как параметр `:q`.
-- **Требование к БД:** `lower()` в PostgreSQL тоже зависит от ctype; при `LC_CTYPE=C`/`POSIX` кириллический case folding не работает даже в `lower()`. База должна быть создана с UTF-8-локалью (`ru_RU.UTF-8`, `en_US.UTF-8`) — см. [`sql/migrations/004_fix_db_collation.md`](../../sql/migrations/004_fix_db_collation.md).
+### Keyset-пагинация
 
-- **Keyset-путь:** вместо `OFFSET` (пересканирует и пропускает строки) берёт `take + 1` строк после курсора; лишняя строка решает, есть ли следующая страница. `nextCursor` — `id` последней отданной проповеди.
+- **Без search** — поведение не меняется: `ORDER BY sermon.id DESC`, курсор `sermon.id < :cursor`, `nextCursor` = `id` (регрессия не поисковой пагинации не допускается).
+- **С search** — порядок `(rank DESC, sermon.id DESC)`, поэтому **голый id-курсор неверен**: курсор составной `{ rank, id }`, непрозрачный для клиента (base64 JSON). Пагинация — row-value сравнением:
 
-```ts
-if (cursor) queryBuilder.andWhere('sermon.id < :cursor', { cursor });
-if (q) {
-  const searchCondition = SEARCH_FIELDS.map((f) => `LOWER(sermon.${f}) LIKE :q`).join(' OR ');
-  queryBuilder.andWhere(searchCondition, { q });
-}
-const rows = await queryBuilder.getMany();
-const hasMore = rows.length > take;
-const sermons = hasMore ? rows.slice(0, take) : rows;
-```
+  ```sql
+  (ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, to_tsquery('russian', :tsquery)), sermon.id) < (:rank::float4, :id)
+  ```
 
-Ответ полной выборки: `{ sermons, count, nextCursor: null }`; keyset: `{ sermons, count: null, nextCursor }`.
+  Ранг в БД — `float4`; JS-число (`float8`) приводится обратно `::float4`, иначе float-округление при равных рангах пропускает/дублирует строки.
+- Старые курсоры (голый uuid) **инвалидированы** — `decodeCompositeCursor` бросает `BadRequestException('invalid or stale cursor')`.
+- `take + 1` строк; лишняя строка решает, есть ли следующая страница. Ранг последней строки берётся из raw-строк запроса (`addSelect(RANK_EXPRESSION, 'rank')` + `getRawAndEntities`).
+
+### Ограничение TypeORM (почему ранк — через select-алиас)
+
+`getMany`/`getRawAndEntities` с `take` + join-ами пагинирует двумя запросами и **не умеет** сложное выражение в `ORDER BY` (разбирает строку как `alias.column` и падает на `'{0.1,...`). Поэтому ранг выносится в **select-алиас**: `addSelect(RANK_EXPRESSION, 'rank')` + `orderBy('rank', 'DESC')` — алиас переживает подзапрос пагинации, а `rank` в сущность не попадает (unmapped).
+
+### Полная выборка
+
+Полная выборка (без `take`) переведена с `findAndCount` на QueryBuilder + `getManyAndCount`, чтобы **оба пути** использовали одно FTS-условие и ранжирование. Ответ: `{ sermons, count, nextCursor: null }` — форма не изменилась.
 
 > ✅ `findAll` без `take`/`search` отдаёт **всю** выборку (backward-compat, используется админкой при первичной загрузке). Поиск применён в **обоих** путях.
 
@@ -103,13 +139,13 @@ const sermons = hasMore ? rows.slice(0, take) : rows;
 |------|-------|
 | `src/sermon/dto/create-sermon.dto.ts` | `SermonControllerCreateBody` |
 | `src/sermon/dto/update-sermon.dto.ts` | `SermonControllerUpdateBody` |
-| `src/sermon/dto/find-all-sermons-query.dto.ts` | extends query + `.extend({ take: z.coerce.number().int().min(1).max(100).optional(), search: z.string().trim().min(1).optional() })` |
+| `src/sermon/dto/find-all-sermons-query.dto.ts` | extends query + `.extend({ take: z.coerce.number().int().min(1).max(100).optional(), search: z.string().trim().min(1).optional(), cursor: z.string().min(1).optional() })` + `.superRefine(...)` |
 | `src/sermon/dto/sermon-response.dto.ts` | create/findOne |
 | `src/sermon/dto/all-sermons-response.dto.ts` | findAll |
 | `src/sermon/dto/stream-url-response.dto.ts` | stream-url |
 | `src/sermon/dto/status-sermon-response.dto.ts` | update/remove |
 
-> ✅ `find-all-sermons-query.dto.ts` — канонический пример **extend/override** DTO: переопределяет `take` (string→number coercion) и `search` (trim + reject empty) поверх сгенерированной схемы. Подробнее — [`../conventions.md`](../conventions.md).
+> ✅ `find-all-sermons-query.dto.ts` — канонический пример **extend/override** DTO: переопределяет `take` (string→number coercion), `search` (trim + reject empty) и `cursor` (сгенерированный `zod.uuid()` → непрозрачная строка: search-страницы несут составной курсор, non-search — прежний uuid-id). `superRefine` возвращает прежний fail-fast для мусорного курсора на non-search-странице. Подробнее — [`../conventions.md`](../conventions.md).
 
 ## Связанные документы
 

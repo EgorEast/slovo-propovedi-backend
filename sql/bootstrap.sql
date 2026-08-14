@@ -67,7 +67,18 @@ CREATE TABLE sermon (
     artwork character varying NOT NULL,
     book character varying,
     chapter integer,
-    verse json
+    verse json,
+    -- Full-text search vector (word-order-independent, relevance-ranked search
+    -- via ts_rank). STORED GENERATED — PostgreSQL >= 12. The expression is the
+    -- source of truth for the searchable fields/weights and MUST stay in sync
+    -- with sql/migrations/005_sermon_search_tsvector.sql and
+    -- buildSearchVectorExpression() in src/sermon/sermon.service.ts.
+    search_vector tsvector GENERATED ALWAYS AS (
+        setweight(to_tsvector('russian', coalesce(title, '')), 'A')
+        || setweight(to_tsvector('russian', coalesce(artist, '')), 'B')
+        || setweight(to_tsvector('russian', coalesce(book, '')), 'B')
+        || setweight(to_tsvector('russian', coalesce(description, '')), 'D')
+    ) STORED
 );
 
 -- ---------------------------------------------------------------------------
@@ -160,6 +171,8 @@ CREATE INDEX "IDX_5ce6a49a1e80041f94cb5152fe" ON playlist_sermons_sermon USING b
 CREATE INDEX "IDX_7fd858f1b2a29fa7a6a5ab2c77" ON playlist_sermons_sermon USING btree ("sermonId");
 CREATE INDEX "IDX_39bacf40bb28fa91cdf8c3e1ea" ON section_playlists_playlist USING btree ("playlistId");
 CREATE INDEX "IDX_7e60b48429a43494fcd98f0a70" ON section_playlists_playlist USING btree ("sectionId");
+-- GIN index for full-text search (search_vector @@ tsquery) — mirrors migration 005.
+CREATE INDEX "IDX_sermon_search_vector" ON sermon USING gin (search_vector);
 
 -- ---------------------------------------------------------------------------
 -- Foreign keys

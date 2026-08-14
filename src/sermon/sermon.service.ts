@@ -11,7 +11,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { SermonEntity } from './entities/sermon.entity';
 import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
 import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-join.entity';
-import { DataSource, In, Raw, Repository } from 'typeorm';
+import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 import {
   AllSermonsResponse,
   NormalizedSermonResponse,
@@ -45,9 +45,101 @@ const SERMON_RELATION_ORDER = {
   },
 } as const;
 
-// LIKE treats % _ and \ as metacharacters — escape them so user input such as
-// "100%" or "foo_bar" matches literally (Postgres's default LIKE escape is \).
-const escapeLike = (s: string) => s.replace(/[\\%_]/g, '\\$&');
+// ---------------------------------------------------------------------------
+// Full-text search: boundary parsing + single source of truth for the weights
+// ---------------------------------------------------------------------------
+//
+// Search is word-order-independent AND relevance-ranked via PostgreSQL FTS on
+// the generated column sermon.search_vector (sql/migrations/005_sermon_search
+// _tsvector.sql): the fields below are folded into the vector once, weighted,
+// and both findAll code paths match a tsquery against it and rank with the
+// same ts_rank expression.
+
+const TS_CONFIG = 'russian';
+
+// Weighted searchable fields — the single source of truth for what the FTS
+// vector indexes and how it ranks. The generated column expression and the
+// ts_rank weights are derived from this exact definition.
+const SEARCH_WEIGHTS = {
+  A: ['title'],
+  B: ['artist', 'book'],
+  D: ['description'],
+} as const;
+
+// Canonical tsvector expression backing sermon.search_vector — must match
+// sql/migrations/005_sermon_search_tsvector.sql and sql/bootstrap.sql.
+export const buildSearchVectorExpression = (): string =>
+  (Object.entries(SEARCH_WEIGHTS) as Array<[string, readonly string[]]>)
+    .flatMap(([weight, fields]) =>
+      fields.map(
+        (field) =>
+          `setweight(to_tsvector('${TS_CONFIG}', coalesce(${field}, '')), '${weight}')`,
+      ),
+    )
+    .join(' || ');
+
+// Postgres ts_rank weight array — elements are D, C, B, A in that order, so
+// description (D) ranks lowest and title (A) highest; the unused C keeps the
+// default 0.2.
+const TS_RANK_WEIGHTS = '{0.1,0.2,0.4,1.0}';
+
+// The sanitized token string is bound as :tsquery and parsed by to_tsquery
+// (which applies the russian stemmer — a raw text param bound to @@ would NOT
+// stem and would miss matches).
+const toTsQuerySql = () => `to_tsquery('${TS_CONFIG}', :tsquery)`;
+
+// FTS match condition shared by both code paths.
+const TS_SEARCH_CONDITION = `sermon.search_vector @@ ${toTsQuerySql()}`;
+
+// ts_rank expression shared by ORDER BY and the composite cursor comparison —
+// the SAME :tsquery parameter is bound in the WHERE clause and here, so a
+// row's rank is identical in both places.
+const buildRankExpression = (): string =>
+  `ts_rank('${TS_RANK_WEIGHTS}'::float4[], sermon.search_vector, ${toTsQuerySql()})`;
+
+// Parse the raw search string at the boundary into a tsquery: keep only word
+// characters (letters/digits, incl. Cyrillic), AND every token together so
+// word order is irrelevant, and append :* to each token so partial words match
+// (благода → благодать). The result is safe to hand to to_tsquery — it
+// contains no tsquery syntax characters by construction. Input with no word
+// characters at all (e.g. "&&&") fails fast.
+const buildSearchTsQuery = (search: string): string => {
+  const tokens = search.match(/[\p{L}\p{N}]+/gu) ?? [];
+  if (!tokens.length) {
+    throw new BadRequestException(
+      'search must contain at least one word character',
+    );
+  }
+  return tokens.map((token) => `${token}:*`).join(' & ');
+};
+export { buildSearchTsQuery };
+
+// Composite keyset cursor for relevance-ordered pages: the order is
+// (rank DESC, id DESC), so a bare id cursor would skip/duplicate rows when
+// ranks tie. The cursor is opaque to the client (base64 JSON); old plain-uuid
+// cursors are invalidated and fail fast with a clear error.
+const encodeCompositeCursor = (rank: number, id: string): string =>
+  Buffer.from(JSON.stringify({ rank, id })).toString('base64');
+
+const decodeCompositeCursor = (
+  cursor: string,
+): { rank: number; id: string } => {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8'));
+  } catch {
+    throw new BadRequestException('invalid or stale cursor');
+  }
+  if (typeof decoded !== 'object' || decoded === null) {
+    throw new BadRequestException('invalid or stale cursor');
+  }
+  const { rank, id } = decoded as { rank?: unknown; id?: unknown };
+  if (typeof rank !== 'number' || typeof id !== 'string') {
+    throw new BadRequestException('invalid or stale cursor');
+  }
+  return { rank, id };
+};
+export { encodeCompositeCursor, decodeCompositeCursor };
 
 @Injectable()
 export class SermonService {
@@ -96,46 +188,38 @@ export class SermonService {
     }
   }
 
-  // Fields the `search` query matches against, shared by the full-fetch
-  // (TypeORM Raw LOWER array) and keyset (QueryBuilder LOWER) code paths so
-  // the list of searchable fields lives in exactly one place.
-  private static readonly SEARCH_FIELDS = [
-    'title',
-    'artist',
-    'book',
-    'description',
-  ] as const;
-
   async findAll(
     take?: number,
     cursor?: string,
     search?: string,
   ): Promise<AllSermonsResponse> {
     try {
-      // Parse the search term at the boundary: escape LIKE metacharacters,
-      // then lowercase it (JS toLowerCase folds Cyrillic regardless of the DB
-      // locale — DB lower() under a C/POSIX ctype would not). Wrap once, so
-      // the full-fetch and keyset paths share one identical value.
-      const q = search ? `%${escapeLike(search).toLowerCase()}%` : undefined;
+      // Parse the search term at the boundary ONCE: the sanitized tsquery
+      // drives the WHERE condition and the ORDER BY ranking in both paths.
+      const tsquery = search ? buildSearchTsQuery(search) : undefined;
+
+      // Relevance-ranked search orders by (rank DESC, id DESC); without search
+      // the plain id-DESC order is preserved exactly (non-search pagination
+      // must not regress).
+      const primaryOrders: Array<[string, 'ASC' | 'DESC']> = tsquery
+        ? [
+            ['rank', 'DESC'],
+            ['sermon.id', 'DESC'],
+          ]
+        : [['sermon.id', 'DESC']];
 
       if (!take) {
         // Backward-compatible full fetch — used by the admin UI when no
-        // pagination params are supplied.
-        const where = q
-          ? SermonService.SEARCH_FIELDS.map((field) => ({
-              // TypeORM passes the full "alias.column" path to the Raw
-              // generator; the pattern is bound as the :q parameter. Both
-              // sides are lowercased: the column via LOWER(), the pattern at
-              // the boundary above — so Cyrillic case folding never depends
-              // on ILIKE (which needs a UTF-8 database ctype to fold).
-              [field]: Raw((alias) => `LOWER(${alias}) LIKE :q`, { q }),
-            }))
-          : undefined;
-        const [sermons, count] = await this.sermonRepository.findAndCount({
-          relations: SERMON_RELATIONS,
-          order: { id: 'DESC', ...SERMON_RELATION_ORDER },
-          where,
-        });
+        // pagination params are supplied. When search is present it is ranked
+        // by relevance like the keyset path; the response shape is unchanged.
+        const queryBuilder = this.buildSermonQueryBuilder(primaryOrders);
+        if (tsquery) {
+          queryBuilder
+            .addSelect(buildRankExpression(), 'rank')
+            .where(TS_SEARCH_CONDITION)
+            .setParameter('tsquery', tsquery);
+        }
+        const [sermons, count] = await queryBuilder.getManyAndCount();
         return {
           sermons: sermons.map((s) => this.normalizeSermonRelations(s)),
           count,
@@ -146,47 +230,68 @@ export class SermonService {
       // Keyset (cursor) pagination: instead of OFFSET — which rescans and skips
       // every row before the offset on each page — fetch take+1 rows after the
       // cursor and use the extra row to decide whether another page exists.
-      const queryBuilder = this.sermonRepository
-        .createQueryBuilder('sermon')
-        .leftJoinAndSelect('sermon.playlistJoins', 'playlistJoins')
-        .leftJoinAndSelect('playlistJoins.playlist', 'playlists')
-        .leftJoinAndSelect('playlists.sectionJoins', 'playlistSectionJoins')
-        .leftJoinAndSelect('playlistSectionJoins.section', 'playlistSections')
-        .leftJoinAndSelect('playlists.sermonJoins', 'playlistSermonJoins')
-        .leftJoinAndSelect('playlistSermonJoins.sermon', 'playlistSermons')
-        .leftJoinAndSelect(
-          'playlistSermons.playlistJoins',
-          'playlistSermonPlaylistJoins',
-        )
-        .leftJoinAndSelect(
-          'playlistSermonPlaylistJoins.playlist',
-          'playlistSermonPlaylists',
-        )
-        .orderBy('sermon.id', 'DESC')
-        .addOrderBy('playlistJoins.position', 'ASC')
-        .addOrderBy('playlistSectionJoins.position', 'ASC')
-        .addOrderBy('playlistSermonJoins.position', 'ASC')
-        .take(take + 1);
+      const queryBuilder = this.buildSermonQueryBuilder(primaryOrders);
 
-      if (cursor) {
+      if (tsquery) {
+        queryBuilder
+          .addSelect(buildRankExpression(), 'rank')
+          .where(TS_SEARCH_CONDITION)
+          .setParameter('tsquery', tsquery);
+        if (cursor) {
+          // Relevance pages are ordered by (rank DESC, id DESC), so a bare id
+          // cursor is wrong — the composite cursor carries both values and
+          // paginates with a row-value comparison. The rank is float4 in the
+          // DB; the bound JS number is float8, so cast it back to float4 for
+          // an exact (not approximate) comparison.
+          const { rank, id } = decodeCompositeCursor(cursor);
+          queryBuilder.andWhere(
+            `(${buildRankExpression()}, sermon.id) < (:rank::float4, :id)`,
+            { rank, id },
+          );
+        }
+      } else if (cursor) {
         queryBuilder.andWhere('sermon.id < :cursor', { cursor });
       }
 
-      if (q) {
-        const searchCondition = SermonService.SEARCH_FIELDS.map(
-          (field) => `LOWER(sermon.${field}) LIKE :q`,
-        ).join(' OR ');
-        queryBuilder.andWhere(searchCondition, { q });
-      }
+      queryBuilder.take(take + 1);
 
-      const rows = await queryBuilder.getMany();
+      // The search path selects the rank expression (for the composite cursor)
+      // and reads it back from the raw rows; the no-search path needs no extra
+      // select and can stay on the plain getMany.
+      const rawAndEntities = tsquery
+        ? await queryBuilder.getRawAndEntities()
+        : undefined;
+      const rows = rawAndEntities
+        ? rawAndEntities.entities
+        : await queryBuilder.getMany();
       const hasMore = rows.length > take;
       const sermons = hasMore ? rows.slice(0, take) : rows;
+
+      let nextCursor: string | null = null;
+      if (hasMore) {
+        const lastSermon = sermons[sermons.length - 1];
+        if (tsquery) {
+          const lastRaw = rawAndEntities.raw.find(
+            (row) => row.sermon_id === lastSermon.id,
+          );
+          if (!lastRaw) {
+            throw new Error(
+              `rank row for sermon "${lastSermon.id}" missing from search results`,
+            );
+          }
+          nextCursor = encodeCompositeCursor(
+            Number(lastRaw.rank),
+            lastSermon.id,
+          );
+        } else {
+          nextCursor = lastSermon.id;
+        }
+      }
 
       return {
         sermons: sermons.map((s) => this.normalizeSermonRelations(s)),
         count: null,
-        nextCursor: hasMore ? sermons[sermons.length - 1].id : null,
+        nextCursor,
       };
     } catch (error) {
       if (error instanceof HttpException) {
@@ -197,6 +302,45 @@ export class SermonService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  // Shared QueryBuilder for both findAll code paths: the deep relation graph
+  // plus the primary ordering (id DESC, or rank DESC + id DESC under search)
+  // followed by the join-position orders normalizePlaylistRelations expects.
+  private buildSermonQueryBuilder(
+    primaryOrders: Array<[order: string, direction: 'ASC' | 'DESC']>,
+  ): SelectQueryBuilder<SermonEntity> {
+    const queryBuilder = this.sermonRepository
+      .createQueryBuilder('sermon')
+      .leftJoinAndSelect('sermon.playlistJoins', 'playlistJoins')
+      .leftJoinAndSelect('playlistJoins.playlist', 'playlists')
+      .leftJoinAndSelect('playlists.sectionJoins', 'playlistSectionJoins')
+      .leftJoinAndSelect('playlistSectionJoins.section', 'playlistSections')
+      .leftJoinAndSelect('playlists.sermonJoins', 'playlistSermonJoins')
+      .leftJoinAndSelect('playlistSermonJoins.sermon', 'playlistSermons')
+      .leftJoinAndSelect(
+        'playlistSermons.playlistJoins',
+        'playlistSermonPlaylistJoins',
+      )
+      .leftJoinAndSelect(
+        'playlistSermonPlaylistJoins.playlist',
+        'playlistSermonPlaylists',
+      );
+
+    // orderBy replaces any previous order, addOrderBy appends — apply the
+    // primary orders first, then the relation orders.
+    primaryOrders.forEach(([order, direction], index) => {
+      if (index === 0) {
+        queryBuilder.orderBy(order, direction);
+      } else {
+        queryBuilder.addOrderBy(order, direction);
+      }
+    });
+
+    return queryBuilder
+      .addOrderBy('playlistJoins.position', 'ASC')
+      .addOrderBy('playlistSectionJoins.position', 'ASC')
+      .addOrderBy('playlistSermonJoins.position', 'ASC');
   }
 
   async getStreamUrl(id: string): Promise<StreamUrlResponse> {
