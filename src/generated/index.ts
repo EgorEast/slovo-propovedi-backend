@@ -5,7 +5,7 @@
  * REST API сервиса «Слово.Проповеди».
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.6.2
+ * OpenAPI spec version: 0.7.0
  */
 import * as zod from 'zod';
 
@@ -1641,6 +1641,16 @@ export const AuthControllerRefreshResponse = zod.strictObject({
   accessToken: zod.string(),
   refreshToken: zod.string(),
 });
+
+/**
+ * Отзывает refresh-токен (denylist). Access-токен остаётся технически валидным до истечения срока (не более 30 минут); клиент обязан удалить оба токена.
+ * @summary Выход из системы
+ */
+export const AuthControllerLogoutBody = zod.strictObject({
+  refreshToken: zod.string().describe('Refresh-токен, который нужно отозвать'),
+});
+
+export const AuthControllerLogoutResponse = zod.void();
 
 /**
  * @summary Получить профиль текущего пользователя

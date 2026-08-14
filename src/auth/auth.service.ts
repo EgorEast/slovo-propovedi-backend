@@ -1,4 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { createHash } from 'crypto';
+import { LessThan, Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user-role.enum';
 import { JwtService } from '@nestjs/jwt';
@@ -6,6 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { RefreshResponseDto } from './dto/refresh-response.dto';
 import { UserResponseDto } from './dto/user-response.dto';
+import { RevokedRefreshToken } from './entities/revoked-refresh-token.entity';
 
 const BCRYPT_PREFIXES = ['$2a$', '$2b$', '$2y$'];
 
@@ -14,6 +18,8 @@ export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
+    @InjectRepository(RevokedRefreshToken)
+    private revokedTokensRepository: Repository<RevokedRefreshToken>,
   ) {}
 
   private get accessSecret(): string {
@@ -84,11 +90,63 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
+    // Denylist check: a refresh token whose hash was stored by logout() is dead.
+    if (await this.isRevoked(refreshToken)) {
+      throw new UnauthorizedException('Refresh token has been revoked');
+    }
+
     return this.generateTokens({
       id: user.id,
       email: user.email,
       role: user.role,
     });
+  }
+
+  // Logout is idempotent: a revoked token resolves with 204, and so does an
+  // unusable (invalid/expired) token — there is nothing left to revoke.
+  async logout(refreshToken: string): Promise<void> {
+    let verified: { id: string; exp: number };
+
+    try {
+      verified = await this.jwtService.verifyAsync(refreshToken, {
+        secret: this.refreshSecret,
+      });
+    } catch {
+      return;
+    }
+
+    const tokenHash = this.hashToken(refreshToken);
+
+    // Opportunistic purge: rows whose token already expired are garbage — no
+    // scheduled job needed.
+    await this.revokedTokensRepository.delete({
+      expiresAt: LessThan(new Date()),
+    });
+
+    // orIgnore() keeps a double logout a 204 (UNIQUE on token_hash).
+    await this.revokedTokensRepository
+      .createQueryBuilder()
+      .insert()
+      .into(RevokedRefreshToken)
+      .values({
+        tokenHash,
+        userId: verified.id,
+        expiresAt: new Date(verified.exp * 1000),
+      })
+      .orIgnore()
+      .execute();
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private async isRevoked(refreshToken: string): Promise<boolean> {
+    const revoked = await this.revokedTokensRepository.findOne({
+      where: { tokenHash: this.hashToken(refreshToken) },
+      select: { id: true },
+    });
+    return revoked !== null;
   }
 
   async getProfile(userId: string): Promise<UserResponseDto> {

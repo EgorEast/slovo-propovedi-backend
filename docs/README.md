@@ -16,7 +16,7 @@
 | [`modules/README.md`](./modules/README.md) | Индекс модулей: module → endpoints → entity → doc |
 | [`modules/app.md`](./modules/app.md) | Файловое хранилище: `POST/GET /files`, stream-url |
 | [`modules/health.md`](./modules/health.md) | `GET /health` → `{ status: 'ok' }` |
-| [`modules/auth.md`](./modules/auth.md) | login/refresh/profile, JWT-токены, bcrypt, `AuthGuard` |
+| [`modules/auth.md`](./modules/auth.md) | login/refresh/logout/profile, JWT-токены, denylist, bcrypt, `AuthGuard` |
 | [`modules/users.md`](./modules/users.md) | Сущность `user`, `UsersService`, `UsersController` (CRUD + смена пароля) |
 | [`modules/sermon.md`](./modules/sermon.md) | CRUD проповедей, поиск, keyset-пагинация |
 | [`modules/playlist.md`](./modules/playlist.md) | CRUD плейлистов, bulk-replace, reorder |

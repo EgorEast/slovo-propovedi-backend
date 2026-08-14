@@ -51,7 +51,7 @@
 | `user` | ✅ | ❌ `403` | ❌ `403` | ❌ `403` |
 | аноним | ✅ | ❌ `401` (guarded) | ❌ `401` | ❌ `401` |
 
-**Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /auth/profile` — `AuthGuard` без `@Roles` (любой аутентифицированный).
+**Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /auth/profile` и `POST /auth/logout` — `AuthGuard` без `@Roles` (любой аутентифицированный).
 
 ### Sermons
 
@@ -97,6 +97,17 @@
 | `GET /files` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.listFiles` | `MinioService.listImages` (cover-reuse) |
 | `GET /files/:fileName` | публичный | `AppController.getFile` | `MinioService.getFileUrl` (deprecated) |
 | `GET /files/:fileName/stream-url` | публичный | `AppController.getStreamUrl` | `MinioService.getPresignedFileUrl` |
+
+### Auth
+
+| Эндпоинт | Guard | Метод контроллера | Метод сервиса |
+|----------|-------|-------------------|----------------|
+| `POST /auth/login` | публичный | `AuthController.signIn` | `AuthService.signIn(username, password)` |
+| `POST /auth/refresh` | публичный | `AuthController.refresh` | `AuthService.refreshTokens(refreshToken)` |
+| `POST /auth/logout` | `AuthGuard` (без `@Roles`) | `AuthController.logout` | `AuthService.logout(refreshToken)` |
+| `GET /auth/profile` | `AuthGuard` (без `@Roles`) | `AuthController.getProfile` | `AuthService.getProfile(req.user.id)` |
+
+> ✅ `POST /auth/logout` доступен **любой аутентифицированной роли** (`admin` / `moderator` / `user`) — без `RolesGuard`. Отзывает refresh-токен (denylist, sha256-хэш в `revoked_refresh_token`); повторный logout с тем же токеном — тоже `204`. Access-токен остаётся технически валидным до истечения (≤ 30 мин). Детали — [`../modules/auth.md`](../modules/auth.md).
 
 ### Users
 

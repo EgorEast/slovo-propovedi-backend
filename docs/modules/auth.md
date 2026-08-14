@@ -22,11 +22,12 @@
 |---------------|-------|------------|----------------|------------|
 | `POST /auth/login` | публичный | `AuthResponseDto` | `signIn(username, password)` | вход по username/password |
 | `POST /auth/refresh` | публичный | `RefreshResponseDto` | `refreshTokens(refreshToken)` | обновление пары токенов |
+| `POST /auth/logout` | ✅ `AuthGuard` (без `@Roles`) | `204` (без тела) | `logout(refreshToken)` | отзыв refresh-токена (denylist) |
 | `GET /auth/profile` | ✅ `AuthGuard` (без `@Roles`) | `UserResponseDto` | `getProfile(req.user.id)` | профиль **любого** аутентифицированного (включая `user`) |
 
-`POST /auth/login` и `POST /auth/refresh` возвращают `200 OK` (`@HttpCode(HttpStatus.OK)`), хотя это POST — типичная для логина семантика (не 201).
+`POST /auth/login` и `POST /auth/refresh` возвращают `200 OK` (`@HttpCode(HttpStatus.OK)`), хотя это POST — типичная для логина семантика (не 201). `POST /auth/logout` возвращает **`204 No Content`** (как `PATCH /users/:id/password` и `DELETE /users/:id`) — тело отсутствует, повторный logout с тем же токеном тоже `204` (идемпотентность).
 
-> ✅ `/auth/profile` намеренно **без `RolesGuard`**: любой вошедший (в т.ч. роль `user`) может читать свой профиль. Роли применяются только к мутирующим/админским роутам (см. [`../contracts/rest-api.md`](../contracts/rest-api.md)).
+> ✅ `/auth/profile` и `/auth/logout` намеренно **без `RolesGuard`**: любой вошедший (в т.ч. роль `user`) может читать свой профиль и выйти из системы. Роли применяются только к мутирующим/админским роутам (см. [`../contracts/rest-api.md`](../contracts/rest-api.md)).
 
 ## `AuthService` (`src/auth/auth.service.ts`)
 
@@ -62,11 +63,28 @@ private async generateTokens(payload: { id: string; email: string; role: UserRol
 
 1. `jwtService.verifyAsync(refreshToken, { secret: refreshSecret })` — сбой → `UnauthorizedException`.
 2. **Пере-запрашивает живого пользователя** `usersService.findOneById(payload.id)` — нет → `UnauthorizedException`.
-3. Собирает **свежий** payload `{ id, email, role }` из живого пользователя и подписывает новую пару.
+3. **Denylist-check**: sha256(refreshToken) ищется в таблице `revoked_refresh_token` (`isRevoked`) — найден → `UnauthorizedException` **до** подписания новой пары (токен отозван через `logout`).
+4. Собирает **свежий** payload `{ id, email, role }` из живого пользователя и подписывает новую пару.
 
 Зачем re-fetch:
 - **stale/demoted role вступает в силу при следующем refresh** — пониженный админ не получит новый access-токен со старой ролью;
 - **legacy refresh-токены** (выданные до ролей, payload без `role`) автоматически апгрейдятся до ролевых.
+
+### `logout(refreshToken)`
+
+Выход из системы через **denylist** (таблица `revoked_refresh_token`, см. [`../db.md`](../db.md)). Логика:
+
+1. `jwtService.verifyAsync(refreshToken, { secret: refreshSecret })`:
+   - **невалидный/просроченный** токен → `return` (**всё равно `204`**, идемпотентность — непригодному токену нечего отзывать);
+   - валидный → payload `{ id, exp }` (id пользователя, срок токена).
+2. `tokenHash = sha256(refreshToken)` (hex) — **в БД хранится только хэш**, не сам токен: утечка дампа БД не даёт «оживить» refresh-токен.
+3. **Opportunistic purge**: `DELETE FROM revoked_refresh_token WHERE expires_at < now()` — строки с уже истёкшими токенами мусорные, чистим по ходу, без scheduled job.
+4. `INSERT ... ON CONFLICT DO NOTHING` (`orIgnore()`) — повторный logout с тем же токеном не падает (UNIQUE на `token_hash`), остаётся `204`.
+
+**Семантика отзыва:**
+- **refresh-токен** умирает немедленно — следующий `/auth/refresh` с ним получит `401`;
+- **access-токен** НЕ в denylist — он остаётся технически валидным до собственного истечения (**≤ 30 минут**). Клиент обязан удалить оба токена при logout; при «утечке» access-токена максимум 30 минут — осознанный компромисс (не ходить в БД на каждый запрос, та же логика, что с устареванием роли);
+- строки denylist живут до `exp` токена (после — токен и так просрочен).
 
 ### `getProfile(userId)`
 
@@ -110,9 +128,14 @@ export const accessTokenPayloadSchema = z.object({
 |------|-------|
 | `src/auth/dto/sign-in-request.dto.ts` | `{ username, password }` |
 | `src/auth/dto/refresh-token.dto.ts` | `{ refreshToken }` |
+| `src/auth/dto/logout-request.dto.ts` | `{ refreshToken }` |
 | `src/auth/dto/auth-response.dto.ts` | `{ accessToken, refreshToken, user: { id, name, username, email, role } }` |
 | `src/auth/dto/refresh-response.dto.ts` | `{ accessToken, refreshToken }` |
 | `src/auth/dto/user-response.dto.ts` | `{ id, name, username, email, role }` |
+
+## Denylist-сущность `RevokedRefreshToken`
+
+`src/auth/entities/revoked-refresh-token.entity.ts`, таблица `revoked_refresh_token` (см. [`../db.md`](../db.md)). Регистрируется в `AuthModule` через `TypeOrmModule.forFeature([RevokedRefreshToken])` (рядом с существующими импортами `UsersModule` + глобальный `JwtModule`).
 
 ## Роль в access-токене и её «устаревание»
 

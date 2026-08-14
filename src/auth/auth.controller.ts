@@ -11,6 +11,7 @@ import {
 import { AuthService } from './auth.service';
 import { SignInRequestDto } from './dto/sign-in-request.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { LogoutRequestDto } from './dto/logout-request.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { RefreshResponseDto } from './dto/refresh-response.dto';
 import { UserResponseDto } from './dto/user-response.dto';
@@ -37,6 +38,14 @@ export class AuthController {
   @ZodResponse({ type: RefreshResponseDto })
   refresh(@Body() refreshDto: RefreshTokenDto): Promise<RefreshResponseDto> {
     return this.authService.refreshTokens(refreshDto.refreshToken);
+  }
+
+  @UseGuards(AuthGuard)
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Выход из системы' })
+  logout(@Body() logoutDto: LogoutRequestDto): Promise<void> {
+    return this.authService.logout(logoutDto.refreshToken);
   }
 
   @UseGuards(AuthGuard)

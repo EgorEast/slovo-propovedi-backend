@@ -5,6 +5,8 @@ import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { AuthGuard } from './guard/auth.guard';
 import { UserRole } from '../users/user-role.enum';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { RevokedRefreshToken } from './entities/revoked-refresh-token.entity';
 
 jest.mock('bcrypt', () => ({
   compare: jest.fn().mockResolvedValue(true),
@@ -25,6 +27,7 @@ const mockUser = {
 
 describe('AuthController', () => {
   let controller: AuthController;
+  let authService: AuthService;
   let usersService: {
     findOneByUsername: jest.Mock;
     findOneById: jest.Mock;
@@ -56,10 +59,19 @@ describe('AuthController', () => {
             verifyAsync: jest.fn(),
           },
         },
+        {
+          provide: getRepositoryToken(RevokedRefreshToken),
+          useValue: {
+            findOne: jest.fn().mockResolvedValue(null),
+            delete: jest.fn(),
+            createQueryBuilder: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
+    authService = module.get<AuthService>(AuthService);
     usersService = module.get(UsersService);
     jwtService = module.get(JwtService);
   });
@@ -98,6 +110,16 @@ describe('AuthController', () => {
 
     expect(usersService.findOneById).toHaveBeenCalledWith(mockUser.id);
     expect(result.accessToken).toBe('signed-token');
+  });
+
+  it('logout delegates to the service with the refresh token', async () => {
+    const logoutSpy = jest
+      .spyOn(authService, 'logout')
+      .mockResolvedValue(undefined);
+
+    await controller.logout({ refreshToken: 'refresh-token' } as never);
+
+    expect(logoutSpy).toHaveBeenCalledWith('refresh-token');
   });
 
   it('getProfile returns the live user profile including role', async () => {

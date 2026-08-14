@@ -15,10 +15,10 @@
 --
 -- The DDL below is exactly what TypeORM 0.3.17 `synchronize` produces for the
 -- entities in `backend/src/**/*.entity.ts` (verified against a throwaway
--- instance). Constraint names are TypeORM's generated identifiers.
--- One hand-maintained exception: the `role` CHECK constraint on "user"
--- (TypeORM varchar columns get no CHECK) — see the inline comment on the
--- column for why the name is `user_role_check`.
+-- instance). Constraint names are TypeORM's generated identifiers, except for
+-- hand-maintained names (surrogate join-table PKs/UQ pairs, the `role` CHECK on
+-- "user", and the revoked_refresh_token constraints) which match the manual
+-- migrations so re-running them on a fresh database is a no-op.
 -- =============================================================================
 
 -- uuid PKs are generated with uuid_generate_v4() (uuid-ossp), matching
@@ -40,6 +40,17 @@ CREATE TABLE "user" (
     -- migration is a no-op on fresh databases.
     role character varying DEFAULT 'user'::character varying NOT NULL,
     CONSTRAINT user_role_check CHECK (role IN ('admin', 'moderator', 'user'))
+);
+
+-- ---------------------------------------------------------------------------
+-- revoked_refresh_token (logout denylist — sha256 hashes of revoked refresh tokens)
+-- ---------------------------------------------------------------------------
+CREATE TABLE revoked_refresh_token (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    token_hash character varying NOT NULL,
+    user_id uuid NOT NULL,
+    revoked_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone NOT NULL
 );
 
 -- ---------------------------------------------------------------------------
@@ -125,6 +136,8 @@ ALTER TABLE ONLY playlist_sermons_sermon
     ADD CONSTRAINT "PK_playlist_sermons_sermon_id" PRIMARY KEY (id);
 ALTER TABLE ONLY section_playlists_playlist
     ADD CONSTRAINT "PK_section_playlists_playlist_id" PRIMARY KEY (id);
+ALTER TABLE ONLY revoked_refresh_token
+    ADD CONSTRAINT "PK_revoked_refresh_token" PRIMARY KEY (id);
 
 -- ---------------------------------------------------------------------------
 -- Unique constraints
@@ -137,6 +150,8 @@ ALTER TABLE ONLY playlist_sermons_sermon
     ADD CONSTRAINT "UQ_playlist_sermons_sermon_pair" UNIQUE ("playlistId", "sermonId");
 ALTER TABLE ONLY section_playlists_playlist
     ADD CONSTRAINT "UQ_section_playlists_playlist_pair" UNIQUE ("sectionId", "playlistId");
+ALTER TABLE ONLY revoked_refresh_token
+    ADD CONSTRAINT "UQ_revoked_refresh_token_token_hash" UNIQUE (token_hash);
 
 -- ---------------------------------------------------------------------------
 -- Indexes (join-table FK lookups)
@@ -157,3 +172,5 @@ ALTER TABLE ONLY section_playlists_playlist
     ADD CONSTRAINT "FK_39bacf40bb28fa91cdf8c3e1eab" FOREIGN KEY ("playlistId") REFERENCES playlist(id) ON DELETE CASCADE;
 ALTER TABLE ONLY section_playlists_playlist
     ADD CONSTRAINT "FK_7e60b48429a43494fcd98f0a70a" FOREIGN KEY ("sectionId") REFERENCES section(id) ON UPDATE CASCADE ON DELETE CASCADE;
+ALTER TABLE ONLY revoked_refresh_token
+    ADD CONSTRAINT "FK_revoked_refresh_token_user" FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE;

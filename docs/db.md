@@ -24,7 +24,7 @@
 
 ## Сущности и связи
 
-Шесть сущностей загружаются по glob-шаблону. Все — с uuid-PK (`@PrimaryGeneratedColumn('uuid')`).
+Семь сущностей загружаются по glob-шаблону. Все — с uuid-PK (`@PrimaryGeneratedColumn('uuid')`).
 
 ### `User` — таблица `user`
 
@@ -38,6 +38,20 @@
 | `username` | varchar | UNIQUE |
 | `password` | varchar | bcrypt-хэш |
 | `role` | varchar | NOT NULL, default `'user'`, CHECK `(role IN ('admin','moderator','user'))` |
+
+### `RevokedRefreshToken` — таблица `revoked_refresh_token`
+
+`src/auth/entities/revoked-refresh-token.entity.ts`. Denylist отозванных refresh-токенов (см. [`modules/auth.md`](./modules/auth.md), `logout`).
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| `id` | uuid | PK |
+| `token_hash` | varchar | **UNIQUE** — ключ поиска denylist; guard от повторного logout (`ON CONFLICT DO NOTHING`) |
+| `user_id` | uuid | FK → `user`(id), `ON DELETE CASCADE` |
+| `revoked_at` | timestamptz | NOT NULL, default `now()` |
+| `expires_at` | timestamptz | NOT NULL — зеркало `exp` токена; после этой даты токен и так просрочен, строка — мусор (чистится opportunistic purge) |
+
+Хранится **sha256-хэш** токена, не сам токен — утечка БД не позволяет «оживить» refresh-токен.
 
 ### `SermonEntity` — таблица `sermon`
 
@@ -123,6 +137,16 @@
   username (UQ)
   password            (bcrypt)
   role                (default 'user', CHECK admin/moderator/user)
+  │
+  │ 1:N
+  ▼
+ revoked_refresh_token
+ ──────────────
+  id (PK, uuid)
+  token_hash (UQ)     (sha256 хэш refresh-токена, denylist logout)
+  user_id (FK -> user, CASCADE)
+  revoked_at          (default now())
+  expires_at          (= exp токена)
 
  sermon ────────────────────────────┐
  ──────────────                     │ 1:N
@@ -178,10 +202,11 @@
 
 | Файл | Что делает |
 |------|------------|
-| `sql/bootstrap.sql` | **свежая БД**: `CREATE EXTENSION "uuid-ossp"`, таблицы `user`, `sermon`, `section`, `playlist`, join-таблицы `playlist_sermons_sermon` + `section_playlists_playlist` (суррогатный `id` PK + UNIQUE FK-пара + `position`), PK, UNIQUE (`user.email`, `user.username`, join-пары), 4 btree-индекса на FK-колонках, 4 FK с `ON DELETE/UPDATE CASCADE`. Идентичен выходу TypeORM `synchronize` для 0.3.17. |
+| `sql/bootstrap.sql` | **свежая БД**: `CREATE EXTENSION "uuid-ossp"`, таблицы `user`, `revoked_refresh_token`, `sermon`, `section`, `playlist`, join-таблицы `playlist_sermons_sermon` + `section_playlists_playlist` (суррогатный `id` PK + UNIQUE FK-пара + `position`), PK, UNIQUE (`user.email`, `user.username`, `revoked_refresh_token.token_hash`, join-пары), 4 btree-индекса на FK-колонках, FK с `ON DELETE/UPDATE CASCADE` (включая `revoked_refresh_token.user_id → user(id)`). Идентичен выходу TypeORM `synchronize` для 0.3.17 (плюс hand-maintained имена констрейнтов). |
 | `sql/migrate-add-username.sql` | **существующие БД** (2026-08-06): `ADD COLUMN IF NOT EXISTS username`, backfill NULL→`'admin'` (совпадает с playbook-var `slovo_admin_user_username`), `SET NOT NULL`, пересоздание UNIQUE `UQ_78a916df40e02a9deb1c4b75edb`. Идемпотентен. |
 | `sql/migrations/001_add_positions.sql` | **существующие БД** (2026-08-07): `ADD COLUMN IF NOT EXISTS position` на `section`, `playlist_sermons_sermon`, `section_playlists_playlist`; конвертация join-таблиц с составного PK на суррогатный `id` (DO-блоки, идемпотентно); backfill позиций через `ROW_NUMBER()` (guard `WHERE position = 0`); индекс `idx_section_position`. Идемпотентен. |
 | `sql/migrations/002_add_user_roles.sql` | **существующие БД** (2026-08-14): `ADD COLUMN IF NOT EXISTS role` на `user`; backfill `NULL → 'admin'` (все прежние аккаунты были неявными админами); `SET DEFAULT 'user'` (least privilege для новых); `SET NOT NULL`; CHECK `user_role_check` (DO-блок, идемпотентно). Идемпотентен. |
+| `sql/migrations/003_revoked_refresh_tokens.sql` | **существующие БД** (2026-08-14): `CREATE TABLE IF NOT EXISTS revoked_refresh_token`; PK, UNIQUE `token_hash`, FK `user_id → user(id) ON DELETE CASCADE` — каждый в DO-блоке с guard по `pg_constraint` (идемпотентно; на fresh-bootstrap БД — no-op). Идемпотентен. |
 
 Команды применения (как DB-owner):
 
@@ -193,6 +218,7 @@ psql -h <host> -U <user> -d <db> -f sql/bootstrap.sql
 psql -h <host> -U <user> -d <db> -f sql/migrate-add-username.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/001_add_positions.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/002_add_user_roles.sql
+psql -h <host> -U <user> -d <db> -f sql/migrations/003_revoked_refresh_tokens.sql
 ```
 
 > ⚠️ **Нет TypeORM migration runner и нет npm-скрипта миграций.** Применение — строго ручное через `psql`. Новые изменения схемы оформлять идемпотентным SQL-файлом и синхронно отражать в `bootstrap.sql`.

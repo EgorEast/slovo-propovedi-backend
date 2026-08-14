@@ -11,7 +11,7 @@
 |--------|-----------|----------|----------|
 | `app` (файлы) | `POST /files`, `GET /files`, `GET /files/:fileName`, `GET /files/:fileName/stream-url` | — (MinIO) | [`app.md`](./app.md) |
 | `health` | `GET /health` | — | [`health.md`](./health.md) |
-| `auth` | `POST /auth/login`, `POST /auth/refresh`, `GET /auth/profile` | — (JWT) | [`auth.md`](./auth.md) |
+| `auth` | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/profile` | `RevokedRefreshToken` (`revoked_refresh_token`, denylist) | [`auth.md`](./auth.md) |
 | `users` | `POST /users`, `GET /users`, `GET /users/:id`, `PATCH /users/:id`, `PATCH /users/:id/password`, `DELETE /users/:id` | `User` (`user`) | [`users.md`](./users.md) |
 | `sermon` | `POST /sermons`, `GET /sermons`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `PATCH /sermons/:id`, `DELETE /sermons/:id` | `SermonEntity` (`sermon`) | [`sermon.md`](./sermon.md) |
 | `playlist` | `POST /playlists`, `GET /playlists`, `GET /playlists/:id`, `PATCH /playlists/:id`, `PATCH /playlists/:id/sermons/reorder`, `DELETE /playlists/:id` | `PlaylistEntity` (`playlist`) + `PlaylistSermonJoinEntity` | [`playlist.md`](./playlist.md) |
@@ -26,7 +26,7 @@
 Роли: `admin` / `moderator` / `user` (`UserRole`, живут в JWT-payload `{ id, email, role }` и в БД). `AuthGuard` парсит payload zod-схемой (legacy-токены без роли → 401 → refresh); `RolesGuard` fail-closed по `@Roles(...)`.
 
 - **Публичные чтения** (без аутентификации, любая роль): `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`.
-- **Guarded (`AuthGuard`):** `GET /auth/profile` (любой аутентифицированный, включая `user`).
+- **Guarded (`AuthGuard`):** `GET /auth/profile` (любой аутентифицированный, включая `user`), `POST /auth/logout` (любой аутентифицированный; отзывает refresh-токен через denylist).
 - **Guarded (`AuthGuard` + `RolesGuard`):**
   - **admin-only:** все `/users*`;
   - **admin/moderator:** все write-эндпоинты (`POST/PATCH/DELETE` sermons/sections/playlists), `POST /files`, `GET /files` (инвентарь хранилища).
