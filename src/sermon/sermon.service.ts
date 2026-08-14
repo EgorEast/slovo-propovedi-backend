@@ -11,7 +11,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { SermonEntity } from './entities/sermon.entity';
 import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
 import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-join.entity';
-import { DataSource, ILike, In, Repository } from 'typeorm';
+import { DataSource, In, Raw, Repository } from 'typeorm';
 import {
   AllSermonsResponse,
   NormalizedSermonResponse,
@@ -45,7 +45,7 @@ const SERMON_RELATION_ORDER = {
   },
 } as const;
 
-// ILIKE treats % _ and \ as metacharacters — escape them so user input such as
+// LIKE treats % _ and \ as metacharacters — escape them so user input such as
 // "100%" or "foo_bar" matches literally (Postgres's default LIKE escape is \).
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, '\\$&');
 
@@ -97,8 +97,8 @@ export class SermonService {
   }
 
   // Fields the `search` query matches against, shared by the full-fetch
-  // (TypeORM ILike array) and keyset (QueryBuilder ILIKE) code paths so the
-  // list of searchable fields lives in exactly one place.
+  // (TypeORM Raw LOWER array) and keyset (QueryBuilder LOWER) code paths so
+  // the list of searchable fields lives in exactly one place.
   private static readonly SEARCH_FIELDS = [
     'title',
     'artist',
@@ -112,16 +112,23 @@ export class SermonService {
     search?: string,
   ): Promise<AllSermonsResponse> {
     try {
-      // Parse the search term at the boundary: escape ILIKE metacharacters and
-      // wrap once, so the full-fetch and keyset paths share one identical value.
-      const q = search ? `%${escapeLike(search)}%` : undefined;
+      // Parse the search term at the boundary: escape LIKE metacharacters,
+      // then lowercase it (JS toLowerCase folds Cyrillic regardless of the DB
+      // locale — DB lower() under a C/POSIX ctype would not). Wrap once, so
+      // the full-fetch and keyset paths share one identical value.
+      const q = search ? `%${escapeLike(search).toLowerCase()}%` : undefined;
 
       if (!take) {
         // Backward-compatible full fetch — used by the admin UI when no
         // pagination params are supplied.
         const where = q
           ? SermonService.SEARCH_FIELDS.map((field) => ({
-              [field]: ILike(q),
+              // TypeORM passes the full "alias.column" path to the Raw
+              // generator; the pattern is bound as the :q parameter. Both
+              // sides are lowercased: the column via LOWER(), the pattern at
+              // the boundary above — so Cyrillic case folding never depends
+              // on ILIKE (which needs a UTF-8 database ctype to fold).
+              [field]: Raw((alias) => `LOWER(${alias}) LIKE :q`, { q }),
             }))
           : undefined;
         const [sermons, count] = await this.sermonRepository.findAndCount({
@@ -167,7 +174,7 @@ export class SermonService {
 
       if (q) {
         const searchCondition = SermonService.SEARCH_FIELDS.map(
-          (field) => `sermon.${field} ILIKE :q`,
+          (field) => `LOWER(sermon.${field}) LIKE :q`,
         ).join(' OR ');
         queryBuilder.andWhere(searchCondition, { q });
       }

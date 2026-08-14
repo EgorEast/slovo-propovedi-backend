@@ -5,7 +5,6 @@ import { SermonEntity } from './entities/sermon.entity';
 import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
 import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-join.entity';
 import { MinioService } from 'src/minio/minio.service';
-import { ILike } from 'typeorm';
 
 // Mirror of the service's searchable fields — asserting the concrete list here
 // guards the runtime behavior against accidental edits to the constant.
@@ -69,16 +68,33 @@ describe('SermonService', () => {
         expect(options.where).toBeUndefined();
       });
 
-      it('applies an ILike OR-array over every searchable field when search is present', async () => {
+      it('applies a parameterized LOWER(...) LIKE OR-array over every searchable field when search is present', async () => {
         sermonRepository.findAndCount.mockResolvedValue([[], 0]);
 
         await service.findAll(undefined, undefined, 'благодать');
 
         const options = sermonRepository.findAndCount.mock.calls[0][0];
-        const expectedWhere = SEARCH_FIELDS.map((field) => ({
-          [field]: ILike('%благодать%'),
-        }));
-        expect(options.where).toEqual(expectedWhere);
+        expect(options.where).toHaveLength(SEARCH_FIELDS.length);
+        options.where.forEach((condition, index) => {
+          const field = SEARCH_FIELDS[index];
+          const raw = condition[field];
+          // Raw injects the SQL with the full "alias.column" path that
+          // TypeORM passes in, and binds the pattern as the :q parameter.
+          const alias = `sermon.${field}`;
+          expect(raw.type).toBe('raw');
+          expect(raw.getSql(alias)).toBe(`LOWER(${alias}) LIKE :q`);
+          expect(raw.objectLiteralParameters).toEqual({ q: '%благодать%' });
+        });
+      });
+
+      it('lowercases the search term at the boundary so Cyrillic case folding does not depend on the DB locale', async () => {
+        sermonRepository.findAndCount.mockResolvedValue([[], 0]);
+
+        await service.findAll(undefined, undefined, 'Благодать');
+
+        const options = sermonRepository.findAndCount.mock.calls[0][0];
+        const raw = options.where[0].title;
+        expect(raw.objectLiteralParameters).toEqual({ q: '%благодать%' });
       });
     });
 
@@ -113,27 +129,40 @@ describe('SermonService', () => {
         expect(queryBuilder.andWhere).not.toHaveBeenCalled();
       });
 
-      it('applies a parameterized ILIKE OR-condition over every searchable field when search is present', async () => {
+      it('applies a parameterized LOWER(...) LIKE OR-condition over every searchable field when search is present', async () => {
         const queryBuilder = mockQueryBuilder();
 
         await service.findAll(2, undefined, 'благодать');
 
         const expectedCondition = SEARCH_FIELDS.map(
-          (field) => `sermon.${field} ILIKE :q`,
+          (field) => `LOWER(sermon.${field}) LIKE :q`,
         ).join(' OR ');
         expect(queryBuilder.andWhere).toHaveBeenCalledWith(expectedCondition, {
           q: '%благодать%',
         });
       });
 
-      it('applies both the cursor clause and the escaped ILIKE OR-condition when cursor and search are combined', async () => {
+      it('lowercases the search term at the boundary on the keyset path too', async () => {
+        const queryBuilder = mockQueryBuilder();
+
+        await service.findAll(2, undefined, 'Благодать');
+
+        const expectedCondition = SEARCH_FIELDS.map(
+          (field) => `LOWER(sermon.${field}) LIKE :q`,
+        ).join(' OR ');
+        expect(queryBuilder.andWhere).toHaveBeenCalledWith(expectedCondition, {
+          q: '%благодать%',
+        });
+      });
+
+      it('applies both the cursor clause and the escaped LOWER(...) LIKE OR-condition when cursor and search are combined', async () => {
         const queryBuilder = mockQueryBuilder();
         const cursor = '123e4567-e89b-12d3-a456-426614174000';
 
         await service.findAll(2, cursor, 'благодать');
 
         const expectedCondition = SEARCH_FIELDS.map(
-          (field) => `sermon.${field} ILIKE :q`,
+          (field) => `LOWER(sermon.${field}) LIKE :q`,
         ).join(' OR ');
         expect(queryBuilder.andWhere).toHaveBeenCalledTimes(2);
         expect(queryBuilder.andWhere).toHaveBeenCalledWith(

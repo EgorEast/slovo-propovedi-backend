@@ -1,6 +1,6 @@
 # Модуль `sermon` — проповеди
 
-Проповедь — основная единица контента. Модуль: CRUD, поиск (`ILIKE`), keyset-пагинация (`take`/`cursor`), presigned-URL аудио, синхронизация членства в плейлистах.
+Проповедь — основная единица контента. Модуль: CRUD, поиск (регистронезависимый по кириллице: `LOWER(...) LIKE`), keyset-пагинация (`take`/`cursor`), presigned-URL аудио, синхронизация членства в плейлистах.
 
 **Слой:** backend (module `sermon`)
 **Статус:** актуально
@@ -40,8 +40,8 @@
 
 | Условие | Путь | Как фильтрует |
 |---------|------|----------------|
-| `take` не задан | **полная выборка** | `findAndCount` + `ILike` OR-массив по `SEARCH_FIELDS` |
-| `take` задан | **keyset (cursor)** | QueryBuilder: `sermon.id < :cursor`, `take + 1` строк, escaped `ILIKE` OR-условие |
+| `take` не задан | **полная выборка** | `findAndCount` + `Raw` `LOWER(...) LIKE :q` OR-массив по `SEARCH_FIELDS` |
+| `take` задан | **keyset (cursor)** | QueryBuilder: `sermon.id < :cursor`, `take + 1` строк, escaped `LOWER(sermon.<поле>) LIKE :q` OR-условие |
 
 Общий список поисковых полей — один источник правды:
 
@@ -49,19 +49,25 @@
 private static readonly SEARCH_FIELDS = ['title', 'artist', 'book', 'description'] as const;
 ```
 
-- Поисковый термин нормализуется на границе: `const q = search ? \`%${escapeLike(search)}%\` : undefined;`
-- `escapeLike` экранирует метасимволы `ILIKE` (`\`, `%`, `_`), чтобы пользовательский ввод вроде `"100%"` матчился буквально:
+- Поисковый термин нормализуется на границе **одной точкой**, общей для обоих путей: `const q = search ? \`%${escapeLike(search).toLowerCase()}%\` : undefined;` — сначала `escapeLike`, затем `.toLowerCase()` (JS `toLowerCase` сворачивает кириллицу независимо от локали БД).
+- `escapeLike` экранирует метасимволы `LIKE` (`\`, `%`, `_`), чтобы пользовательский ввод вроде `"100%"` матчился буквально:
 
 ```ts
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, '\\$&');
 ```
+
+- **Регистронезависимость по кириллице не зависит от `ILIKE`** (он сворачивает регистр ровно настолько, насколько это умеет `LC_CTYPE` базы — при `C`/`POSIX` кириллицу не сворачивает вовсе). Вместо этого **обе стороны** приводятся к нижнему регистру:
+  - паттерн — на границе в JS (см. выше);
+  - колонка — в SQL через `LOWER(колонка) LIKE :q`.
+- Полная выборка: `Raw((alias) => \`LOWER(${alias}) LIKE :q\`, { q })` — TypeORM передаёт генератору полный путь `alias.column`, паттерн биндится как параметр `:q`.
+- **Требование к БД:** `lower()` в PostgreSQL тоже зависит от ctype; при `LC_CTYPE=C`/`POSIX` кириллический case folding не работает даже в `lower()`. База должна быть создана с UTF-8-локалью (`ru_RU.UTF-8`, `en_US.UTF-8`) — см. [`sql/migrations/004_fix_db_collation.md`](../../sql/migrations/004_fix_db_collation.md).
 
 - **Keyset-путь:** вместо `OFFSET` (пересканирует и пропускает строки) берёт `take + 1` строк после курсора; лишняя строка решает, есть ли следующая страница. `nextCursor` — `id` последней отданной проповеди.
 
 ```ts
 if (cursor) queryBuilder.andWhere('sermon.id < :cursor', { cursor });
 if (q) {
-  const searchCondition = SEARCH_FIELDS.map((f) => `sermon.${f} ILIKE :q`).join(' OR ');
+  const searchCondition = SEARCH_FIELDS.map((f) => `LOWER(sermon.${f}) LIKE :q`).join(' OR ');
   queryBuilder.andWhere(searchCondition, { q });
 }
 const rows = await queryBuilder.getMany();
