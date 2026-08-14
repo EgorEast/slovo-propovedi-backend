@@ -2,6 +2,17 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.4.0] - 2026-08-14
+
+### Features
+- relevance-ranked word-order-independent sermon search (FTS)
+
+### Bug Fixes
+- make sermon search case-insensitive for Cyrillic
+
+### Maintenance
+- fix Dockerfile lint warnings
+
 ## [0.3.0] - 2026-08-14
 
 ### Features
