@@ -94,7 +94,7 @@ await app.listen('3000');
 | `AuthGuard` | **по-роуту** (`@UseGuards`) | JWT-защита; парсит payload zod-схемой `{ id, email, role }`; **глобального guard нет** |
 | `RolesGuard` | **по-роуту** (`@UseGuards` + `@Roles`) | авторизация по ролям (fail-closed); без `@Roles` не ограничивает |
 
-> ⚠️ **Глобального guard нет.** Защита точечная: `@UseGuards(AuthGuard)` на `/auth/profile`, `@UseGuards(AuthGuard, RolesGuard)` + `@Roles(...)` на мутирующих эндпоинтах, `GET /files` и всех `/users*`. Публичные чтения: `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `/playlists*`, `/section*`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`. Карта guard'ов и матрица ролей — в [`modules/auth.md`](./modules/auth.md) и [`contracts/rest-api.md`](./contracts/rest-api.md).
+> ⚠️ **Глобального guard нет.** Защита точечная: `@UseGuards(AuthGuard)` на `/auth/profile`, `@UseGuards(AuthGuard, RolesGuard)` + `@Roles(...)` на мутирующих эндпоинтах, `GET /files` и всех `/users*`. Публичные чтения (без аутентификации): `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`. Карта guard'ов и матрица ролей — в [`modules/auth.md`](./modules/auth.md) и [`contracts/rest-api.md`](./contracts/rest-api.md).
 
 ## Модули
 

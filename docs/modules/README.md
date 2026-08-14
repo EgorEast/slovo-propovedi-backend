@@ -25,7 +25,7 @@
 
 Роли: `admin` / `moderator` / `user` (`UserRole`, живут в JWT-payload `{ id, email, role }` и в БД). `AuthGuard` парсит payload zod-схемой (legacy-токены без роли → 401 → refresh); `RolesGuard` fail-closed по `@Roles(...)`.
 
-- **Публичные чтения:** `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `/playlists*`, `/section*`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`.
+- **Публичные чтения** (без аутентификации, любая роль): `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`.
 - **Guarded (`AuthGuard`):** `GET /auth/profile` (любой аутентифицированный, включая `user`).
 - **Guarded (`AuthGuard` + `RolesGuard`):**
   - **admin-only:** все `/users*`;

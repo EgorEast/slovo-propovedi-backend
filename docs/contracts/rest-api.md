@@ -40,7 +40,7 @@
 
 ## Карта реализации эндпоинтов (sermons + playlists + users + files)
 
-Ниже — эндпоинты, реализованные в контроллерах. Write-эндпоинты используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)`; `findAll`/`findOne` у sermons/playlists и файловые GET-выдачи публичны. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
+Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловые GET-выдачи по имени (`GET /files/:fileName*`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента) и `GET /files` (инвентарь хранилища) используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
 
 ### Матрица доступа по ролям
 

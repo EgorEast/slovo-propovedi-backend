@@ -2,14 +2,6 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
-## [Unreleased]
-
-### Features
-- three-tier roles (admin/moderator/user): UserRole enum, role column + CHECK + migration 002, RolesGuard + @Roles
-- role-based access matrix: users admin-only, content admin/moderator, profile any authenticated user
-- JWT payload now carries role; AuthGuard parses payload (legacy tokens → 401 → refresh upgrade)
-- refreshTokens re-fetches the live user so stale/demoted roles take effect; last-admin demotion/removal guarded in transactions
-
 ## [0.2.0] - 2026-08-13
 
 ### Features
