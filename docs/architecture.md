@@ -91,9 +91,10 @@ await app.listen('3000');
 |----------|-------------|------------|
 | `ZodValidationPipe` (strict) | `main.ts` (глобально) | валидирует все входные body/query/params по Zod-DTO |
 | `ZodSerializerInterceptor` | `app.module.ts` (`APP_INTERCEPTOR`) | валидирует/сериализует исходящие ответы по `@ZodResponse` |
-| `AuthGuard` | **по-роуту** (`@UseGuards`) | JWT-защита мутирующих эндпоинтов; **глобального guard нет** |
+| `AuthGuard` | **по-роуту** (`@UseGuards`) | JWT-защита; парсит payload zod-схемой `{ id, email, role }`; **глобального guard нет** |
+| `RolesGuard` | **по-роуту** (`@UseGuards` + `@Roles`) | авторизация по ролям (fail-closed); без `@Roles` не ограничивает |
 
-> ⚠️ **Глобального guard нет.** Защита аутентификацией — точечная: `@UseGuards(AuthGuard)` на write-эндпоинтах и `GET /files`. Публичные чтения: `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `/playlists*`, `/section*`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`. Карта guard'ов — в [`modules/auth.md`](./modules/auth.md) и [`contracts/rest-api.md`](./contracts/rest-api.md).
+> ⚠️ **Глобального guard нет.** Защита точечная: `@UseGuards(AuthGuard)` на `/auth/profile`, `@UseGuards(AuthGuard, RolesGuard)` + `@Roles(...)` на мутирующих эндпоинтах, `GET /files` и всех `/users*`. Публичные чтения: `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `/playlists*`, `/section*`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`. Карта guard'ов и матрица ролей — в [`modules/auth.md`](./modules/auth.md) и [`contracts/rest-api.md`](./contracts/rest-api.md).
 
 ## Модули
 

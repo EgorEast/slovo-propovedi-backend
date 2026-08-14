@@ -1,5 +1,6 @@
 import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { UserRole } from '../user-role.enum';
 
 @Entity('user')
 export class User {
@@ -24,4 +25,7 @@ export class User {
   @IsNotEmpty()
   @IsString()
   password: string;
+
+  @Column({ name: 'role', type: 'varchar', default: UserRole.User })
+  role: UserRole;
 }

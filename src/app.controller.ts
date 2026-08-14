@@ -12,6 +12,9 @@ import { ZodResponse } from 'nestjs-zod';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MinioService } from './minio/minio.service';
 import { AuthGuard } from './auth/guard/auth.guard';
+import { RolesGuard } from './auth/guard/roles.guard';
+import { Roles } from './auth/decorators/roles.decorator';
+import { UserRole } from './users/user-role.enum';
 import { FileResponseDto } from './app/dto/file-response.dto';
 import { FileUploadDto } from './app/dto/file-upload.dto';
 import { GetFilesResponseDto } from './app/dto/get-files-response.dto';
@@ -42,7 +45,8 @@ export class AppController {
   constructor(private readonly minioService: MinioService) {}
 
   @Post('files')
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: FileResponseDto })
   @UseInterceptors(FileInterceptor('file'))
   async uploadFile(
@@ -75,7 +79,8 @@ export class AppController {
    * Declared before `GET /files/:fileName` — Express matches routes in order.
    */
   @Get('files')
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: GetFilesResponseDto })
   async listFiles(): Promise<GetFilesResponseDto> {
     const storedFiles = await this.minioService.listImages();

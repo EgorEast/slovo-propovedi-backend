@@ -9,12 +9,12 @@
 
 | Метод / путь | Guard | Query/Body/Param | DTO ответа | Метод сервиса |
 |---------------|-------|------------------|------------|----------------|
-| `POST /sermons` | ✅ `AuthGuard` | body `CreateSermonDto` | `SermonResponseDto` | `create` |
+| `POST /sermons` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | body `CreateSermonDto` | `SermonResponseDto` | `create` |
 | `GET /sermons` | публичный | query `FindAllSermonsQueryDto` | `AllSermonsResponseDto` | `findAll(take, cursor, search)` |
 | `GET /sermons/:id` | публичный | param `IdParamDto` | `SermonResponseDto` | `findOne` |
 | `GET /sermons/:id/stream-url` | публичный | param `IdParamDto` | `StreamUrlResponseDto` | `getStreamUrl` |
-| `PATCH /sermons/:id` | ✅ `AuthGuard` | param + body `UpdateSermonDto` | `StatusSermonResponseDto` | `update` |
-| `DELETE /sermons/:id` | ✅ `AuthGuard` | param `IdParamDto` | `StatusSermonResponseDto` | `remove` |
+| `PATCH /sermons/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | param + body `UpdateSermonDto` | `StatusSermonResponseDto` | `update` |
+| `DELETE /sermons/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | param `IdParamDto` | `StatusSermonResponseDto` | `remove` |
 
 `@Controller('sermons')` (`src/sermon/sermon.controller.ts`).
 

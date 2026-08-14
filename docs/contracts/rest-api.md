@@ -10,7 +10,7 @@
 ## Общая спецификация
 
 - **URL:** `https://docs.slovo-propovedi.ru/openAPI.yaml`
-- **Название:** «Admin API — Слово.Проповеди» (версия — в `info.version` самого файла)
+- **Название:** «API — Слово.Проповеди» (версия — в `info.version` самого файла)
 - **Где живёт:** во **внешнем swagger-репозитории** `slovo-propovedi-docs`, НЕ в этом репозитории. `/openAPI.yaml` здесь gitignored и локально отсутствует.
 - **Публикация:** спецификация деплоится из `slovo-propovedi-docs` через Forgejo на тегах `v*` (`https://docs.slovo-propovedi.ru/openAPI.yaml`).
 - **Потребляется:** кодогенерацией Orval (фронтенд-SDK — в репозитории `slovo-propovedi-admin`), конфиг которой хардкодит этот URL как `input`.
@@ -38,9 +38,20 @@
 
 При изменении спецификации схемы регенерируются в этом репозитории (`npm run gen:schemas`); фронтенд-SDK регенерируется отдельно в своём репозитории (`slovo-propovedi-admin`). Сгенерированные файлы коммитятся вместе с кодом.
 
-## Карта реализации эндпоинтов (sermons + playlists + users)
+## Карта реализации эндпоинтов (sermons + playlists + users + files)
 
-Ниже — эндпоинты, реализованные в контроллерах. Guards: create/reorder/update/remove/delete используют `AuthGuard` (`src/auth/guard/auth.guard.ts`); `findAll`/`findOne` у sermons/playlists публичны. **У users — все 6 эндпоинтов guarded (нет публичных чтений).** Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/users/users.controller.ts`; методы сервиса — см. модульные документы.
+Ниже — эндпоинты, реализованные в контроллерах. Write-эндпоинты используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)`; `findAll`/`findOne` у sermons/playlists и файловые GET-выдачи публичны. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
+
+### Матрица доступа по ролям
+
+| Роль | Публичные чтения | Контент (sermons/sections/playlists + `POST|PATCH|DELETE`) | Файлы (`POST /files`, `GET /files`) | Users (`/users*`) |
+|------|------------------|--------------------------------------------------------------|--------------------------------------|-------------------|
+| `admin` | ✅ | ✅ | ✅ | ✅ |
+| `moderator` | ✅ | ✅ | ✅ | ❌ `403` |
+| `user` | ✅ | ❌ `403` | ❌ `403` | ❌ `403` |
+| аноним | ✅ | ❌ `401` (guarded) | ❌ `401` | ❌ `401` |
+
+**Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /auth/profile` — `AuthGuard` без `@Roles` (любой аутентифицированный).
 
 ### Sermons
 
@@ -49,9 +60,9 @@
 | `GET /sermons` | публичный | `SermonController.findAll` | `SermonService.findAll(take, cursor, search)` |
 | `GET /sermons/:id` | публичный | `SermonController.findOne` | `SermonService.findOne` |
 | `GET /sermons/:id/stream-url` | публичный | `SermonController.getStreamUrl` | `SermonService.getStreamUrl` |
-| `POST /sermons` | AuthGuard | `SermonController.create` | `SermonService.create` |
-| `PATCH /sermons/:id` | AuthGuard | `SermonController.update` | `SermonService.update` |
-| `DELETE /sermons/:id` | AuthGuard | `SermonController.remove` | `SermonService.remove` |
+| `POST /sermons` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.create` | `SermonService.create` |
+| `PATCH /sermons/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.update` | `SermonService.update` |
+| `DELETE /sermons/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.remove` | `SermonService.remove` |
 
 > ✅ `GET /sermons` принимает query `take`, `cursor` (keyset-пагинация) и `search` (опциональный, min 1 символ, `ILIKE` по `title`/`artist`/`book`/`description`). Поиск применён в обоих путях `findAll`; без `take`/`search` отвечает полной выборкой. Подробности поиска — [`../modules/sermon.md`](../modules/sermon.md).
 
@@ -59,31 +70,52 @@
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
-| `POST /playlists` | AuthGuard | `PlaylistController.create` | `PlaylistService.create` |
+| `POST /playlists` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.create` | `PlaylistService.create` |
 | `GET /playlists` | публичный | `PlaylistController.findAll` | `PlaylistService.findAll` |
 | `GET /playlists/:id` | публичный | `PlaylistController.findOne` | `PlaylistService.findOne` |
-| `PATCH /playlists/:id` | AuthGuard | `PlaylistController.update` | `PlaylistService.update` (bulk-replace состава) |
-| `PATCH /playlists/:id/sermons/reorder` | AuthGuard | `PlaylistController.reorderSermons` | `PlaylistService.reorderSermonsInPlaylist(id, sermonIds)` |
-| `DELETE /playlists/:id` | AuthGuard | `PlaylistController.remove` | `PlaylistService.remove` |
+| `PATCH /playlists/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.update` | `PlaylistService.update` (bulk-replace состава) |
+| `PATCH /playlists/:id/sermons/reorder` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.reorderSermons` | `PlaylistService.reorderSermonsInPlaylist(id, sermonIds)` |
+| `DELETE /playlists/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.remove` | `PlaylistService.remove` |
+
+### Sections
+
+| Эндпоинт | Guard | Метод контроллера | Метод сервиса |
+|----------|-------|-------------------|----------------|
+| `POST /section` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SectionController.create` | `SectionService.createSectionItem` |
+| `GET /section` | публичный | `SectionController.findAll` | `SectionService.findAllSectionItems` |
+| `GET /section/:id` | публичный | `SectionController.findOne` | `SectionService.findOneSectionItem` |
+| `PATCH /section/reorder` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SectionController.reorder` | `SectionService.reorderSections(ids)` |
+| `PATCH /section/:id/playlists/reorder` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SectionController.reorderPlaylistsInSection` | `SectionService.reorderPlaylistsInSection(id, playlistIds)` |
+| `PATCH /section/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SectionController.update` | `SectionService.update` |
+| `DELETE /section/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SectionController.remove` | `SectionService.remove` |
+
+### Files (`AppController`)
+
+| Эндпоинт | Guard | Метод контроллера | Метод сервиса |
+|----------|-------|-------------------|----------------|
+| `POST /files` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.uploadFile` | `MinioService.uploadFile` |
+| `GET /files` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.listFiles` | `MinioService.listImages` (cover-reuse) |
+| `GET /files/:fileName` | публичный | `AppController.getFile` | `MinioService.getFileUrl` (deprecated) |
+| `GET /files/:fileName/stream-url` | публичный | `AppController.getStreamUrl` | `MinioService.getPresignedFileUrl` |
 
 ### Users
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
-| `GET /users` | AuthGuard | `UsersController.findAll` | `UsersService.findAll` |
-| `POST /users` | AuthGuard | `UsersController.create` | `UsersService.create` |
-| `GET /users/:id` | AuthGuard | `UsersController.findOne` | `UsersService.findOne` |
-| `PATCH /users/:id` | AuthGuard | `UsersController.update` | `UsersService.update` |
-| `PATCH /users/:id/password` | AuthGuard | `UsersController.changePassword` | `UsersService.changePassword` |
-| `DELETE /users/:id` | AuthGuard | `UsersController.remove` | `UsersService.remove(id, currentUserId)` |
+| `GET /users` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.findAll` | `UsersService.findAll` |
+| `POST /users` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.create` | `UsersService.create` |
+| `GET /users/:id` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.findOne` | `UsersService.findOne` |
+| `PATCH /users/:id` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.update` | `UsersService.update(id, dto, currentUserId)` |
+| `PATCH /users/:id/password` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.changePassword` | `UsersService.changePassword` |
+| `DELETE /users/:id` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.remove` | `UsersService.remove(id, currentUserId)` |
 
-> ✅ В отличие от sermons/playlists, **все** users-эндпоинты защищены `AuthGuard` — включая `GET /users` и `GET /users/:id` (нет публичных чтений). Схемы: `UserResponse` `{ id, name, username, email }` (**без `password`**), `CreateUserRequest` `{ name, email, username, password }`, `UpdateUserRequest` `{ name?, email?, username? }`, `ChangePasswordRequest` `{ password }`. `PATCH /users/:id/password` и `DELETE /users/:id` возвращают **`204 No Content`** (не `StatusResponseDto`). Защита self-delete/last-admin (403) — [`../modules/users.md`](../modules/users.md).
+> ✅ В отличие от sermons/playlists, **все** users-эндпоинты защищены `AuthGuard` + `RolesGuard` с `@Roles(UserRole.Admin)` — включая `GET /users` и `GET /users/:id` (нет публичных чтений). Схемы: `UserResponse` `{ id, name, username, email, role }` (**без `password`**), `CreateUserRequest` `{ name, email, username, password, role? }`, `UpdateUserRequest` `{ name?, email?, username?, role? }`, `ChangePasswordRequest` `{ password }`. Роль: `zod.enum(['admin','moderator','user'])` — обязательна в ответах, опциональна в create/update (дефолт `'user'`). `PATCH /users/:id/password` и `DELETE /users/:id` возвращают **`204 No Content`** (не `StatusResponseDto`). Защита self-delete/last-admin/self-role-change (403) — [`../modules/users.md`](../modules/users.md).
 
 ## База URL и аутентификация
 
 - **Base URL:** `https://api.slovo-propovedi.ru` — публичный адрес развёрнутого API. Локально NestJS слушает порт `3000` (захардкожен в `src/main.ts`).
-- **Аутентификация:** Bearer JWT, проверяется `AuthGuard` (`src/auth/guard/auth.guard.ts`); payload `{ id, email }`. Access/refresh flow — см. [`../modules/auth.md`](../modules/auth.md).
-- **Защита на сервере:** `AuthGuard` на мутирующих эндпоинтах (см. таблицы выше) + `ZodValidationPipe` (strict) на всех границах.
+- **Аутентификация:** Bearer JWT, проверяется `AuthGuard` (`src/auth/guard/auth.guard.ts`); payload `{ id, email, role }` (zod-парсинг на входе, legacy-токены без `role` → `401` → refresh). Авторизация по ролям — `RolesGuard` (`@Roles`, fail-closed). Access/refresh flow — см. [`../modules/auth.md`](../modules/auth.md).
+- **Защита на сервере:** `AuthGuard` + `RolesGuard` на мутирующих эндпоинтах (см. таблицы выше) + `ZodValidationPipe` (strict) на всех границах.
 
 ## Связанные документы
 

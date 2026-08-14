@@ -16,6 +16,9 @@ import { PlaylistResponseDto } from './dto/playlist-response.dto';
 import { AllPlaylistsResponseDto } from './dto/all-playlists-response.dto';
 import { StatusPlaylistResponseDto } from './dto/status-playlist-response.dto';
 import { AuthGuard } from '../auth/guard/auth.guard';
+import { RolesGuard } from '../auth/guard/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../users/user-role.enum';
 import { ZodResponse } from 'nestjs-zod';
 import { IdParamDto } from '../shared/dto/id-param.dto';
 
@@ -24,7 +27,8 @@ export class PlaylistController {
   constructor(private readonly playlistService: PlaylistService) {}
 
   @Post()
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: PlaylistResponseDto })
   async create(@Body() createPlaylistDto: CreatePlaylistDto) {
     return await this.playlistService.create(createPlaylistDto);
@@ -43,7 +47,8 @@ export class PlaylistController {
   }
 
   @Patch(':id/sermons/reorder')
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: StatusPlaylistResponseDto })
   async reorderSermons(
     @Param() params: IdParamDto,
@@ -56,7 +61,8 @@ export class PlaylistController {
   }
 
   @Patch(':id')
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: PlaylistResponseDto })
   async update(
     @Param() params: IdParamDto,
@@ -66,7 +72,8 @@ export class PlaylistController {
   }
 
   @Delete(':id')
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: StatusPlaylistResponseDto })
   async remove(@Param() params: IdParamDto) {
     return await this.playlistService.remove(params.id);

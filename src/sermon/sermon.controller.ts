@@ -19,6 +19,9 @@ import { AllSermonsResponseDto } from './dto/all-sermons-response.dto';
 import { StreamUrlResponseDto } from './dto/stream-url-response.dto';
 import { StatusSermonResponseDto } from './dto/status-sermon-response.dto';
 import { AuthGuard } from '../auth/guard/auth.guard';
+import { RolesGuard } from '../auth/guard/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../users/user-role.enum';
 import { IdParamDto } from '../shared/dto/id-param.dto';
 
 @Controller('sermons')
@@ -26,7 +29,8 @@ export class SermonController {
   constructor(private readonly sermonService: SermonService) {}
 
   @Post()
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: SermonResponseDto })
   async create(
     @Body() createSermonDto: CreateSermonDto,
@@ -61,7 +65,8 @@ export class SermonController {
   }
 
   @Patch(':id')
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: StatusSermonResponseDto })
   async update(
     @Param() params: IdParamDto,
@@ -71,7 +76,8 @@ export class SermonController {
   }
 
   @Delete(':id')
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: StatusSermonResponseDto })
   async remove(@Param() params: IdParamDto): Promise<StatusSermonResponseDto> {
     return await this.sermonService.remove(params.id);

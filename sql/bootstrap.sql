@@ -16,6 +16,9 @@
 -- The DDL below is exactly what TypeORM 0.3.17 `synchronize` produces for the
 -- entities in `backend/src/**/*.entity.ts` (verified against a throwaway
 -- instance). Constraint names are TypeORM's generated identifiers.
+-- One hand-maintained exception: the `role` CHECK constraint on "user"
+-- (TypeORM varchar columns get no CHECK) — see the inline comment on the
+-- column for why the name is `user_role_check`.
 -- =============================================================================
 
 -- uuid PKs are generated with uuid_generate_v4() (uuid-ossp), matching
@@ -23,14 +26,20 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
 
 -- ---------------------------------------------------------------------------
--- user (admin accounts)
+-- user (admin/moderator/user accounts)
 -- ---------------------------------------------------------------------------
 CREATE TABLE "user" (
     id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     name character varying NOT NULL,
     email character varying NOT NULL,
     username character varying NOT NULL,
-    password character varying NOT NULL
+    password character varying NOT NULL,
+    -- Three-tier role (admin / moderator / user), least-privilege default.
+    -- The CHECK is a hand-maintained addition (TypeORM varchar has no CHECK);
+    -- the constraint name matches sql/migrations/002_add_user_roles.sql so the
+    -- migration is a no-op on fresh databases.
+    role character varying DEFAULT 'user'::character varying NOT NULL,
+    CONSTRAINT user_role_check CHECK (role IN ('admin', 'moderator', 'user'))
 );
 
 -- ---------------------------------------------------------------------------

@@ -19,14 +19,19 @@
 | `minio` | (не HTTP) | — | [`minio.md`](./minio.md) |
 | `shared` | (не HTTP) | — | [`shared.md`](./shared.md) |
 
-> ✅ Модуль `app` (корневой контроллер) — файловое хранилище; `minio` — обёртка над MinIO, которую используют `app`, `sermon` и bootstrap. Модуль `users` — полноценный CRUD админ-аккаунтов (`UsersController`, 6 эндпоинтов, все guarded) + сервис для `auth`.
+> ✅ Модуль `app` (корневой контроллер) — файловое хранилище; `minio` — обёртка над MinIO, которую используют `app`, `sermon` и bootstrap. Модуль `users` — полноценный CRUD аккаунтов с ролями (`UsersController`, 6 эндпоинтов, все admin-only) + сервис для `auth`.
 
 ## Авторизация (кратко)
 
-- **Публичные чтения:** `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `/playlists*`, `/section*`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`.
-- **Guarded (`AuthGuard`):** все write-эндпоинты (`POST/PATCH/DELETE`), `GET /files` (защищено — инвентарь хранилища), `GET /auth/profile`.
+Роли: `admin` / `moderator` / `user` (`UserRole`, живут в JWT-payload `{ id, email, role }` и в БД). `AuthGuard` парсит payload zod-схемой (legacy-токены без роли → 401 → refresh); `RolesGuard` fail-closed по `@Roles(...)`.
 
-Полная карта — в [`auth.md`](./auth.md) и [`../contracts/rest-api.md`](../contracts/rest-api.md).
+- **Публичные чтения:** `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `/playlists*`, `/section*`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`.
+- **Guarded (`AuthGuard`):** `GET /auth/profile` (любой аутентифицированный, включая `user`).
+- **Guarded (`AuthGuard` + `RolesGuard`):**
+  - **admin-only:** все `/users*`;
+  - **admin/moderator:** все write-эндпоинты (`POST/PATCH/DELETE` sermons/sections/playlists), `POST /files`, `GET /files` (инвентарь хранилища).
+
+Полная карта — в [`auth.md`](./auth.md), [`users.md`](./users.md) и [`../contracts/rest-api.md`](../contracts/rest-api.md).
 
 ## Структура типичного модуля
 

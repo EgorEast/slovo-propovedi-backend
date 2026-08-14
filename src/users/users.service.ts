@@ -6,21 +6,38 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
+import { UserRole } from './user-role.enum';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
 const BCRYPT_ROUNDS = 10;
 
+const USER_ROLE_VALUES = new Set<string>(Object.values(UserRole));
+
+// Parses the role at the boundary: the generated zod schema guarantees the
+// input is one of 'admin' | 'moderator' | 'user', and this maps it to the
+// trusted internal UserRole enum (the literal union is not assignable to it).
+function toUserRole(role: string | undefined): UserRole {
+  if (role === undefined) {
+    return UserRole.User;
+  }
+  if (!USER_ROLE_VALUES.has(role)) {
+    throw new Error(`Unknown user role: ${role}`);
+  }
+  return role as UserRole;
+}
+
 export interface UserResponse {
   id: string;
   name: string;
   username: string;
   email: string;
+  role: UserRole;
 }
 
 @Injectable()
@@ -28,6 +45,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectDataSource()
+    private dataSource: DataSource,
   ) {}
 
   async findOneByUsername(username: string): Promise<User | null> {
@@ -103,6 +122,7 @@ export class UsersService {
         email: dto.email,
         username: dto.username,
         password: hashedPassword,
+        role: toUserRole(dto.role),
       });
       const saved = await this.usersRepository.save(user);
       return this.toResponse(saved);
@@ -122,25 +142,60 @@ export class UsersService {
     }
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<UserResponse> {
+  async update(
+    id: string,
+    dto: UpdateUserDto,
+    currentUserId: string,
+  ): Promise<UserResponse> {
     try {
-      const user = await this.usersRepository.findOne({ where: { id } });
-      if (!user) {
-        throw new NotFoundException('Пользователь не найден');
+      const nextRole =
+        dto.role === undefined ? undefined : toUserRole(dto.role);
+
+      // Self-demotion is blocked outright: nobody may take away their own role.
+      if (nextRole !== undefined && id === currentUserId) {
+        throw new ForbiddenException('Нельзя изменить свою роль');
       }
 
-      if (dto.name !== undefined) {
-        user.name = dto.name;
-      }
-      if (dto.email !== undefined) {
-        user.email = dto.email;
-      }
-      if (dto.username !== undefined) {
-        user.username = dto.username;
-      }
+      // SERIALIZABLE isolation prevents the concurrent last-admin race: two
+      // admins demoting each other would both see the old admin count under
+      // READ COMMITTED, leaving zero admins behind.
+      return await this.dataSource.transaction(
+        'SERIALIZABLE',
+        async (manager: EntityManager) => {
+          const user = await manager.findOne(User, { where: { id } });
+          if (!user) {
+            throw new NotFoundException('Пользователь не найден');
+          }
 
-      const saved = await this.usersRepository.save(user);
-      return this.toResponse(saved);
+          // Demoting the last remaining admin would lock the system out.
+          if (
+            nextRole !== undefined &&
+            user.role === UserRole.Admin &&
+            nextRole !== UserRole.Admin &&
+            (await this.countAdmins(manager)) <= 1
+          ) {
+            throw new ForbiddenException(
+              'Нельзя понизить последнего администратора',
+            );
+          }
+
+          if (dto.name !== undefined) {
+            user.name = dto.name;
+          }
+          if (dto.email !== undefined) {
+            user.email = dto.email;
+          }
+          if (dto.username !== undefined) {
+            user.username = dto.username;
+          }
+          if (nextRole !== undefined) {
+            user.role = nextRole;
+          }
+
+          const saved = await manager.save(user);
+          return this.toResponse(saved);
+        },
+      );
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -182,19 +237,30 @@ export class UsersService {
         throw new ForbiddenException('Нельзя удалить собственный аккаунт');
       }
 
-      const user = await this.usersRepository.findOne({ where: { id } });
-      if (!user) {
-        throw new NotFoundException('Пользователь не найден');
-      }
+      // SERIALIZABLE isolation prevents the concurrent last-admin race: two
+      // admins removing each other would both see the old admin count under
+      // READ COMMITTED, leaving zero admins behind.
+      await this.dataSource.transaction(
+        'SERIALIZABLE',
+        async (manager: EntityManager) => {
+          const user = await manager.findOne(User, { where: { id } });
+          if (!user) {
+            throw new NotFoundException('Пользователь не найден');
+          }
 
-      const total = await this.usersRepository.count();
-      if (total <= 1) {
-        throw new ForbiddenException(
-          'Нельзя удалить последнего администратора',
-        );
-      }
+          // Removing the last admin would lock the system out.
+          if (
+            user.role === UserRole.Admin &&
+            (await this.countAdmins(manager)) <= 1
+          ) {
+            throw new ForbiddenException(
+              'Нельзя удалить последнего администратора',
+            );
+          }
 
-      await this.usersRepository.delete(id);
+          await manager.delete(User, id);
+        },
+      );
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -204,6 +270,10 @@ export class UsersService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  private async countAdmins(manager: EntityManager): Promise<number> {
+    return manager.count(User, { where: { role: UserRole.Admin } });
   }
 
   private isUniqueViolation(error: unknown): boolean {
@@ -221,6 +291,7 @@ export class UsersService {
       name: user.name,
       username: user.username,
       email: user.email,
+      role: user.role,
     };
   }
 }

@@ -9,12 +9,12 @@
 
 | Метод / путь | Guard | Body/Param | DTO ответа | Метод сервиса |
 |---------------|-------|------------|------------|----------------|
-| `POST /playlists` | ✅ `AuthGuard` | `CreatePlaylistDto` | `PlaylistResponseDto` | `create` |
+| `POST /playlists` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `CreatePlaylistDto` | `PlaylistResponseDto` | `create` |
 | `GET /playlists` | публичный | — | `AllPlaylistsResponseDto` | `findAll` |
 | `GET /playlists/:id` | публичный | `IdParamDto` | `PlaylistResponseDto` | `findOne` |
-| `PATCH /playlists/:id/sermons/reorder` | ✅ `AuthGuard` | `IdParamDto` + `ReorderSermonsInPlaylistDto` | `StatusPlaylistResponseDto` | `reorderSermonsInPlaylist(id, sermonIds)` |
-| `PATCH /playlists/:id` | ✅ `AuthGuard` | `IdParamDto` + `UpdatePlaylistDto` | `PlaylistResponseDto` | `update` |
-| `DELETE /playlists/:id` | ✅ `AuthGuard` | `IdParamDto` | `StatusPlaylistResponseDto` | `remove` |
+| `PATCH /playlists/:id/sermons/reorder` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` + `ReorderSermonsInPlaylistDto` | `StatusPlaylistResponseDto` | `reorderSermonsInPlaylist(id, sermonIds)` |
+| `PATCH /playlists/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` + `UpdatePlaylistDto` | `PlaylistResponseDto` | `update` |
+| `DELETE /playlists/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` | `StatusPlaylistResponseDto` | `remove` |
 
 `@Controller('playlists')` (`src/playlist/playlist.controller.ts`).
 

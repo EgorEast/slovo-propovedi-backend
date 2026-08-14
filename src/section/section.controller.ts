@@ -17,6 +17,9 @@ import { SectionResponseDto } from './dto/section-response.dto';
 import { AllSectionsResponseDto } from './dto/all-sections-response.dto';
 import { StatusSectionResponseDto } from './dto/status-section-response.dto';
 import { AuthGuard } from '../auth/guard/auth.guard';
+import { RolesGuard } from '../auth/guard/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../users/user-role.enum';
 import { ZodResponse } from 'nestjs-zod';
 import { IdParamDto } from '../shared/dto/id-param.dto';
 
@@ -25,7 +28,8 @@ export class SectionController {
   constructor(private readonly sectionService: SectionService) {}
 
   @Post()
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: SectionResponseDto })
   async create(@Body() createSectionDto: CreateSectionDto) {
     return await this.sectionService.createSectionItem(createSectionDto);
@@ -45,14 +49,16 @@ export class SectionController {
 
   // Must be declared before @Patch(':id') so 'reorder' is not swallowed as an id.
   @Patch('reorder')
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: StatusSectionResponseDto })
   async reorder(@Body() reorderSectionsDto: ReorderSectionsDto) {
     return this.sectionService.reorderSections(reorderSectionsDto.ids);
   }
 
   @Patch(':id/playlists/reorder')
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: StatusSectionResponseDto })
   async reorderPlaylistsInSection(
     @Param() params: IdParamDto,
@@ -65,7 +71,8 @@ export class SectionController {
   }
 
   @Patch(':id')
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: SectionResponseDto })
   update(
     @Param() params: IdParamDto,
@@ -75,7 +82,8 @@ export class SectionController {
   }
 
   @Delete(':id')
-  @UseGuards(AuthGuard)
+  @Roles(UserRole.Admin, UserRole.Moderator)
+  @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: StatusSectionResponseDto })
   remove(@Param() params: IdParamDto) {
     return this.sectionService.remove(params.id);

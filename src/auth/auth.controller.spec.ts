@@ -4,9 +4,36 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { AuthGuard } from './guard/auth.guard';
+import { UserRole } from '../users/user-role.enum';
+
+jest.mock('bcrypt', () => ({
+  compare: jest.fn().mockResolvedValue(true),
+  hash: jest.fn().mockResolvedValue('hashed-password'),
+}));
+
+process.env.JWT_SECRET = 'test-jwt-secret';
+process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret';
+
+const mockUser = {
+  id: 'user-1',
+  name: 'Test User',
+  email: 'test@example.com',
+  username: 'testuser',
+  password: '$2a$10$abcdefghijklmnopqrstuv',
+  role: UserRole.Admin,
+};
 
 describe('AuthController', () => {
   let controller: AuthController;
+  let usersService: {
+    findOneByUsername: jest.Mock;
+    findOneById: jest.Mock;
+    updatePassword: jest.Mock;
+  };
+  let jwtService: {
+    signAsync: jest.Mock;
+    verifyAsync: jest.Mock;
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -33,9 +60,53 @@ describe('AuthController', () => {
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
+    usersService = module.get(UsersService);
+    jwtService = module.get(JwtService);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('signIn returns a user with role', async () => {
+    usersService.findOneByUsername.mockResolvedValue(mockUser);
+    jwtService.signAsync.mockResolvedValue('signed-token');
+
+    const result = await controller.signIn({
+      username: 'testuser',
+      password: 'password',
+    } as never);
+
+    expect(result.user.role).toBe(UserRole.Admin);
+  });
+
+  it('refresh delegates to the service and re-signs with the fresh role', async () => {
+    jwtService.verifyAsync.mockResolvedValue({ id: mockUser.id });
+    usersService.findOneById.mockResolvedValue({
+      ...mockUser,
+      role: UserRole.Moderator,
+    });
+    jwtService.signAsync.mockResolvedValue('signed-token');
+
+    const result = await controller.refresh({
+      refreshToken: 'refresh-token',
+    } as never);
+
+    expect(usersService.findOneById).toHaveBeenCalledWith(mockUser.id);
+    expect(result.accessToken).toBe('signed-token');
+  });
+
+  it('getProfile returns the live user profile including role', async () => {
+    usersService.findOneById.mockResolvedValue(mockUser);
+
+    const result = await controller.getProfile({
+      user: { id: mockUser.id },
+    } as never);
+
+    expect(result.role).toBe(UserRole.Admin);
   });
 });

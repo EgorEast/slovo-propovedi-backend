@@ -9,8 +9,8 @@
 
 | Метод / путь | Guard | DTO ответа | Метод сервиса | Назначение |
 |---------------|-------|------------|----------------|------------|
-| `POST /files` | ✅ `AuthGuard` | `FileResponseDto` | `uploadFile` → MinIO | загрузка файла (multipart, поле `file`) |
-| `GET /files` | ✅ `AuthGuard` | `GetFilesResponseDto` | `listImages` → MinIO | список изображений для обложек (cover-reuse) |
+| `POST /files` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `FileResponseDto` | `uploadFile` → MinIO | загрузка файла (multipart, поле `file`) |
+| `GET /files` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `GetFilesResponseDto` | `listImages` → MinIO | список изображений для обложек (cover-reuse) |
 | `GET /files/:fileName` | публичный | `FileResponseDto` | `getFileUrl` | статический (non-expiring) URL **deprecated** |
 | `GET /files/:fileName/stream-url` | публичный | `StreamUrlResponseDto` | `getPresignedFileUrl` | time-limited presigned URL |
 
@@ -20,7 +20,8 @@
 
 ```ts
 @Post('files')
-@UseGuards(AuthGuard)
+@Roles(UserRole.Admin, UserRole.Moderator)
+@UseGuards(AuthGuard, RolesGuard)
 @ZodResponse({ type: FileResponseDto })
 @UseInterceptors(FileInterceptor('file'))
 async uploadFile(@UploadedFile('file') file: FileUploadDto): Promise<FileResponseDto>
@@ -36,12 +37,13 @@ async uploadFile(@UploadedFile('file') file: FileUploadDto): Promise<FileRespons
 
 ```ts
 @Get('files')
-@UseGuards(AuthGuard)
+@Roles(UserRole.Admin, UserRole.Moderator)
+@UseGuards(AuthGuard, RolesGuard)
 @ZodResponse({ type: GetFilesResponseDto })
 async listFiles(): Promise<GetFilesResponseDto>
 ```
 
-- Защищён (`AuthGuard`) — инвентарь хранилища не должен быть доступен неаутентифицированным.
+- Защищён (`AuthGuard` + `RolesGuard`, роли admin/moderator) — инвентарь хранилища не должен быть доступен неаутентифицированным и обычным `user`.
 - Возвращает `minioService.listImages()` (до 500 изображений, newest-first) как `{ files: [...], count }`.
 
 ## `GET /files/:fileName` — статический URL

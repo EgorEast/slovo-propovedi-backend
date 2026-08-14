@@ -11,13 +11,13 @@
 
 | Метод / путь | Guard | Body/Param | DTO ответа | Метод сервиса |
 |---------------|-------|------------|------------|----------------|
-| `POST /section` | ✅ `AuthGuard` | `CreateSectionDto` | `SectionResponseDto` | `createSectionItem` |
+| `POST /section` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `CreateSectionDto` | `SectionResponseDto` | `createSectionItem` |
 | `GET /section` | публичный | — | `AllSectionsResponseDto` | `findAllSectionItems` |
 | `GET /section/:id` | публичный | `IdParamDto` | `SectionResponseDto` | `findOneSectionItem` |
-| `PATCH /section/reorder` | ✅ `AuthGuard` | `ReorderSectionsDto` | `StatusSectionResponseDto` | `reorderSections(ids)` |
-| `PATCH /section/:id/playlists/reorder` | ✅ `AuthGuard` | `IdParamDto` + `ReorderPlaylistsInSectionDto` | `StatusSectionResponseDto` | `reorderPlaylistsInSection(id, playlistIds)` |
-| `PATCH /section/:id` | ✅ `AuthGuard` | `IdParamDto` + `UpdateSectionDto` | `SectionResponseDto` | `update` |
-| `DELETE /section/:id` | ✅ `AuthGuard` | `IdParamDto` | `StatusSectionResponseDto` | `remove` |
+| `PATCH /section/reorder` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `ReorderSectionsDto` | `StatusSectionResponseDto` | `reorderSections(ids)` |
+| `PATCH /section/:id/playlists/reorder` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` + `ReorderPlaylistsInSectionDto` | `StatusSectionResponseDto` | `reorderPlaylistsInSection(id, playlistIds)` |
+| `PATCH /section/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` + `UpdateSectionDto` | `SectionResponseDto` | `update` |
+| `DELETE /section/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` | `StatusSectionResponseDto` | `remove` |
 
 `@Controller('section')` (`src/section/section.controller.ts`).
 

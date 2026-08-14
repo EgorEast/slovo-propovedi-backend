@@ -28,7 +28,7 @@
 
 ### `User` — таблица `user`
 
-`src/users/entities/user.entity.ts`. Админ-аккаунты.
+`src/users/entities/user.entity.ts`. Аккаунты с ролями (`admin` / `moderator` / `user`, см. [`modules/users.md`](./modules/users.md)).
 
 | Колонка | Тип | Ограничения |
 |---------|-----|-------------|
@@ -37,6 +37,7 @@
 | `email` | varchar | UNIQUE |
 | `username` | varchar | UNIQUE |
 | `password` | varchar | bcrypt-хэш |
+| `role` | varchar | NOT NULL, default `'user'`, CHECK `(role IN ('admin','moderator','user'))` |
 
 ### `SermonEntity` — таблица `sermon`
 
@@ -121,6 +122,7 @@
   email (UQ)
   username (UQ)
   password            (bcrypt)
+  role                (default 'user', CHECK admin/moderator/user)
 
  sermon ────────────────────────────┐
  ──────────────                     │ 1:N
@@ -179,6 +181,7 @@
 | `sql/bootstrap.sql` | **свежая БД**: `CREATE EXTENSION "uuid-ossp"`, таблицы `user`, `sermon`, `section`, `playlist`, join-таблицы `playlist_sermons_sermon` + `section_playlists_playlist` (суррогатный `id` PK + UNIQUE FK-пара + `position`), PK, UNIQUE (`user.email`, `user.username`, join-пары), 4 btree-индекса на FK-колонках, 4 FK с `ON DELETE/UPDATE CASCADE`. Идентичен выходу TypeORM `synchronize` для 0.3.17. |
 | `sql/migrate-add-username.sql` | **существующие БД** (2026-08-06): `ADD COLUMN IF NOT EXISTS username`, backfill NULL→`'admin'` (совпадает с playbook-var `slovo_admin_user_username`), `SET NOT NULL`, пересоздание UNIQUE `UQ_78a916df40e02a9deb1c4b75edb`. Идемпотентен. |
 | `sql/migrations/001_add_positions.sql` | **существующие БД** (2026-08-07): `ADD COLUMN IF NOT EXISTS position` на `section`, `playlist_sermons_sermon`, `section_playlists_playlist`; конвертация join-таблиц с составного PK на суррогатный `id` (DO-блоки, идемпотентно); backfill позиций через `ROW_NUMBER()` (guard `WHERE position = 0`); индекс `idx_section_position`. Идемпотентен. |
+| `sql/migrations/002_add_user_roles.sql` | **существующие БД** (2026-08-14): `ADD COLUMN IF NOT EXISTS role` на `user`; backfill `NULL → 'admin'` (все прежние аккаунты были неявными админами); `SET DEFAULT 'user'` (least privilege для новых); `SET NOT NULL`; CHECK `user_role_check` (DO-блок, идемпотентно). Идемпотентен. |
 
 Команды применения (как DB-owner):
 
@@ -189,6 +192,7 @@ psql -h <host> -U <user> -d <db> -f sql/bootstrap.sql
 # существующие установки — поочерёдно
 psql -h <host> -U <user> -d <db> -f sql/migrate-add-username.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/001_add_positions.sql
+psql -h <host> -U <user> -d <db> -f sql/migrations/002_add_user_roles.sql
 ```
 
 > ⚠️ **Нет TypeORM migration runner и нет npm-скрипта миграций.** Применение — строго ручное через `psql`. Новые изменения схемы оформлять идемпотентным SQL-файлом и синхронно отражать в `bootstrap.sql`.

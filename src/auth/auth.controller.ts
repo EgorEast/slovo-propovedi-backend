@@ -16,7 +16,7 @@ import { RefreshResponseDto } from './dto/refresh-response.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { AuthGuard } from './guard/auth.guard';
 import { ZodResponse } from 'nestjs-zod';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 @Controller('auth')
 @ApiTags('Auth')
@@ -41,7 +41,7 @@ export class AuthController {
 
   @UseGuards(AuthGuard)
   @Get('profile')
-  @ApiOperation({ summary: 'Get current admin profile' })
+  @ApiOperation({ summary: 'Get current user profile' })
   @ZodResponse({ type: UserResponseDto })
   async getProfile(@Request() req): Promise<UserResponseDto> {
     return await this.authService.getProfile(req.user.id);

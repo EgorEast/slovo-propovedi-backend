@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import {
   ConflictException,
   ForbiddenException,
@@ -8,6 +8,7 @@ import {
 import * as bcrypt from 'bcrypt';
 import { UsersService } from './users.service';
 import { User } from './entities/user.entity';
+import { UserRole } from './user-role.enum';
 
 jest.mock('bcrypt', () => ({
   hash: jest.fn().mockResolvedValue('hashed-password'),
@@ -19,6 +20,13 @@ const mockUser: User = {
   email: 'test@example.com',
   username: 'testuser',
   password: 'hashed-password',
+  role: UserRole.User,
+};
+
+const mockAdmin: User = {
+  ...mockUser,
+  id: 'admin-1',
+  role: UserRole.Admin,
 };
 
 describe('UsersService', () => {
@@ -32,8 +40,31 @@ describe('UsersService', () => {
     update: jest.Mock;
     count: jest.Mock;
   };
+  let dataSource: {
+    transaction: jest.Mock;
+  };
+  let transactionManager: {
+    findOne: jest.Mock;
+    save: jest.Mock;
+    count: jest.Mock;
+    delete: jest.Mock;
+  };
 
   beforeEach(async () => {
+    transactionManager = {
+      findOne: jest.fn(),
+      save: jest.fn(),
+      count: jest.fn(),
+      delete: jest.fn(),
+    };
+
+    dataSource = {
+      // Real signature: dataSource.transaction('SERIALIZABLE', callback).
+      transaction: jest.fn(async (isolation, callback) =>
+        callback(transactionManager),
+      ),
+    };
+
     repository = {
       find: jest.fn(),
       findOne: jest.fn(),
@@ -50,6 +81,10 @@ describe('UsersService', () => {
         {
           provide: getRepositoryToken(User),
           useValue: repository,
+        },
+        {
+          provide: getDataSourceToken(),
+          useValue: dataSource,
         },
       ],
     }).compile();
@@ -81,6 +116,7 @@ describe('UsersService', () => {
         name: mockUser.name,
         username: mockUser.username,
         email: mockUser.email,
+        role: UserRole.User,
       });
       expect(result[0]).not.toHaveProperty('password');
     });
@@ -97,6 +133,7 @@ describe('UsersService', () => {
         name: mockUser.name,
         username: mockUser.username,
         email: mockUser.email,
+        role: UserRole.User,
       });
       expect(result).not.toHaveProperty('password');
     });
@@ -118,7 +155,7 @@ describe('UsersService', () => {
       password: 'plain-password',
     };
 
-    it('hashes password, saves and returns user without password', async () => {
+    it('hashes password, defaults role to user and returns user without password', async () => {
       repository.create.mockImplementation((data) => data);
       repository.save.mockResolvedValue(mockUser);
 
@@ -126,7 +163,10 @@ describe('UsersService', () => {
 
       expect(bcrypt.hash).toHaveBeenCalledWith('plain-password', 10);
       expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ password: 'hashed-password' }),
+        expect.objectContaining({
+          password: 'hashed-password',
+          role: UserRole.User,
+        }),
       );
       expect(repository.save).toHaveBeenCalled();
       expect(result).toEqual({
@@ -134,8 +174,23 @@ describe('UsersService', () => {
         name: mockUser.name,
         username: mockUser.username,
         email: mockUser.email,
+        role: UserRole.User,
       });
       expect(result).not.toHaveProperty('password');
+    });
+
+    it('persists an explicitly provided role', async () => {
+      repository.create.mockImplementation((data) => data);
+      repository.save.mockResolvedValue({
+        ...mockUser,
+        role: UserRole.Moderator,
+      });
+
+      await service.create({ ...createDto, role: UserRole.Moderator });
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ role: UserRole.Moderator }),
+      );
     });
 
     it('rejects with ConflictException on unique constraint violation', async () => {
@@ -150,15 +205,24 @@ describe('UsersService', () => {
 
   describe('update', () => {
     it('mutates only provided fields and returns mapped user', async () => {
-      repository.findOne.mockResolvedValue({ ...mockUser });
-      repository.save.mockImplementation((user) => user);
+      transactionManager.findOne.mockResolvedValue({ ...mockUser });
+      transactionManager.save.mockImplementation((user) => user);
 
-      const result = await service.update('user-1', { name: 'Renamed' });
+      const result = await service.update(
+        'user-1',
+        { name: 'Renamed' },
+        'other-user',
+      );
 
-      expect(repository.save).toHaveBeenCalledWith(
+      expect(dataSource.transaction).toHaveBeenCalledWith(
+        'SERIALIZABLE',
+        expect.any(Function),
+      );
+      expect(transactionManager.save).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'Renamed',
           email: mockUser.email,
+          role: UserRole.User,
         }),
       );
       expect(result).toEqual({
@@ -166,24 +230,79 @@ describe('UsersService', () => {
         name: 'Renamed',
         username: mockUser.username,
         email: mockUser.email,
+        role: UserRole.User,
       });
     });
 
+    it('updates the role when the target is not an admin', async () => {
+      transactionManager.findOne.mockResolvedValue({ ...mockUser });
+      transactionManager.save.mockImplementation((user) => user);
+
+      const result = await service.update(
+        'user-1',
+        { role: UserRole.Moderator },
+        'other-user',
+      );
+
+      expect(transactionManager.count).not.toHaveBeenCalled();
+      expect(transactionManager.save).toHaveBeenCalledWith(
+        expect.objectContaining({ role: UserRole.Moderator }),
+      );
+      expect(result.role).toBe(UserRole.Moderator);
+    });
+
     it('rejects with NotFoundException when user is not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+      transactionManager.findOne.mockResolvedValue(null);
 
       await expect(
-        service.update('missing', { name: 'Renamed' }),
+        service.update('missing', { name: 'Renamed' }, 'other-user'),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('rejects with ConflictException on unique constraint violation', async () => {
-      repository.findOne.mockResolvedValue({ ...mockUser });
-      repository.save.mockRejectedValue({ code: '23505' });
+      transactionManager.findOne.mockResolvedValue({ ...mockUser });
+      transactionManager.save.mockRejectedValue({ code: '23505' });
 
       await expect(
-        service.update('user-1', { name: 'Renamed' }),
+        service.update('user-1', { name: 'Renamed' }, 'other-user'),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects with ForbiddenException when changing own role', async () => {
+      await expect(
+        service.update('user-1', { role: UserRole.Moderator }, 'user-1'),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects with ForbiddenException when demoting the last admin', async () => {
+      transactionManager.findOne.mockResolvedValue({ ...mockAdmin });
+      transactionManager.count.mockResolvedValue(1);
+
+      await expect(
+        service.update('admin-1', { role: UserRole.User }, 'other-user'),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(transactionManager.count).toHaveBeenCalled();
+      expect(transactionManager.save).not.toHaveBeenCalled();
+    });
+
+    it('allows demoting an admin when more than one admin remains', async () => {
+      transactionManager.findOne.mockResolvedValue({ ...mockAdmin });
+      transactionManager.count.mockResolvedValue(2);
+      transactionManager.save.mockImplementation((user) => user);
+
+      const result = await service.update(
+        'admin-1',
+        { role: UserRole.Moderator },
+        'other-user',
+      );
+
+      expect(transactionManager.save).toHaveBeenCalledWith(
+        expect.objectContaining({ role: UserRole.Moderator }),
+      );
+      expect(result.role).toBe(UserRole.Moderator);
     });
   });
 
@@ -213,19 +332,33 @@ describe('UsersService', () => {
   });
 
   describe('remove', () => {
-    it('deletes the user when it exists and is not the last admin', async () => {
-      repository.findOne.mockResolvedValue(mockUser);
-      repository.count.mockResolvedValue(3);
-      repository.delete.mockResolvedValue({ affected: 1 });
+    it('deletes a non-admin user without checking the admin count', async () => {
+      transactionManager.findOne.mockResolvedValue({ ...mockUser });
+      transactionManager.delete.mockResolvedValue({ affected: 1 });
 
       await service.remove('user-1', 'other-user');
 
-      expect(repository.count).toHaveBeenCalled();
-      expect(repository.delete).toHaveBeenCalledWith('user-1');
+      expect(dataSource.transaction).toHaveBeenCalledWith(
+        'SERIALIZABLE',
+        expect.any(Function),
+      );
+      expect(transactionManager.count).not.toHaveBeenCalled();
+      expect(transactionManager.delete).toHaveBeenCalledWith(User, 'user-1');
+    });
+
+    it('deletes an admin when more than one admin remains', async () => {
+      transactionManager.findOne.mockResolvedValue({ ...mockAdmin });
+      transactionManager.count.mockResolvedValue(2);
+      transactionManager.delete.mockResolvedValue({ affected: 1 });
+
+      await service.remove('admin-1', 'other-user');
+
+      expect(transactionManager.count).toHaveBeenCalled();
+      expect(transactionManager.delete).toHaveBeenCalledWith(User, 'admin-1');
     });
 
     it('rejects with NotFoundException when user is not found', async () => {
-      repository.findOne.mockResolvedValue(null);
+      transactionManager.findOne.mockResolvedValue(null);
 
       await expect(service.remove('missing', 'other-user')).rejects.toThrow(
         NotFoundException,
@@ -237,20 +370,18 @@ describe('UsersService', () => {
         ForbiddenException,
       );
 
-      expect(repository.findOne).not.toHaveBeenCalled();
-      expect(repository.count).not.toHaveBeenCalled();
-      expect(repository.delete).not.toHaveBeenCalled();
+      expect(dataSource.transaction).not.toHaveBeenCalled();
     });
 
     it('rejects with ForbiddenException when deleting the last admin', async () => {
-      repository.findOne.mockResolvedValue(mockUser);
-      repository.count.mockResolvedValue(1);
+      transactionManager.findOne.mockResolvedValue({ ...mockAdmin });
+      transactionManager.count.mockResolvedValue(1);
 
-      await expect(service.remove('user-1', 'other-user')).rejects.toThrow(
+      await expect(service.remove('admin-1', 'other-user')).rejects.toThrow(
         ForbiddenException,
       );
 
-      expect(repository.delete).not.toHaveBeenCalled();
+      expect(transactionManager.delete).not.toHaveBeenCalled();
     });
   });
 });
