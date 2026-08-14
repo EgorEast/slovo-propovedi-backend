@@ -58,7 +58,10 @@ describe('AuthService', () => {
     queryBuilder.into.mockReturnValue(queryBuilder);
     queryBuilder.values.mockReturnValue(queryBuilder);
     queryBuilder.orIgnore.mockReturnValue(queryBuilder);
-    queryBuilder.execute.mockResolvedValue({});
+    // Postgres RETURNING: one row when the insert landed, zero when a
+    // concurrent logout/rotation already stored the hash (ON CONFLICT
+    // DO NOTHING).
+    queryBuilder.execute.mockResolvedValue({ raw: [{ id: 'inserted-row' }] });
     revokedTokensRepository.createQueryBuilder.mockReturnValue(queryBuilder);
     return queryBuilder;
   }
@@ -147,12 +150,14 @@ describe('AuthService', () => {
       jwtService.verifyAsync.mockResolvedValue({
         id: mockUser.id,
         email: mockUser.email,
+        exp: Math.floor(Date.now() / 1000) + 60,
       });
       usersService.findOneById.mockResolvedValue({
         ...mockUser,
         role: UserRole.Moderator,
       });
       jwtService.signAsync.mockResolvedValue('signed-token');
+      mockInsertQueryBuilder();
 
       const result = await service.refreshTokens('legacy-refresh-token');
 
@@ -165,6 +170,66 @@ describe('AuthService', () => {
         accessToken: 'signed-token',
         refreshToken: 'signed-token',
       });
+    });
+
+    it('revokes the presented refresh token before issuing a fresh pair', async () => {
+      const exp = Math.floor(Date.now() / 1000) + 60 * 60;
+      jwtService.verifyAsync.mockResolvedValue({ id: mockUser.id, exp });
+      usersService.findOneById.mockResolvedValue(mockUser);
+      jwtService.signAsync.mockResolvedValue('signed-token');
+      const queryBuilder = mockInsertQueryBuilder();
+
+      const result = await service.refreshTokens('presented-refresh-token');
+
+      // Rotation: the presented token hash lands in the denylist with the exp
+      // from its own verified payload.
+      expect(queryBuilder.values).toHaveBeenCalledWith({
+        tokenHash: sha256Hex('presented-refresh-token'),
+        userId: mockUser.id,
+        expiresAt: new Date(exp * 1000),
+      });
+      expect(queryBuilder.orIgnore).toHaveBeenCalledTimes(1);
+      expect(jwtService.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ id: mockUser.id, role: UserRole.Admin }),
+        expect.anything(),
+      );
+      expect(result).toEqual({
+        accessToken: 'signed-token',
+        refreshToken: 'signed-token',
+      });
+    });
+
+    it('propagates a revoke-store failure and issues no tokens', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        id: mockUser.id,
+        exp: Math.floor(Date.now() / 1000) + 60,
+      });
+      usersService.findOneById.mockResolvedValue(mockUser);
+      const queryBuilder = mockInsertQueryBuilder();
+      queryBuilder.execute.mockRejectedValue(new Error('database unavailable'));
+
+      await expect(service.refreshTokens('token')).rejects.toThrow(
+        'database unavailable',
+      );
+
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
+    });
+
+    it('rejects when a concurrent rotation already stored the presented token', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        id: mockUser.id,
+        exp: Math.floor(Date.now() / 1000) + 60,
+      });
+      usersService.findOneById.mockResolvedValue(mockUser);
+      const queryBuilder = mockInsertQueryBuilder();
+      // ON CONFLICT DO NOTHING ignored the insert: the hash is already dead.
+      queryBuilder.execute.mockResolvedValue({ raw: [] });
+
+      await expect(service.refreshTokens('token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
     });
 
     it('rejects with UnauthorizedException when the refresh token is invalid', async () => {
@@ -209,10 +274,12 @@ describe('AuthService', () => {
     it('stores the sha256 token hash, user id and exp, purging expired rows', async () => {
       const exp = Math.floor(Date.now() / 1000) + 60 * 60;
       jwtService.verifyAsync.mockResolvedValue({ id: mockUser.id, exp });
+      usersService.findOneById.mockResolvedValue(mockUser);
       const queryBuilder = mockInsertQueryBuilder();
 
       await service.logout('refresh-token');
 
+      expect(usersService.findOneById).toHaveBeenCalledWith(mockUser.id);
       expect(revokedTokensRepository.delete).toHaveBeenCalledWith({
         expiresAt: expect.any(FindOperator),
       });
@@ -232,6 +299,7 @@ describe('AuthService', () => {
         id: mockUser.id,
         exp: Math.floor(Date.now() / 1000) + 60,
       });
+      usersService.findOneById.mockResolvedValue(mockUser);
       const queryBuilder = mockInsertQueryBuilder();
 
       await service.logout('refresh-token');
@@ -245,6 +313,20 @@ describe('AuthService', () => {
       jwtService.verifyAsync.mockRejectedValue(new Error('expired'));
 
       await expect(service.logout('bad-token')).resolves.toBeUndefined();
+
+      expect(usersService.findOneById).not.toHaveBeenCalled();
+      expect(revokedTokensRepository.delete).not.toHaveBeenCalled();
+      expect(revokedTokensRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('keeps the 204 contract when the user no longer exists (nothing stored)', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        id: 'deleted-user',
+        exp: Math.floor(Date.now() / 1000) + 60,
+      });
+      usersService.findOneById.mockResolvedValue(null);
+
+      await expect(service.logout('orphan-token')).resolves.toBeUndefined();
 
       expect(revokedTokensRepository.delete).not.toHaveBeenCalled();
       expect(revokedTokensRepository.createQueryBuilder).not.toHaveBeenCalled();

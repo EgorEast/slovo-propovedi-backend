@@ -71,7 +71,7 @@ export class AuthService {
   }
 
   async refreshTokens(refreshToken: string): Promise<RefreshResponseDto> {
-    let verified: { id: string };
+    let verified: { id: string; exp: number };
 
     try {
       verified = await this.jwtService.verifyAsync(refreshToken, {
@@ -79,6 +79,12 @@ export class AuthService {
       });
     } catch {
       throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    // Fast-fail denylist gate: a token killed by logout() or by a previous
+    // rotation is dead before we pay for the user re-fetch.
+    if (await this.isRevoked(refreshToken)) {
+      throw new UnauthorizedException('Refresh token has been revoked');
     }
 
     // Re-fetch the LIVE user so a stale or demoted role takes effect on the
@@ -90,8 +96,19 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    // Denylist check: a refresh token whose hash was stored by logout() is dead.
-    if (await this.isRevoked(refreshToken)) {
+    // ROTATION: the presented token is revoked before the fresh pair is
+    // signed, so a failed store means no new tokens are ever issued. No
+    // separate transaction is needed for the logout-vs-refresh race: the
+    // insert itself is the serialization point — UNIQUE(token_hash) +
+    // ON CONFLICT DO NOTHING turns a token a concurrent logout/rotation
+    // already stored into a no-op, storeRevokedToken reports false, and no
+    // sibling pair is minted.
+    const stored = await this.storeRevokedToken(
+      refreshToken,
+      user.id,
+      verified.exp,
+    );
+    if (!stored) {
       throw new UnauthorizedException('Refresh token has been revoked');
     }
 
@@ -115,7 +132,13 @@ export class AuthService {
       return;
     }
 
-    const tokenHash = this.hashToken(refreshToken);
+    // A deleted account's token is already unusable (refresh re-fetches the
+    // user and would 401), so skip storing: the row would violate the
+    // revoked_refresh_token.user_id FK and turn the idempotent 204 into a 500.
+    const user = await this.usersService.findOneById(verified.id);
+    if (!user) {
+      return;
+    }
 
     // Opportunistic purge: rows whose token already expired are garbage — no
     // scheduled job needed.
@@ -124,17 +147,31 @@ export class AuthService {
     });
 
     // orIgnore() keeps a double logout a 204 (UNIQUE on token_hash).
-    await this.revokedTokensRepository
+    await this.storeRevokedToken(refreshToken, user.id, verified.exp);
+  }
+
+  // Store the sha256 hash of a presented refresh token so it can never be used
+  // again. Returns true when the row was actually inserted; false when the
+  // hash was already present (a concurrent logout/rotation) — ON CONFLICT DO
+  // NOTHING swallows the duplicate, so Postgres RETURNING yields zero rows.
+  private async storeRevokedToken(
+    refreshToken: string,
+    userId: string,
+    exp: number,
+  ): Promise<boolean> {
+    const insertResult = await this.revokedTokensRepository
       .createQueryBuilder()
       .insert()
       .into(RevokedRefreshToken)
       .values({
-        tokenHash,
-        userId: verified.id,
-        expiresAt: new Date(verified.exp * 1000),
+        tokenHash: this.hashToken(refreshToken),
+        userId,
+        expiresAt: new Date(exp * 1000),
       })
       .orIgnore()
       .execute();
+
+    return insertResult.raw.length > 0;
   }
 
   private hashToken(token: string): string {

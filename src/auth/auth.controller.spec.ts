@@ -37,9 +37,30 @@ describe('AuthController', () => {
     signAsync: jest.Mock;
     verifyAsync: jest.Mock;
   };
+  let module: TestingModule;
+
+  function mockInsertQueryBuilder() {
+    const queryBuilder = {
+      insert: jest.fn(),
+      into: jest.fn(),
+      values: jest.fn(),
+      orIgnore: jest.fn(),
+      execute: jest.fn(),
+    };
+    queryBuilder.insert.mockReturnValue(queryBuilder);
+    queryBuilder.into.mockReturnValue(queryBuilder);
+    queryBuilder.values.mockReturnValue(queryBuilder);
+    queryBuilder.orIgnore.mockReturnValue(queryBuilder);
+    // Postgres RETURNING: one row when the insert landed (rotation stores the
+    // presented token hash before signing the fresh pair).
+    queryBuilder.execute.mockResolvedValue({ raw: [{ id: 'inserted-row' }] });
+    const repository = module.get(getRepositoryToken(RevokedRefreshToken));
+    repository.createQueryBuilder.mockReturnValue(queryBuilder);
+    return queryBuilder;
+  }
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
         AuthService,
@@ -97,12 +118,16 @@ describe('AuthController', () => {
   });
 
   it('refresh delegates to the service and re-signs with the fresh role', async () => {
-    jwtService.verifyAsync.mockResolvedValue({ id: mockUser.id });
+    jwtService.verifyAsync.mockResolvedValue({
+      id: mockUser.id,
+      exp: Math.floor(Date.now() / 1000) + 60,
+    });
     usersService.findOneById.mockResolvedValue({
       ...mockUser,
       role: UserRole.Moderator,
     });
     jwtService.signAsync.mockResolvedValue('signed-token');
+    mockInsertQueryBuilder();
 
     const result = await controller.refresh({
       refreshToken: 'refresh-token',

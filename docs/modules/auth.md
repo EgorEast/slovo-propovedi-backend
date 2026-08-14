@@ -21,7 +21,7 @@
 | Метод / путь | Guard | DTO ответа | Метод сервиса | Назначение |
 |---------------|-------|------------|----------------|------------|
 | `POST /auth/login` | публичный | `AuthResponseDto` | `signIn(username, password)` | вход по username/password |
-| `POST /auth/refresh` | публичный | `RefreshResponseDto` | `refreshTokens(refreshToken)` | обновление пары токенов |
+| `POST /auth/refresh` | публичный | `RefreshResponseDto` | `refreshTokens(refreshToken)` | обновление пары токенов (**ротация**: предъявленный refresh-токен отзывается) |
 | `POST /auth/logout` | ✅ `AuthGuard` (без `@Roles`) | `204` (без тела) | `logout(refreshToken)` | отзыв refresh-токена (denylist) |
 | `GET /auth/profile` | ✅ `AuthGuard` (без `@Roles`) | `UserResponseDto` | `getProfile(req.user.id)` | профиль **любого** аутентифицированного (включая `user`) |
 
@@ -62,9 +62,17 @@ private async generateTokens(payload: { id: string; email: string; role: UserRol
 ### `refreshTokens(refreshToken)`
 
 1. `jwtService.verifyAsync(refreshToken, { secret: refreshSecret })` — сбой → `UnauthorizedException`.
-2. **Пере-запрашивает живого пользователя** `usersService.findOneById(payload.id)` — нет → `UnauthorizedException`.
-3. **Denylist-check**: sha256(refreshToken) ищется в таблице `revoked_refresh_token` (`isRevoked`) — найден → `UnauthorizedException` **до** подписания новой пары (токен отозван через `logout`).
-4. Собирает **свежий** payload `{ id, email, role }` из живого пользователя и подписывает новую пару.
+2. **Fast-fail denylist-check**: sha256(refreshToken) ищется в таблице `revoked_refresh_token` (`isRevoked`) — найден → `UnauthorizedException` (токен уже убит через `logout` или предыдущую ротацию) **до** пере-запроса пользователя.
+3. **Пере-запрашивает живого пользователя** `usersService.findOneById(payload.id)` — нет → `UnauthorizedException`.
+4. **Ротация**: предъявленный refresh-токен **отзывается в этом же запросе** — его sha256-хэш вставляется в `revoked_refresh_token` (`storeRevokedToken`, `exp` берётся из верифицированного payload, `ON CONFLICT DO NOTHING`). Вставка выполняется **до** подписания новой пары:
+   - insert упал → исключение пробрасывается, новых токенов не выдаётся;
+   - `ON CONFLICT DO NOTHING` проглотил вставку (хэш уже есть — параллельный logout/ротация победил) → `UnauthorizedException`, sibling-пара не майнится.
+5. Собирает **свежий** payload `{ id, email, role }` из живого пользователя и подписывает новую пару.
+
+**Семантика ротации:**
+- **Один живой refresh-токен на цепочку**: каждый `/auth/refresh` убивает предъявленный токен и выдаёт свежую пару. Повторный `/auth/refresh` с уже отротированным токеном → `401` (он в denylist).
+- **Multi-tab / несколько устройств**: параллельный refresh из второй вкладки или устройства со старым токеном получает `401` (победила ротация) и должен заново пройти `/auth/login`. Гонка двух одновременных refresh с одним токеном не даёт двух живых цепочек.
+- **Гонка logout-vs-refresh безопасна без отдельной транзакции**: UNIQUE(`token_hash`) + `ON CONFLICT DO NOTHING` делают сам insert точкой сериализации — если параллельный logout уже сохранил хэш, insert не сработает и новая пара не будет выдана.
 
 Зачем re-fetch:
 - **stale/demoted role вступает в силу при следующем refresh** — пониженный админ не получит новый access-токен со старой ролью;
@@ -77,12 +85,14 @@ private async generateTokens(payload: { id: string; email: string; role: UserRol
 1. `jwtService.verifyAsync(refreshToken, { secret: refreshSecret })`:
    - **невалидный/просроченный** токен → `return` (**всё равно `204`**, идемпотентность — непригодному токену нечего отзывать);
    - валидный → payload `{ id, exp }` (id пользователя, срок токена).
-2. `tokenHash = sha256(refreshToken)` (hex) — **в БД хранится только хэш**, не сам токен: утечка дампа БД не даёт «оживить» refresh-токен.
-3. **Opportunistic purge**: `DELETE FROM revoked_refresh_token WHERE expires_at < now()` — строки с уже истёкшими токенами мусорные, чистим по ходу, без scheduled job.
-4. `INSERT ... ON CONFLICT DO NOTHING` (`orIgnore()`) — повторный logout с тем же токеном не падает (UNIQUE на `token_hash`), остаётся `204`.
+2. **FK-guard**: `usersService.findOneById(payload.id)` — пользователь удалён → `return` (**тоже `204`**, токен и так мёртв: `/auth/refresh` пере-запрашивает пользователя и дал бы `401`; хранить строку нельзя — FK `revoked_refresh_token.user_id → user(id)` упал бы `500`).
+3. `tokenHash = sha256(refreshToken)` (hex) — **в БД хранится только хэш**, не сам токен: утечка дампа БД не даёт «оживить» refresh-токен.
+4. **Opportunistic purge**: `DELETE FROM revoked_refresh_token WHERE expires_at < now()` — строки с уже истёкшими токенами мусорные, чистим по ходу, без scheduled job.
+5. `INSERT ... ON CONFLICT DO NOTHING` (`orIgnore()`) — повторный logout с тем же токеном не падает (UNIQUE на `token_hash`), остаётся `204`.
 
-**Семантика отзыва:**
-- **refresh-токен** умирает немедленно — следующий `/auth/refresh` с ним получит `401`;
+**Семантика отзыва (ротация):**
+- **refresh-токен умирает немедленно**: `logout` кладёт его хэш в denylist; `/auth/refresh` **также** отзывает предъявленный токен при ротации — в каждый момент времени в цепочке жив **один** refresh-токен;
+- повторный `/auth/refresh` с уже отротированным/отозванным токеном → `401` (в т.ч. из второй вкладки/устройства, где ещё лежит старый токен) — клиент должен заново пройти `/auth/login`;
 - **access-токен** НЕ в denylist — он остаётся технически валидным до собственного истечения (**≤ 30 минут**). Клиент обязан удалить оба токена при logout; при «утечке» access-токена максимум 30 минут — осознанный компромисс (не ходить в БД на каждый запрос, та же логика, что с устареванием роли);
 - строки denylist живут до `exp` токена (после — токен и так просрочен).
 

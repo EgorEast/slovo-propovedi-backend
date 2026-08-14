@@ -107,7 +107,7 @@
 | `POST /auth/logout` | `AuthGuard` (без `@Roles`) | `AuthController.logout` | `AuthService.logout(refreshToken)` |
 | `GET /auth/profile` | `AuthGuard` (без `@Roles`) | `AuthController.getProfile` | `AuthService.getProfile(req.user.id)` |
 
-> ✅ `POST /auth/logout` доступен **любой аутентифицированной роли** (`admin` / `moderator` / `user`) — без `RolesGuard`. Отзывает refresh-токен (denylist, sha256-хэш в `revoked_refresh_token`); повторный logout с тем же токеном — тоже `204`. Access-токен остаётся технически валидным до истечения (≤ 30 мин). Детали — [`../modules/auth.md`](../modules/auth.md).
+> ✅ `POST /auth/logout` доступен **любой аутентифицированной роли** (`admin` / `moderator` / `user`) — без `RolesGuard`. Отзывает refresh-токен (denylist, sha256-хэш в `revoked_refresh_token`); повторный logout с тем же токеном — тоже `204`. `POST /auth/refresh` **ротирует** пару: предъявленный refresh-токен отзывается в том же запросе (один живой refresh-токен на цепочку; повторный refresh со старым токеном → `401`). Access-токен остаётся технически валидным до истечения (≤ 30 мин). Детали — [`../modules/auth.md`](../modules/auth.md).
 
 ### Users
 

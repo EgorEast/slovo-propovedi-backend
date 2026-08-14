@@ -41,12 +41,12 @@
 
 ### `RevokedRefreshToken` — таблица `revoked_refresh_token`
 
-`src/auth/entities/revoked-refresh-token.entity.ts`. Denylist отозванных refresh-токенов (см. [`modules/auth.md`](./modules/auth.md), `logout`).
+`src/auth/entities/revoked-refresh-token.entity.ts`. Denylist отозванных refresh-токенов — через `logout` **и ротацию** в `refreshTokens` (см. [`modules/auth.md`](./modules/auth.md)).
 
 | Колонка | Тип | Ограничения |
 |---------|-----|-------------|
 | `id` | uuid | PK |
-| `token_hash` | varchar | **UNIQUE** — ключ поиска denylist; guard от повторного logout (`ON CONFLICT DO NOTHING`) |
+| `token_hash` | varchar | **UNIQUE** — ключ поиска denylist; guard от повторного logout и параллельной ротации (`ON CONFLICT DO NOTHING`) |
 | `user_id` | uuid | FK → `user`(id), `ON DELETE CASCADE` |
 | `revoked_at` | timestamptz | NOT NULL, default `now()` |
 | `expires_at` | timestamptz | NOT NULL — зеркало `exp` токена; после этой даты токен и так просрочен, строка — мусор (чистится opportunistic purge) |
