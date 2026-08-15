@@ -393,11 +393,11 @@ describe('SermonService', () => {
         'sermon.artist IS NOT NULL',
       );
       expect(artistBuilder.andWhere).toHaveBeenCalledWith(
-        "trim(sermon.artist) <> ''",
+        "btrim(sermon.artist, E' \\t\\n\\r') <> ''",
       );
       expect(bookBuilder.where).toHaveBeenCalledWith('sermon.book IS NOT NULL');
       expect(bookBuilder.andWhere).toHaveBeenCalledWith(
-        "trim(sermon.book) <> ''",
+        "btrim(sermon.book, E' \\t\\n\\r') <> ''",
       );
     });
 

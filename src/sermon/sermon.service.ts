@@ -368,7 +368,7 @@ export class SermonService {
         .createQueryBuilder('sermon')
         .select('DISTINCT sermon.artist', 'artist')
         .where('sermon.artist IS NOT NULL')
-        .andWhere("trim(sermon.artist) <> ''")
+        .andWhere("btrim(sermon.artist, E' \\t\\n\\r') <> ''")
         .orderBy('artist', 'ASC')
         .getRawMany<{ artist: string }>();
 
@@ -376,7 +376,7 @@ export class SermonService {
         .createQueryBuilder('sermon')
         .select('DISTINCT sermon.book', 'book')
         .where('sermon.book IS NOT NULL')
-        .andWhere("trim(sermon.book) <> ''")
+        .andWhere("btrim(sermon.book, E' \\t\\n\\r') <> ''")
         .orderBy('book', 'ASC')
         .getRawMany<{ book: string }>();
 
