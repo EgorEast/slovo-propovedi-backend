@@ -2,6 +2,14 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.6.0] - 2026-08-15
+
+### Features
+- add GET /sermons/distinct-values endpoint (distinct artists/books for autocomplete)
+
+### Bug Fixes
+- filter tab/newline-only values in distinct-values endpoint
+
 ## [0.5.0] - 2026-08-15
 
 ### Features
