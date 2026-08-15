@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   SermonControllerCreateResponse,
   SermonControllerFindAllResponse,
+  SermonControllerGetDistinctValuesResponse,
 } from '../../generated';
 
 export interface UpdateSermon {
@@ -19,6 +20,10 @@ export interface UpdateSermon {
 
 export type NormalizedSermonResponse = z.infer<
   typeof SermonControllerCreateResponse
+>;
+
+export type DistinctValuesResponse = z.infer<
+  typeof SermonControllerGetDistinctValuesResponse
 >;
 
 export class AllSermonsResponse {

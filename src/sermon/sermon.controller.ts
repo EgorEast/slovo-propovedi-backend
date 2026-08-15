@@ -18,6 +18,7 @@ import { SermonResponseDto } from './dto/sermon-response.dto';
 import { AllSermonsResponseDto } from './dto/all-sermons-response.dto';
 import { StreamUrlResponseDto } from './dto/stream-url-response.dto';
 import { StatusSermonResponseDto } from './dto/status-sermon-response.dto';
+import { DistinctValuesResponseDto } from './dto/distinct-values-response.dto';
 import { AuthGuard } from '../auth/guard/auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -48,6 +49,14 @@ export class SermonController {
       query.cursor,
       query.search,
     );
+  }
+
+  // Static route must be declared before @Get(':id') — otherwise "distinct-values"
+  // would be captured by the :id param.
+  @Get('distinct-values')
+  @ZodResponse({ type: DistinctValuesResponseDto })
+  async getDistinctValues(): Promise<DistinctValuesResponseDto> {
+    return await this.sermonService.getDistinctValues();
   }
 
   @Get(':id/stream-url')

@@ -11,6 +11,7 @@
 |---------------|-------|------------------|------------|----------------|
 | `POST /sermons` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | body `CreateSermonDto` | `SermonResponseDto` | `create` |
 | `GET /sermons` | публичный | query `FindAllSermonsQueryDto` | `AllSermonsResponseDto` | `findAll(take, cursor, search)` |
+| `GET /sermons/distinct-values` | публичный | — | `DistinctValuesResponseDto` | `getDistinctValues` |
 | `GET /sermons/:id` | публичный | param `IdParamDto` | `SermonResponseDto` | `findOne` |
 | `GET /sermons/:id/stream-url` | публичный | param `IdParamDto` | `StreamUrlResponseDto` | `getStreamUrl` |
 | `PATCH /sermons/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | param + body `UpdateSermonDto` | `StatusSermonResponseDto` | `update` |
@@ -115,6 +116,15 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 > ✅ `findAll` без `take`/`search` отдаёт **всю** выборку (backward-compat, используется админкой при первичной загрузке). Поиск применён в **обоих** путях.
 
+## `getDistinctValues` — уникальные проповедники и книги (автодополнение)
+
+Отдаёт два **независимых** списка ранее использованных значений — `{ artists, books }` — для автодополнения полей `artist`/`book` в формах админки.
+
+- **Два отдельных запроса**, а не `DISTINCT` по двум колонкам вместе: `SELECT DISTINCT (artist, book)` вернул бы пары «проповедник + книга», а списки должны быть независимыми.
+- Каждый запрос фильтрует на уровне SQL: `IS NOT NULL` и `trim(...) <> ''` — NULL и пустые/пробельные значения не попадают в ответ.
+- Порядок — **алфавитный**, задан `ORDER BY ... ASC` в SQL (детерминированный).
+- Маршрут **публичный** (как `findAll`); объявлен **до** `@Get(':id')` — иначе статический сегмент `distinct-values` был бы перехвачен параметром `:id`.
+
 ## `create` (SERIALIZABLE) и привязка к плейлистам
 
 - `create` сохраняет проповедь, затем `attachSermonToPlaylists(savedSermon, playlistsIds)`.
@@ -142,6 +152,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 | `src/sermon/dto/find-all-sermons-query.dto.ts` | extends query + `.extend({ take: z.coerce.number().int().min(1).max(100).optional(), search: z.string().trim().min(1).optional(), cursor: z.string().min(1).optional() })` + `.superRefine(...)` |
 | `src/sermon/dto/sermon-response.dto.ts` | create/findOne |
 | `src/sermon/dto/all-sermons-response.dto.ts` | findAll |
+| `src/sermon/dto/distinct-values-response.dto.ts` | distinct-values |
 | `src/sermon/dto/stream-url-response.dto.ts` | stream-url |
 | `src/sermon/dto/status-sermon-response.dto.ts` | update/remove |
 

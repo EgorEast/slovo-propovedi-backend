@@ -51,13 +51,14 @@
 | `user` | ✅ | ❌ `403` | ❌ `403` | ❌ `403` |
 | аноним | ✅ | ❌ `401` (guarded) | ❌ `401` | ❌ `401` |
 
-**Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /auth/profile` и `POST /auth/logout` — `AuthGuard` без `@Roles` (любой аутентифицированный).
+**Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/distinct-values`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /auth/profile` и `POST /auth/logout` — `AuthGuard` без `@Roles` (любой аутентифицированный).
 
 ### Sermons
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
 | `GET /sermons` | публичный | `SermonController.findAll` | `SermonService.findAll(take, cursor, search)` |
+| `GET /sermons/distinct-values` | публичный | `SermonController.getDistinctValues` | `SermonService.getDistinctValues` |
 | `GET /sermons/:id` | публичный | `SermonController.findOne` | `SermonService.findOne` |
 | `GET /sermons/:id/stream-url` | публичный | `SermonController.getStreamUrl` | `SermonService.getStreamUrl` |
 | `POST /sermons` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.create` | `SermonService.create` |

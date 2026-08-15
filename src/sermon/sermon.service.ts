@@ -14,6 +14,7 @@ import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-
 import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 import {
   AllSermonsResponse,
+  DistinctValuesResponse,
   NormalizedSermonResponse,
   StatusSermonResponse,
   StreamUrlResponse,
@@ -355,6 +356,43 @@ export class SermonService {
     const fileName = MinioService.extractFileNameFromUrl(sermon.audioUrl);
     const url = await this.minioService.getPresignedFileUrl(fileName);
     return { url };
+  }
+
+  // Distinct previously-used artists/books for autocomplete. DISTINCT on two
+  // columns together would return value PAIRS, so each column is queried
+  // separately; NULL and whitespace-only values are excluded in SQL, and
+  // ORDER BY keeps the lists deterministic (alphabetical).
+  async getDistinctValues(): Promise<DistinctValuesResponse> {
+    try {
+      const artistRows = await this.sermonRepository
+        .createQueryBuilder('sermon')
+        .select('DISTINCT sermon.artist', 'artist')
+        .where('sermon.artist IS NOT NULL')
+        .andWhere("trim(sermon.artist) <> ''")
+        .orderBy('artist', 'ASC')
+        .getRawMany<{ artist: string }>();
+
+      const bookRows = await this.sermonRepository
+        .createQueryBuilder('sermon')
+        .select('DISTINCT sermon.book', 'book')
+        .where('sermon.book IS NOT NULL')
+        .andWhere("trim(sermon.book) <> ''")
+        .orderBy('book', 'ASC')
+        .getRawMany<{ book: string }>();
+
+      return {
+        artists: artistRows.map((row) => row.artist),
+        books: bookRows.map((row) => row.book),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'from:getDistinctValues ' + error.message,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   async findOne(id: string): Promise<NormalizedSermonResponse | null> {

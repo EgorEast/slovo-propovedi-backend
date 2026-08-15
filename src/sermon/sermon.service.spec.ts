@@ -336,4 +336,92 @@ describe('SermonService', () => {
       });
     });
   });
+
+  describe('getDistinctValues', () => {
+    function mockQueryBuilder(rawRows: Record<string, string>[]) {
+      const queryBuilder = {
+        select: jest.fn(),
+        where: jest.fn(),
+        andWhere: jest.fn(),
+        orderBy: jest.fn(),
+        getRawMany: jest.fn(),
+      };
+      ['select', 'where', 'andWhere', 'orderBy'].forEach((method) =>
+        queryBuilder[method].mockReturnValue(queryBuilder),
+      );
+      queryBuilder.getRawMany.mockResolvedValue(rawRows);
+      return queryBuilder;
+    }
+
+    it('returns the distinct artists and books from two independent queries', async () => {
+      const artistBuilder = mockQueryBuilder([
+        { artist: 'Антоний' },
+        { artist: 'Иоанн' },
+      ]);
+      const bookBuilder = mockQueryBuilder([{ book: 'Бытие' }]);
+      sermonRepository.createQueryBuilder
+        .mockReturnValueOnce(artistBuilder)
+        .mockReturnValueOnce(bookBuilder);
+
+      const result = await service.getDistinctValues();
+
+      expect(sermonRepository.createQueryBuilder).toHaveBeenCalledTimes(2);
+      expect(artistBuilder.select).toHaveBeenCalledWith(
+        'DISTINCT sermon.artist',
+        'artist',
+      );
+      expect(bookBuilder.select).toHaveBeenCalledWith(
+        'DISTINCT sermon.book',
+        'book',
+      );
+      expect(result).toEqual({
+        artists: ['Антоний', 'Иоанн'],
+        books: ['Бытие'],
+      });
+    });
+
+    it('excludes NULL and empty/whitespace-only values in SQL for both columns', async () => {
+      const artistBuilder = mockQueryBuilder([{ artist: 'Иоанн' }]);
+      const bookBuilder = mockQueryBuilder([{ book: 'Бытие' }]);
+      sermonRepository.createQueryBuilder
+        .mockReturnValueOnce(artistBuilder)
+        .mockReturnValueOnce(bookBuilder);
+
+      await service.getDistinctValues();
+
+      expect(artistBuilder.where).toHaveBeenCalledWith(
+        'sermon.artist IS NOT NULL',
+      );
+      expect(artistBuilder.andWhere).toHaveBeenCalledWith(
+        "trim(sermon.artist) <> ''",
+      );
+      expect(bookBuilder.where).toHaveBeenCalledWith('sermon.book IS NOT NULL');
+      expect(bookBuilder.andWhere).toHaveBeenCalledWith(
+        "trim(sermon.book) <> ''",
+      );
+    });
+
+    it('sorts both lists alphabetically in SQL', async () => {
+      const artistBuilder = mockQueryBuilder([{ artist: 'Антоний' }]);
+      const bookBuilder = mockQueryBuilder([{ book: 'Бытие' }]);
+      sermonRepository.createQueryBuilder
+        .mockReturnValueOnce(artistBuilder)
+        .mockReturnValueOnce(bookBuilder);
+
+      await service.getDistinctValues();
+
+      expect(artistBuilder.orderBy).toHaveBeenCalledWith('artist', 'ASC');
+      expect(bookBuilder.orderBy).toHaveBeenCalledWith('book', 'ASC');
+    });
+
+    it('returns empty lists when no values exist', async () => {
+      sermonRepository.createQueryBuilder
+        .mockReturnValueOnce(mockQueryBuilder([]))
+        .mockReturnValueOnce(mockQueryBuilder([]));
+
+      const result = await service.getDistinctValues();
+
+      expect(result).toEqual({ artists: [], books: [] });
+    });
+  });
 });
