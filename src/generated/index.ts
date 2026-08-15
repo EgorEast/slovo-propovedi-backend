@@ -5,16 +5,28 @@
  * REST API сервиса «Слово.Проповеди».
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.7.0
+ * OpenAPI spec version: 0.8.0
  */
 import * as zod from 'zod';
+
+/**
+ * @summary Проверить состояние сервиса
+ */
+export const HealthControllerCheckResponse = zod.strictObject({
+  status: zod.string(),
+});
 
 /**
  * Файл сохраняется в MinIO. Допустимые форматы: JPEG, PNG, WebP (изображения), MP3 (аудио), PDF, FB2 (документы).
  * @summary Загрузить файл (изображение, аудио MP3, PDF, FB2)
  */
 export const AppControllerUploadFileBody = zod.strictObject({
-  file: zod.instanceof(File).optional(),
+  file: zod
+    .instanceof(File)
+    .optional()
+    .describe(
+      'Допустимые форматы — JPEG, PNG, WebP, MP3, PDF, FB2. Другие форматы будут отклонены.',
+    ),
 });
 
 export const AppControllerUploadFileResponse = zod.strictObject({
@@ -59,13 +71,6 @@ export const AppControllerGetFileParams = zod.strictObject({
 export const AppControllerGetFileResponse = zod.strictObject({
   fileName: zod.string(),
   fileUrl: zod.string(),
-});
-
-/**
- * @summary Проверить состояние сервиса
- */
-export const HealthControllerCheckResponse = zod.strictObject({
-  status: zod.string(),
 });
 
 /**
@@ -478,6 +483,7 @@ export const PlaylistControllerCreateBody = zod.strictObject({
   description: zod.string().nullable(),
   artwork: zod.string(),
   sermonsIds: zod.array(zod.string()).optional(),
+  sectionsIds: zod.array(zod.string()).optional(),
 });
 
 export const playlistControllerCreateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault =

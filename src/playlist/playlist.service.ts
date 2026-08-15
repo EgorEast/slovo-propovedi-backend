@@ -55,7 +55,7 @@ export class PlaylistService {
     createPlaylistDto: CreatePlaylistDto,
   ): Promise<NormalizedPlaylistResponse> {
     try {
-      const savedId = await this.dataSource.transaction(
+      const saved = await this.dataSource.transaction(
         'SERIALIZABLE',
         async (manager) => {
           const playlistRepository = manager.getRepository(PlaylistEntity);
@@ -90,13 +90,36 @@ export class PlaylistService {
             await playlistSermonJoinRepository.save(joinRows);
           }
 
-          return saved.id;
+          // Mirror of the sermonsIds flow: validation lives inside the
+          // transaction, so a throw aborts it and no playlist is persisted.
+          if (createPlaylistDto.sectionsIds?.length) {
+            if (
+              new Set(createPlaylistDto.sectionsIds).size !==
+              createPlaylistDto.sectionsIds.length
+            ) {
+              throw new BadRequestException('Duplicate section IDs detected');
+            }
+            const sections = await this.sectionRepository.find({
+              where: { id: In(createPlaylistDto.sectionsIds) },
+            });
+            if (sections.length !== createPlaylistDto.sectionsIds.length) {
+              throw new NotFoundException('Some sections not found');
+            }
+          }
+
+          return saved;
         },
       );
 
-      // Re-read after the transaction commits so the response reflects the
-      // fully persisted playlist.
-      return await this.findOne(savedId);
+      // Attach after the create transaction commits, mirroring the sermon
+      // precedent (SermonService.create → attachSermonToPlaylists): the helper
+      // opens its own SERIALIZABLE transaction, so it must not run inside this
+      // one. Validation above already guaranteed every section exists.
+      await this.attachPlaylistToSections(saved, createPlaylistDto.sectionsIds);
+
+      // Re-read after the transactions so the response reflects the fully
+      // persisted playlist.
+      return await this.findOne(saved.id);
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;

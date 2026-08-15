@@ -77,6 +77,8 @@
 | `PATCH /playlists/:id/sermons/reorder` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.reorderSermons` | `PlaylistService.reorderSermonsInPlaylist(id, sermonIds)` |
 | `DELETE /playlists/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.remove` | `PlaylistService.remove` |
 
+> ✅ `POST /playlists` body: `{ title, description, artwork, sermonsIds?, sectionsIds? }`. `sectionsIds?` (добавлен в v0.8.0) прикрепляет плейлист к разделам — позиция в каждом разделе = `max(position) + 1`; отсутствующий/пустой массив — no-op. Ошибки: дубликаты в `sectionsIds` → `400 Bad Request` (`Duplicate section IDs detected`); несуществующий id раздела → `404 Not Found` (`Some sections not found`). Валидация выполняется в транзакции create — при ошибке плейлист не создаётся.
+
 ### Sections
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |

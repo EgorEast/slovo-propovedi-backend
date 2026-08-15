@@ -47,6 +47,8 @@
 ## `create` (SERIALIZABLE)
 
 - SERIALIZABLE-транзакция: сохраняет плейлист, затем — если `sermonsIds` задан — проверяет существование всех проповедей (`findByIds`), создаёт join-строки с позицией = индексу в массиве.
+- Если `sectionsIds` задан — валидация в той же транзакции (зеркало `sermonsIds`-флоу): дубликаты → `400 Bad Request` (`Duplicate section IDs detected`), несуществующий раздел → `404 Not Found` (`Some sections not found`). Ошибка откатывает транзакцию — плейлист не сохраняется.
+- После коммита, если `sectionsIds` задан — прикрепление к разделам через `attachPlaylistToSections` (SERIALIZABLE, `max(position) + 1`); пустой/отсутствующий массив — no-op. Паттерн «attach после create-транзакции» зеркалит `SermonService.create` → `attachSermonToPlaylists` (хелпер сам открывает SERIALIZABLE-транзакцию, поэтому не вызывается внутри create-транзакции).
 - Перечитывает после коммита (`findOne`) — ответ отражает полностью сохранённый плейлист.
 
 ## `update` и `replacePlaylistSermons`
@@ -106,7 +108,7 @@ await joinRepository.createQueryBuilder()
 
 | Файл | Схема |
 |------|-------|
-| `src/playlist/dto/create-playlist.dto.ts` | `{ title, description, artwork, sermonsIds? }` |
+| `src/playlist/dto/create-playlist.dto.ts` | `{ title, description, artwork, sermonsIds?, sectionsIds? }` |
 | `src/playlist/dto/update-playlist.dto.ts` | `{ title, description, artwork, sermonsIds, sectionsIds? }` |
 | `src/playlist/dto/reorder-sermons-in-playlist.dto.ts` | `{ sermonIds: uuid[] }` |
 | `src/playlist/dto/playlist-response.dto.ts` | create/findOne |
