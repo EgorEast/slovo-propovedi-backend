@@ -2,6 +2,11 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.7.0] - 2026-08-16
+
+### Features
+- add full-text search to GET /playlists
+
 ## [0.6.0] - 2026-08-15
 
 ### Features
