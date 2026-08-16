@@ -84,6 +84,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], playlist.search_vector
 ## `create` (SERIALIZABLE)
 
 - SERIALIZABLE-транзакция: сохраняет плейлист, затем — если `sermonsIds` задан — проверяет существование всех проповедей (`findByIds`), создаёт join-строки с позицией = индексу в массиве.
+- **`description: null` → `''`.** Схема `PlaylistControllerCreateBody` допускает `description: null`, но колонка `playlist.description` в БД — `NOT NULL` (см. [`../db.md`](../db.md), `sql/bootstrap.sql`), поэтому сервис приводит `null` к пустой строке на границе: `description: dto.description ?? ''`. Иначе INSERT с `NULL` падал бы HTTP 500 (нарушение not-null constraint).
 - Если `sectionsIds` задан — валидация в той же транзакции (зеркало `sermonsIds`-флоу): дубликаты → `400 Bad Request` (`Duplicate section IDs detected`), несуществующий раздел → `404 Not Found` (`Some sections not found`). Ошибка откатывает транзакцию — плейлист не сохраняется.
 - После коммита, если `sectionsIds` задан — прикрепление к разделам через `attachPlaylistToSections` (SERIALIZABLE, `max(position) + 1`); пустой/отсутствующий массив — no-op. Паттерн «attach после create-транзакции» зеркалит `SermonService.create` → `attachSermonToPlaylists` (хелпер сам открывает SERIALIZABLE-транзакцию, поэтому не вызывается внутри create-транзакции).
 - Перечитывает после коммита (`findOne`) — ответ отражает полностью сохранённый плейлист.
@@ -93,6 +94,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], playlist.search_vector
 - `update` обновляет только заданные поля (`title`/`description`/`artwork`), затем:
   - если `sermonsIds` задан → `replacePlaylistSermons(id, sermonsIds)` (bulk-replace состава);
   - если `sectionsIds` задан → `syncPlaylistSectionMembership(playlist, sectionsIds)`.
+- Если `description` задан и равен `null` — то же приведение, что в `create`: `playlist.description = dto.description ?? ''` (UPDATE с `NULL` нарушил бы `NOT NULL` так же, как INSERT).
 
 `replacePlaylistSermons` — **delete + reinsert в одной транзакции**, чтобы сбой вставки не оставил плейлист без проповедей:
 

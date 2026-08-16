@@ -123,7 +123,10 @@ export class PlaylistService {
 
           const playlist = playlistRepository.create({
             title: createPlaylistDto.title,
-            description: createPlaylistDto.description,
+            // The schema allows `description: null`, but the DB column is NOT
+            // NULL — coerce null to '' at the boundary so an INSERT can never
+            // violate it.
+            description: createPlaylistDto.description ?? '',
             artwork: createPlaylistDto.artwork,
             sectionJoins: [],
             sermonJoins: [],
@@ -323,7 +326,9 @@ export class PlaylistService {
         playlist.title = updatePlaylistDto.title;
       }
       if (updatePlaylistDto.description !== undefined) {
-        playlist.description = updatePlaylistDto.description;
+        // Coerce null → '' the same way create does: the DB column is NOT NULL,
+        // so an UPDATE with null would violate the constraint.
+        playlist.description = updatePlaylistDto.description ?? '';
       }
       if (updatePlaylistDto.artwork !== undefined) {
         playlist.artwork = updatePlaylistDto.artwork;

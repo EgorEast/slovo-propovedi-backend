@@ -46,13 +46,21 @@ describe('PlaylistService', () => {
   let playlistRepository: {
     createQueryBuilder: jest.Mock;
     findAndCount: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    findOne: jest.Mock;
   };
+  let dataSource: { transaction: jest.Mock };
 
   beforeEach(async () => {
     playlistRepository = {
       createQueryBuilder: jest.fn(),
       findAndCount: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      findOne: jest.fn(),
     };
+    dataSource = { transaction: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -79,7 +87,7 @@ describe('PlaylistService', () => {
         },
         {
           provide: getDataSourceToken(),
-          useValue: {},
+          useValue: dataSource,
         },
       ],
     }).compile();
@@ -224,6 +232,160 @@ describe('PlaylistService', () => {
       await service.findAll('');
 
       expect(playlistRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('create (null description coercion)', () => {
+    it('coerces a null description to an empty string before persisting', async () => {
+      const createMock = jest
+        .fn()
+        .mockImplementation((dto) => ({ id: 'pl-1', ...dto }));
+      const saveMock = jest.fn().mockResolvedValue({
+        id: 'pl-1',
+        title: 'Тест',
+        description: '',
+        artwork: '',
+      });
+      const manager = {
+        getRepository: jest.fn().mockImplementation((entity) => {
+          if (entity === PlaylistEntity) {
+            return { create: createMock, save: saveMock };
+          }
+          if (entity === PlaylistSermonJoinEntity) {
+            return { create: jest.fn(), save: jest.fn() };
+          }
+          throw new Error(`unexpected entity ${entity}`);
+        }),
+      };
+      dataSource.transaction = jest
+        .fn()
+        .mockImplementation(async (_isolation, callback) => callback(manager));
+      playlistRepository.findOne = jest.fn().mockResolvedValue({
+        id: 'pl-1',
+        title: 'Тест',
+        description: '',
+        artwork: '',
+        sermonJoins: [],
+        sectionJoins: [],
+      });
+
+      await service.create({
+        title: 'Тест',
+        description: null,
+        artwork: '',
+      } as never);
+
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Тест',
+          description: '',
+          artwork: '',
+        }),
+      );
+      expect(saveMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a non-null description as-is', async () => {
+      const createMock = jest
+        .fn()
+        .mockImplementation((dto) => ({ id: 'pl-1', ...dto }));
+      const manager = {
+        getRepository: jest.fn().mockImplementation((entity) => {
+          if (entity === PlaylistEntity) {
+            return {
+              create: createMock,
+              save: jest.fn().mockResolvedValue({ id: 'pl-1' }),
+            };
+          }
+          if (entity === PlaylistSermonJoinEntity) {
+            return { create: jest.fn(), save: jest.fn() };
+          }
+          throw new Error(`unexpected entity ${entity}`);
+        }),
+      };
+      dataSource.transaction = jest
+        .fn()
+        .mockImplementation(async (_isolation, callback) => callback(manager));
+      playlistRepository.findOne = jest.fn().mockResolvedValue({
+        id: 'pl-1',
+        title: 'Тест',
+        description: 'Описание',
+        artwork: '',
+        sermonJoins: [],
+        sectionJoins: [],
+      });
+
+      await service.create({
+        title: 'Тест',
+        description: 'Описание',
+        artwork: '',
+      } as never);
+
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'Описание' }),
+      );
+    });
+  });
+
+  describe('update (null description coercion)', () => {
+    it('coerces a null description to an empty string on update', async () => {
+      playlistRepository.findOne = jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'pl-1',
+          title: 'Тест',
+          description: 'Старое',
+          artwork: '',
+          sermonJoins: [],
+          sectionJoins: [],
+        })
+        .mockResolvedValueOnce({
+          id: 'pl-1',
+          title: 'Тест',
+          description: '',
+          artwork: '',
+          sermonJoins: [],
+          sectionJoins: [],
+        });
+      playlistRepository.save = jest
+        .fn()
+        .mockImplementation(async (playlist) => playlist);
+
+      await service.update('pl-1', { description: null } as never);
+
+      expect(playlistRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '' }),
+      );
+    });
+
+    it('keeps a non-null description as-is on update', async () => {
+      playlistRepository.findOne = jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'pl-1',
+          title: 'Тест',
+          description: 'Старое',
+          artwork: '',
+          sermonJoins: [],
+          sectionJoins: [],
+        })
+        .mockResolvedValueOnce({
+          id: 'pl-1',
+          title: 'Тест',
+          description: 'Новое',
+          artwork: '',
+          sermonJoins: [],
+          sectionJoins: [],
+        });
+      playlistRepository.save = jest
+        .fn()
+        .mockImplementation(async (playlist) => playlist);
+
+      await service.update('pl-1', { description: 'Новое' } as never);
+
+      expect(playlistRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'Новое' }),
+      );
     });
   });
 });

@@ -162,7 +162,9 @@ export class SermonService {
     try {
       const sermon = this.sermonRepository.create({
         title: createSermonDto.title,
-        description: createSermonDto.description,
+        // The schema allows `description: null`, but the DB column is NOT NULL —
+        // coerce null to '' at the boundary so an INSERT can never violate it.
+        description: createSermonDto.description ?? '',
         audioUrl: createSermonDto.audioUrl,
         youtubeUrl: createSermonDto.youtubeUrl,
         textFileUrl: createSermonDto.textFileUrl,
@@ -449,7 +451,9 @@ export class SermonService {
         updateFields.title = updateSermonDto.title;
       }
       if (updateSermonDto.description !== undefined) {
-        updateFields.description = updateSermonDto.description;
+        // Coerce null → '' the same way create does: the DB column is NOT NULL,
+        // so an UPDATE with null would violate the constraint.
+        updateFields.description = updateSermonDto.description ?? '';
       }
       if (updateSermonDto.audioUrl !== undefined) {
         updateFields.audioUrl = updateSermonDto.audioUrl;

@@ -32,11 +32,19 @@ describe('SermonService', () => {
   let service: SermonService;
   let sermonRepository: {
     createQueryBuilder: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    findOne: jest.Mock;
+    update: jest.Mock;
   };
 
   beforeEach(async () => {
     sermonRepository = {
       createQueryBuilder: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      findOne: jest.fn(),
+      update: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -422,6 +430,83 @@ describe('SermonService', () => {
       const result = await service.getDistinctValues();
 
       expect(result).toEqual({ artists: [], books: [] });
+    });
+  });
+
+  describe('create (null description coercion)', () => {
+    it('coerces a null description to an empty string before persisting', async () => {
+      const created = { id: 's-1', title: 'Тест', description: null };
+      sermonRepository.create = jest.fn().mockReturnValue(created);
+      sermonRepository.save = jest
+        .fn()
+        .mockResolvedValue({ ...created, description: '' });
+      sermonRepository.findOne = jest.fn().mockResolvedValue({
+        id: 's-1',
+        title: 'Тест',
+        description: '',
+        artist: '',
+        artwork: '',
+        playlists: [],
+      });
+
+      await service.create({ title: 'Тест', description: null } as never);
+
+      expect(sermonRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Тест', description: '' }),
+      );
+      expect(sermonRepository.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a non-null description as-is', async () => {
+      const created = { id: 's-1', title: 'Тест', description: 'Описание' };
+      sermonRepository.create = jest.fn().mockReturnValue(created);
+      sermonRepository.save = jest.fn().mockResolvedValue(created);
+      sermonRepository.findOne = jest.fn().mockResolvedValue({
+        id: 's-1',
+        title: 'Тест',
+        description: 'Описание',
+        artist: '',
+        artwork: '',
+        playlists: [],
+      });
+
+      await service.create({ title: 'Тест', description: 'Описание' } as never);
+
+      expect(sermonRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'Описание' }),
+      );
+    });
+  });
+
+  describe('update (null description coercion)', () => {
+    it('coerces a null description to an empty string in the update fields', async () => {
+      sermonRepository.findOne = jest.fn().mockResolvedValue({
+        id: 's-1',
+        title: 'Тест',
+        description: 'Старое',
+      });
+      sermonRepository.update = jest.fn().mockResolvedValue({ affected: 1 });
+
+      await service.update('s-1', { description: null } as never);
+
+      expect(sermonRepository.update).toHaveBeenCalledWith('s-1', {
+        description: '',
+      });
+    });
+
+    it('keeps a non-null description as-is on update', async () => {
+      sermonRepository.findOne = jest.fn().mockResolvedValue({
+        id: 's-1',
+        title: 'Тест',
+        description: 'Старое',
+      });
+      sermonRepository.update = jest.fn().mockResolvedValue({ affected: 1 });
+
+      await service.update('s-1', { description: 'Новое' } as never);
+
+      expect(sermonRepository.update).toHaveBeenCalledWith('s-1', {
+        description: 'Новое',
+      });
     });
   });
 });

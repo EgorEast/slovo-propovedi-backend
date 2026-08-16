@@ -129,10 +129,12 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 - `create` сохраняет проповедь, затем `attachSermonToPlaylists(savedSermon, playlistsIds)`.
 - Привязка к плейлистам — **SERIALIZABLE**-транзакция: для каждого плейлиста `max(position)`, новая позиция `(max ?? -1) + 1` — защита от конкурентных дублей позиций.
+- **`description: null` → `''`.** Схема `SermonControllerCreateBody` допускает `description: null` (`zod.string().nullable()`), но колонка `sermon.description` в БД — `NOT NULL` (см. [`../db.md`](../db.md), `sql/bootstrap.sql`), поэтому сервис приводит `null` к пустой строке на границе: `description: dto.description ?? ''`. Иначе INSERT с `NULL` падал бы HTTP 500 (нарушение not-null constraint).
 
 ## `update` и `syncSermonPlaylistMembership`
 
 - `update` строит `updateFields` только из заданных полей (по `!== undefined`) и `sermonRepository.update(id, updateFields)`.
+- Если `description` задан и равен `null` — то же приведение, что в `create`: `updateFields.description = dto.description ?? ''` (UPDATE с `NULL` нарушил бы `NOT NULL` так же, как INSERT).
 - Затем `syncSermonPlaylistMembership(existingSermon, playlistsIds)`: разница текущих join-ов и желаемого набора — удаляет лишние, добавляет недостающие (`attachSermonToPlaylists`). Возвращает `{ status: 'success' }`.
 
 ## `getStreamUrl`
