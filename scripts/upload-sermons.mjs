@@ -30,18 +30,20 @@ const USAGE = `
 Флаги:
   --api <url>          базовый URL API (по умолчанию ${DEFAULT_API})
   --username <str>     имя пользователя (приоритет: флаг > SP_USERNAME > интерактивный ввод)
-  --password <str>     пароль (приоритет: флаг > SP_PASSWORD > интерактивный ввод, скрытый)
   --artist <str>       исполнитель проповедей (по умолчанию «${DEFAULT_ARTIST}»)
   --artwork <str>      URL обложки (по умолчанию пусто)
   --dry-run            показать план без единого сетевого запроса
-  --no-skip-existing   не пропускать файлы, названия которых уже есть в плейлисте
+  --no-skip-existing   всегда загружать файлы, игнорируя дедупликацию по названию
   -h, --help           показать эту справку
+
+Пароль запрашивается только интерактивно (скрытый ввод) — флага/переменной
+окружения для пароля нет, чтобы он не попал в историю команд.
 
 Примеры:
   npm run upload-sermons -- "/путь/к/папке" --dry-run
   npm run upload-sermons -- "/путь/к/папке"
   npm run upload-sermons -- "/путь/к/папке" --api http://localhost:3000
-  SP_USERNAME=admin SP_PASSWORD=secret npm run upload-sermons -- "/путь/к/папке"
+  SP_USERNAME=admin npm run upload-sermons -- "/путь/к/папке"
 `;
 
 // ---------------------------------------------------------------------------
@@ -76,7 +78,10 @@ const BOOK_TOKEN_RE = new RegExp(`(?<!\\p{L})(?:${KNOWN_BOOKS.join('|')})(?!\\p{
 // "1е Петра", "2 Коринфянам" — the ordinal prefix is part of the book name.
 const ORDINAL_PREFIX = /^\d+[а-яё]?\s+/iu;
 
-const TRACK_PREFIX = /^\d+\s*[._-]?\s*/;
+// Leading track number: digits + a separator (`.`, `)`, `]`, `_`, `-`) before
+// the title. A bare digit without a separator is NOT a track number — titles
+// like «7 слов со креста» must keep their leading digit.
+const TRACK_PREFIX = /^\d+\s*[._\-)\]]\s*[—-]?\s*/;
 const LEADING_SEPARATORS = /^[\s._-]+/;
 
 // ---------------------------------------------------------------------------
@@ -277,7 +282,6 @@ function formatVerse(verse) {
 const VALUE_FLAGS = {
   '--api': 'api',
   '--username': 'username',
-  '--password': 'password',
   '--artist': 'artist',
   '--artwork': 'artwork',
 };
@@ -287,7 +291,6 @@ function parseArgs(argv) {
     folder: null,
     api: DEFAULT_API,
     username: null,
-    password: null,
     artist: DEFAULT_ARTIST,
     artwork: DEFAULT_ARTWORK,
     dryRun: false,
@@ -347,12 +350,13 @@ function promptSecret(question) {
   });
 }
 
-async function resolveCredentials({ username, password }) {
+async function resolveCredentials({ username }) {
   const resolvedUsername = username ?? process.env.SP_USERNAME ?? null;
-  const resolvedPassword = password ?? process.env.SP_PASSWORD ?? null;
   return {
     username: resolvedUsername ?? (await promptText('Имя пользователя: ')),
-    password: resolvedPassword ?? (await promptSecret('Пароль: ')),
+    // Пароль запрашивается ТОЛЬКО интерактивно и скрыто: флага/переменной
+    // окружения нет, чтобы пароль не попал в историю команд.
+    password: await promptSecret('Пароль: '),
   };
 }
 
@@ -452,9 +456,48 @@ async function findOrCreatePlaylist(request, title, artwork) {
   return created;
 }
 
-async function existingSermonTitles(request, playlistId) {
-  const data = await request(`/playlists/${playlistId}`);
-  return new Set((data.sermons ?? []).map((sermon) => sermon.title));
+// Cursor-paginated sweep over ALL sermons (GET /sermons, take ≤ 100 per page).
+// Returns a title → matches map where each match carries the sermon id and the
+// ids of the playlists it already belongs to (from item.playlists).
+const SERMONS_PAGE_SIZE = 100;
+
+async function sweepAllSermons(request) {
+  const byTitle = new Map();
+  let cursor = null;
+  let total = 0;
+  let pages = 0;
+  do {
+    const query = new URLSearchParams({ take: String(SERMONS_PAGE_SIZE) });
+    if (cursor) query.set('cursor', cursor);
+    const data = await request(`/sermons?${query}`);
+    pages += 1;
+    total += data.sermons.length;
+    for (const sermon of data.sermons) {
+      const entry = {
+        id: sermon.id,
+        playlistIds: new Set((sermon.playlists ?? []).map((playlist) => playlist.id)),
+      };
+      if (!byTitle.has(sermon.title)) byTitle.set(sermon.title, []);
+      byTitle.get(sermon.title).push(entry);
+    }
+    cursor = data.nextCursor;
+  } while (cursor);
+  return { byTitle, total, pages };
+}
+
+// PATCH /playlists/:id REPLACES the whole ordered sermon list, and the runtime
+// DTO requires title/description/artwork/sermonsIds — so we resend the current
+// playlist fields together with the full id list (current order + appended id).
+async function replacePlaylistSermons(request, playlistId, playlistDetail, sermonsIds) {
+  await request(`/playlists/${playlistId}`, {
+    method: 'PATCH',
+    json: {
+      title: playlistDetail.title,
+      description: playlistDetail.description,
+      artwork: playlistDetail.artwork,
+      sermonsIds,
+    },
+  });
 }
 
 async function uploadAudio(request, filePath, fileName) {
@@ -508,12 +551,28 @@ function printPlan({ folderName, playlistTitle, artist, parsed, unparsed, nonMp3
   }
 }
 
-function printSummary({ playlistTitle, uploaded, skipped, unparsed, nonMp3, warnings, dryRun = false }) {
+function printSummary({
+  playlistTitle,
+  uploaded,
+  skipped,
+  attached,
+  ambiguous,
+  sweep,
+  unparsed,
+  nonMp3,
+  warnings,
+  dryRun = false,
+}) {
   console.log('');
   console.log('📊 Итог:');
   console.log(`   плейлист: «${playlistTitle}»`);
   console.log(`   ${dryRun ? 'запланировано к загрузке' : 'загружено'}: ${uploaded}`);
   console.log(`   пропущено (уже в плейлисте): ${skipped}`);
+  if (!dryRun) {
+    console.log(`   добавлено существующих (по названию): ${attached}`);
+    console.log(`   пропущено (несколько совпадений по названию): ${ambiguous}`);
+    console.log(`   проповедей в базе: ${sweep.total} (страниц: ${sweep.pages})`);
+  }
   if (unparsed.length > 0) {
     console.log(`   не распознано (пропущено): ${unparsed.length}`);
     for (const file of unparsed) console.log(`      ✗ «${file.fileName}» — ${file.error}`);
@@ -549,30 +608,70 @@ async function runUpload(args, { folderName, playlistTitle, parsed, unparsed, no
     const playlist = await findOrCreatePlaylist(api.request, playlistTitle, args.artwork);
     console.log(`📋 Плейлист: «${playlist.title}» (id=${playlist.id})`);
 
-    const existingTitles = await existingSermonTitles(api.request, playlist.id);
-    const skipped = [];
+    // The target playlist's current sermon ids IN ORDER — GET /playlists/:id
+    // returns them ordered by position; these stay the source of truth for
+    // every PATCH append.
+    const playlistDetail = await api.request(`/playlists/${playlist.id}`);
+    const playlistSermonIds = (playlistDetail.sermons ?? []).map((sermon) => sermon.id);
+
+    // Global dedup: sweep ALL sermons (cursor pagination) into a title → matches
+    // map; each match carries the ids of the playlists it already belongs to.
+    const sweep = await sweepAllSermons(api.request);
+    console.log(`🔎 Проповедей в базе: ${sweep.total} (страниц: ${sweep.pages})`);
+
     const uploaded = [];
+    const skipped = [];
+    const attached = [];
+    const ambiguous = [];
 
     for (let index = 0; index < parsed.length; index++) {
       const file = parsed[index];
       const label = `[${index + 1}/${parsed.length}]`;
-      if (args.skipExisting && existingTitles.has(file.parsed.title)) {
-        console.log(`${label} ⏭ уже в плейлисте: «${file.parsed.title}»`);
-        skipped.push(file.parsed.title);
-        continue;
+      const title = file.parsed.title;
+
+      if (args.skipExisting) {
+        const matches = sweep.byTitle.get(title) ?? [];
+        if (matches.length > 1) {
+          console.log(
+            `${label} ⚠ «${title}» — найдено несколько проповедей с таким названием (id: ${matches
+              .map((match) => match.id)
+              .join(', ')}), файл пропущен`,
+          );
+          ambiguous.push(title);
+          continue;
+        }
+        if (matches.length === 1) {
+          const existing = matches[0];
+          if (playlistSermonIds.includes(existing.id)) {
+            console.log(`${label} ⏭ уже существует и в плейлисте: «${title}»`);
+            skipped.push(title);
+            continue;
+          }
+          const sermonsIds = [...playlistSermonIds, existing.id];
+          await replacePlaylistSermons(api.request, playlist.id, playlistDetail, sermonsIds);
+          console.log(`${label} ↩ добавлена существующая «${title}» (id=${existing.id})`);
+          attached.push(title);
+          playlistSermonIds.push(existing.id);
+          continue;
+        }
       }
+
       try {
         const audioUrl = await uploadAudio(api.request, file.path, file.fileName);
         const sermonId = await createSermon(api.request, {
-          title: file.parsed.title,
+          title,
           artist: args.artist,
           artwork: args.artwork,
           parsed: file.parsed,
           audioUrl,
           playlistId: playlist.id,
         });
-        console.log(`${label} ✅ «${file.parsed.title}» → id=${sermonId}`);
-        uploaded.push(file.parsed.title);
+        console.log(`${label} ✅ «${title}» → id=${sermonId}`);
+        uploaded.push(title);
+        playlistSermonIds.push(sermonId);
+        // Track in-run creations so later in-folder duplicates are skipped too.
+        if (!sweep.byTitle.has(title)) sweep.byTitle.set(title, []);
+        sweep.byTitle.get(title).push({ id: sermonId, playlistIds: new Set([playlist.id]) });
       } catch (error) {
         console.error(`✗ Ошибка при обработке «${file.fileName}»:`);
         console.error(`  файл: ${file.path}`);
@@ -585,6 +684,9 @@ async function runUpload(args, { folderName, playlistTitle, parsed, unparsed, no
       playlistTitle,
       uploaded: uploaded.length,
       skipped: skipped.length,
+      attached: attached.length,
+      ambiguous: ambiguous.length,
+      sweep: { total: sweep.total, pages: sweep.pages },
       unparsed,
       nonMp3,
       warnings,
@@ -651,7 +753,18 @@ async function main() {
 
   if (args.dryRun) {
     printPlan({ folderName, playlistTitle, artist: args.artist, parsed, unparsed, nonMp3 });
-    printSummary({ playlistTitle, uploaded: parsed.length, skipped: 0, unparsed, nonMp3, warnings, dryRun: true });
+    printSummary({
+      playlistTitle,
+      uploaded: parsed.length,
+      skipped: 0,
+      attached: 0,
+      ambiguous: 0,
+      sweep: { total: 0, pages: 0 },
+      unparsed,
+      nonMp3,
+      warnings,
+      dryRun: true,
+    });
     process.exit(0);
   }
 
