@@ -13,6 +13,7 @@
 | [`conventions.md`](./conventions.md) | Соглашения: nestjs-zod, extend/override DTO, сущности, SERIALIZABLE, OpenAPI-first codegen, ручные SQL-миграции |
 | [`db.md`](./db.md) | TypeORM-конфиг, карта сущностей и связей, ASCII ER-диаграмма, ручные SQL-миграции |
 | [`validation-pipeline.md`](./validation-pipeline.md) | Конвейер валидации: OpenAPI-first workflow, слои валидации (Zod-пайп / `@ZodResponse`), CI-freshness check |
+| [`scripts.md`](./scripts.md) | CLI-скрипты: bulk-загрузка mp3-проповедей в API (`npm run upload-sermons`), кодогенерация |
 | [`modules/README.md`](./modules/README.md) | Индекс модулей: module → endpoints → entity → doc |
 | [`modules/app.md`](./modules/app.md) | Файловое хранилище: `POST/GET /files`, stream-url |
 | [`modules/health.md`](./modules/health.md) | `GET /health` → `{ status: 'ok' }` |
@@ -62,6 +63,7 @@
 | `sql/migrations/001_add_positions.sql` | Ручная миграция: `position` + суррогатный PK join-таблиц |
 | `orval.config.mjs` | Конфиг кодогенерации (вход — внешняя OpenAPI-спецификация) |
 | `scripts/gen-schemas.mjs` | Программный запуск Orval + prettier |
+| `scripts/upload-sermons.mjs` | Bulk-загрузка папки mp3-проповедей в API как плейлиста (см. [`scripts.md`](./scripts.md)) |
 | `scripts/vps-deploy.sh` | Деплой на VPS: сборка Docker-образа, рестарт systemd-юнита, пост-деплойная очистка (см. [`architecture.md`](./architecture.md)) |
 
 ## Связанные документы
