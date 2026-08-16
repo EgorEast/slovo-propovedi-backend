@@ -62,6 +62,7 @@
 | `sql/migrations/001_add_positions.sql` | Ручная миграция: `position` + суррогатный PK join-таблиц |
 | `orval.config.mjs` | Конфиг кодогенерации (вход — внешняя OpenAPI-спецификация) |
 | `scripts/gen-schemas.mjs` | Программный запуск Orval + prettier |
+| `scripts/vps-deploy.sh` | Деплой на VPS: сборка Docker-образа, рестарт systemd-юнита, пост-деплойная очистка (см. [`architecture.md`](./architecture.md)) |
 
 ## Связанные документы
 

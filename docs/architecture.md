@@ -163,6 +163,15 @@ npm run lint             # eslint --fix
 
 Нагрузочный локальный запуск: `make up` из корня репозитория поднимает postgres + backend + minio-server (см. [`conventions.md`](./conventions.md)).
 
+## Деплой на VPS
+
+Выкат тег-ориентированный: push тега `v*` запускает Forgejo Actions, который стримит исходники на VPS и выполняет там `scripts/vps-deploy.sh`. Скрипт идемпотентен, собирает Docker-образ через buildx-билдер `slovo-constrained` (docker-container) и рестартует systemd-юнит `slovo-backend.service`.
+
+После подтверждения, что новая версия работает, скрипт выполняет **пост-деплойную очистку** (строго non-fatal — сбой очистки не откатывает успешный деплой, ошибки логируются как `WARN`):
+
+- `docker image prune --force` — удаляет только dangling-образы (без `--all`: тэгированные образы прошлых релизов сохраняются намеренно);
+- `docker buildx prune --builder slovo-constrained --keep-storage 4GB --force` — ограничивает кэш билдера 4 ГБ, чтобы том buildkit не рос бесконечно между релизами.
+
 ## Связанные документы
 
 - [README.md](./README.md) — индекс документации backend-репозитория

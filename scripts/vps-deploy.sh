@@ -361,6 +361,23 @@ else
   exit 1
 fi
 
-# --- 10. Cleanup ---
+# --- 10. Post-deploy cleanup (non-fatal, best effort) ---
+# Runs only after the new version is verified healthy (step 9). Bounds disk
+# growth on the VPS across repeated releases: prunes dangling images (keeps
+# unused tagged images on purpose) and caps the buildx builder cache.
+# Both prunes are strictly non-fatal — with `set -e` in effect, a cleanup
+# failure must never fail a successful deployment, so errors are logged as
+# warnings and the deploy continues.
+echo ">> Pruning dangling Docker images..."
+if ! docker image prune --force; then
+  echo "WARN: docker image prune failed — skipping dangling image cleanup"
+fi
+
+echo ">> Pruning buildx builder cache ($BUILDER, keep 4GB)..."
+if ! docker buildx prune --builder "$BUILDER" --keep-storage 4GB --force; then
+  echo "WARN: docker buildx prune failed — skipping builder cache cleanup"
+fi
+
+# --- 11. Cleanup ---
 rm -f /tmp/vps-deploy.sh
 echo ">> Done."
