@@ -161,6 +161,13 @@ function parseSermonFileName(fileName) {
     if (bookCrossesChapters(book)) {
       throw new Error('Ссылка на Писание пересекает главы и не может быть сохранена в одном поле «глава»');
     }
+    // A reference-only name (no «Title.» prefix) leaves the book empty and the
+    // reference digits folded into the title — it cannot be represented by the
+    // API's (title, book, chapter, verse) model and must fail loudly instead of
+    // uploading garbage metadata.
+    if (book === '' && chapter !== null) {
+      throw new Error('Имя файла содержит ссылку на Писание без названия проповеди и книги — невозможно сохранить');
+    }
     return {
       title,
       book,
@@ -394,8 +401,41 @@ async function login(baseUrl, username, password) {
   }
 }
 
-async function findOrCreatePlaylist(baseUrl, token, title, artwork) {
-  const data = await apiRequest(baseUrl, '/playlists', { token });
+// Wraps authenticated requests with automatic re-login: JWT access tokens
+// expire after ~30 minutes, so on a long run every 401 after the initial login
+// triggers a silent re-login (reusing the already-collected credentials, no
+// re-prompt) and exactly one retry of the current operation. A persistent 401
+// after re-login fails fast with a clear Russian error.
+function createApiClient(baseUrl, credentials) {
+  let token = null;
+
+  async function relogin() {
+    token = await login(baseUrl, credentials.username, credentials.password);
+    console.log(`🔑 Повторный вход выполнен (${baseUrl})`);
+  }
+
+  async function request(path, options = {}) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await apiRequest(baseUrl, path, { ...options, token });
+      } catch (error) {
+        if (error instanceof HttpError && error.status === 401) {
+          if (attempt >= 1) {
+            throw new Error('Повторный вход не восстановил доступ (HTTP 401) — прерывание.');
+          }
+          await relogin();
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
+  return { request, relogin };
+}
+
+async function findOrCreatePlaylist(request, title, artwork) {
+  const data = await request('/playlists');
   const matches = data.playlists.filter((playlist) => playlist.title.trim().toLowerCase() === title.toLowerCase());
   if (matches.length > 1) {
     throw new Error(
@@ -404,32 +444,30 @@ async function findOrCreatePlaylist(baseUrl, token, title, artwork) {
     );
   }
   if (matches.length === 1) return matches[0];
-  const created = await apiRequest(baseUrl, '/playlists', {
+  const created = await request('/playlists', {
     method: 'POST',
-    token,
     json: { title, description: null, artwork },
   });
   console.log(`✅ Плейлист «${title}» создан`);
   return created;
 }
 
-async function existingSermonTitles(baseUrl, token, playlistId) {
-  const data = await apiRequest(baseUrl, `/playlists/${playlistId}`, { token });
+async function existingSermonTitles(request, playlistId) {
+  const data = await request(`/playlists/${playlistId}`);
   return new Set((data.sermons ?? []).map((sermon) => sermon.title));
 }
 
-async function uploadAudio(baseUrl, token, filePath, fileName) {
+async function uploadAudio(request, filePath, fileName) {
   const buffer = await readFile(filePath);
   const formData = new FormData();
   formData.append('file', new Blob([buffer], { type: 'audio/mpeg' }), fileName);
-  const data = await apiRequest(baseUrl, '/files', { method: 'POST', token, formData });
+  const data = await request('/files', { method: 'POST', formData });
   return data.fileUrl;
 }
 
-async function createSermon(baseUrl, token, { title, artist, artwork, parsed, audioUrl, playlistId }) {
-  const sermon = await apiRequest(baseUrl, '/sermons', {
+async function createSermon(request, { title, artist, artwork, parsed, audioUrl, playlistId }) {
+  const sermon = await request('/sermons', {
     method: 'POST',
-    token,
     json: {
       title,
       description: null,
@@ -504,13 +542,14 @@ function describeRequestError(error) {
 async function runUpload(args, { folderName, playlistTitle, parsed, unparsed, nonMp3, warnings }) {
   try {
     const credentials = await resolveCredentials(args);
-    const token = await login(args.api, credentials.username, credentials.password);
+    const api = createApiClient(args.api, credentials);
+    await api.relogin();
     console.log(`🔑 Вход выполнен (${args.api})`);
 
-    const playlist = await findOrCreatePlaylist(args.api, token, playlistTitle, args.artwork);
+    const playlist = await findOrCreatePlaylist(api.request, playlistTitle, args.artwork);
     console.log(`📋 Плейлист: «${playlist.title}» (id=${playlist.id})`);
 
-    const existingTitles = await existingSermonTitles(args.api, token, playlist.id);
+    const existingTitles = await existingSermonTitles(api.request, playlist.id);
     const skipped = [];
     const uploaded = [];
 
@@ -523,8 +562,8 @@ async function runUpload(args, { folderName, playlistTitle, parsed, unparsed, no
         continue;
       }
       try {
-        const audioUrl = await uploadAudio(args.api, token, file.path, file.fileName);
-        const sermonId = await createSermon(args.api, token, {
+        const audioUrl = await uploadAudio(api.request, file.path, file.fileName);
+        const sermonId = await createSermon(api.request, {
           title: file.parsed.title,
           artist: args.artist,
           artwork: args.artwork,
@@ -552,7 +591,7 @@ async function runUpload(args, { folderName, playlistTitle, parsed, unparsed, no
     });
     process.exit(0);
   } catch (error) {
-    console.error(`❌ ${error.message}`);
+    console.error(`❌ ${describeRequestError(error)}`);
     process.exit(1);
   }
 }
@@ -602,6 +641,13 @@ async function main() {
 
   mp3.sort(compareSermonFiles);
   const { parsed, unparsed, warnings } = parseAllFileNames(mp3, args.folder);
+
+  if (parsed.length === 0) {
+    console.error(`❌ Не удалось распознать ни одного mp3-файла в папке «${args.folder}».`);
+    console.error(`   Исправьте имена файлов (не распознано: ${unparsed.length}) и повторите.`);
+    for (const file of unparsed) console.error(`      ✗ «${file.fileName}» — ${file.error}`);
+    process.exit(1);
+  }
 
   if (args.dryRun) {
     printPlan({ folderName, playlistTitle, artist: args.artist, parsed, unparsed, nonMp3 });
