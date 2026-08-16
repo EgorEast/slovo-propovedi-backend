@@ -2,6 +2,23 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.8.0] - 2026-08-16
+
+### Features
+- dedupe sermons by title with playlist attach, interactive-only password
+- add bulk sermon upload CLI (scripts/upload-sermons.mjs)
+
+### Bug Fixes
+- replace join explosion with linear graph assembly in findAll
+- coerce null description to empty string in sermon and playlist services
+- send empty description, case-insensitive dedup, orphan warning in upload CLI
+- reject title-less filenames and narrow track-prefix stripping in upload CLI
+- harden sermon upload CLI per code review
+- correct post-deploy cleanup docs and route WARN to stderr
+
+### Maintenance
+- add post-deploy Docker cleanup to vps-deploy.sh
+
 ## [0.7.0] - 2026-08-16
 
 ### Features
