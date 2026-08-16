@@ -78,10 +78,12 @@ const BOOK_TOKEN_RE = new RegExp(`(?<!\\p{L})(?:${KNOWN_BOOKS.join('|')})(?!\\p{
 // "1е Петра", "2 Коринфянам" — the ordinal prefix is part of the book name.
 const ORDINAL_PREFIX = /^\d+[а-яё]?\s+/iu;
 
-// Leading track number: digits + a separator (`.`, `)`, `]`, `_`, `-`) before
-// the title. A bare digit without a separator is NOT a track number — titles
-// like «7 слов со креста» must keep their leading digit.
-const TRACK_PREFIX = /^\d+\s*[._\-)\]]\s*[—-]?\s*/;
+// Leading track number: digits + a separator (`.`, `)`, `]`, `_`) before the
+// title. A bare digit without a separator is NOT a track number — titles
+// like «7 слов со креста» must keep their leading digit. `-` and `—` are
+// deliberately NOT separators: «2021-й год», «3-й день творения» and
+// «5-я печать» must keep the digit-hyphen-й/я suffix intact.
+const TRACK_PREFIX = /^\d+\s*[._)\]]\s*/;
 const LEADING_SEPARATORS = /^[\s._-]+/;
 
 // ---------------------------------------------------------------------------
@@ -148,9 +150,21 @@ function hasBookRefPattern(core) {
   return containsDigit(core.slice(match.index + match[0].length));
 }
 
+// A parsed sermon must carry a non-empty title. Title-less names — a
+// reference-only file («Филимону 1-7») or a trailing book token that swallowed
+// the title («Иоанна 18 39») — cannot be stored by the API and would poison
+// the dedup map with a shared "" key, so they fail loudly.
+function requireNonEmptyTitle(parsed, fileName) {
+  if (!parsed.title.trim()) {
+    throw new Error(`Имя файла не содержит названия проповеди — невозможно сохранить: ${fileName}`);
+  }
+  return parsed;
+}
+
 /**
  * Parses a sermon file name into trusted data. Throws with a descriptive
- * Russian message when the name cannot be represented by the API's schema.
+ * Russian message when the name cannot be represented by the API's schema —
+ * including names that parse to an empty title.
  *
  * Returns { title, book, chapter, verse, warning } where verse is
  * number | [number, number] | null and book/chapter/verse are null for
@@ -173,25 +187,31 @@ function parseSermonFileName(fileName) {
     if (book === '' && chapter !== null) {
       throw new Error('Имя файла содержит ссылку на Писание без названия проповеди и книги — невозможно сохранить');
     }
-    return {
-      title,
-      book,
-      chapter: Number(chapter),
-      verse: verseEnd ? [Number(verseStart), Number(verseEnd)] : Number(verseStart),
-      warning: isAsciiOnly(title) || isAsciiOnly(book) ? 'имя файла транслитерировано (латиница)' : null,
-    };
+    return requireNonEmptyTitle(
+      {
+        title,
+        book,
+        chapter: Number(chapter),
+        verse: verseEnd ? [Number(verseStart), Number(verseEnd)] : Number(verseStart),
+        warning: isAsciiOnly(title) || isAsciiOnly(book) ? 'имя файла транслитерировано (латиница)' : null,
+      },
+      fileName,
+    );
   }
 
   const paren = PAREN_REF.exec(core);
   if (paren) {
     const [, titleRaw, book, chapter, verseStart, verseEnd] = paren;
-    return {
-      title: cleanTitle(titleRaw),
-      book: cleanBook(book),
-      chapter: Number(chapter),
-      verse: verseEnd ? [Number(verseStart), Number(verseEnd)] : Number(verseStart),
-      warning: null,
-    };
+    return requireNonEmptyTitle(
+      {
+        title: cleanTitle(titleRaw),
+        book: cleanBook(book),
+        chapter: Number(chapter),
+        verse: verseEnd ? [Number(verseStart), Number(verseEnd)] : Number(verseStart),
+        warning: null,
+      },
+      fileName,
+    );
   }
 
   const single = SINGLE_CHAPTER_REF.exec(core);
@@ -199,13 +219,16 @@ function parseSermonFileName(fileName) {
     const { rest, verseStart, verseEnd } = single.groups;
     const { title, book } = splitTitleBook(rest);
     if (SINGLE_CHAPTER_BOOKS.some((bookName) => book.toLowerCase().endsWith(bookName))) {
-      return {
-        title,
-        book,
-        chapter: 1,
-        verse: verseEnd ? [Number(verseStart), Number(verseEnd)] : Number(verseStart),
-        warning: null,
-      };
+      return requireNonEmptyTitle(
+        {
+          title,
+          book,
+          chapter: 1,
+          verse: verseEnd ? [Number(verseStart), Number(verseEnd)] : Number(verseStart),
+          warning: null,
+        },
+        fileName,
+      );
     }
   }
 
@@ -213,7 +236,10 @@ function parseSermonFileName(fileName) {
     throw new Error('Не удалось распознать ссылку на Писание в имени файла');
   }
 
-  return { title: cleanTitle(core), book: null, chapter: null, verse: null, warning: null };
+  return requireNonEmptyTitle(
+    { title: cleanTitle(core), book: null, chapter: null, verse: null, warning: null },
+    fileName,
+  );
 }
 
 // ---------------------------------------------------------------------------
