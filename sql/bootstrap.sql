@@ -105,7 +105,15 @@ CREATE TABLE playlist (
     id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     title character varying NOT NULL,
     description character varying NOT NULL,
-    artwork character varying NOT NULL
+    artwork character varying NOT NULL,
+    -- Full-text search vector (word-order-independent, relevance-ranked search
+    -- via ts_rank). STORED GENERATED — PostgreSQL >= 12. The expression is the
+    -- source of truth for the searchable fields/weights and MUST stay in sync
+    -- with sql/migrations/006_playlist_search_tsvector.sql.
+    search_vector tsvector GENERATED ALWAYS AS (
+        setweight(to_tsvector('russian', coalesce(title, '')), 'A')
+        || setweight(to_tsvector('russian', coalesce(description, '')), 'D')
+    ) STORED
 );
 
 -- ---------------------------------------------------------------------------
@@ -173,6 +181,8 @@ CREATE INDEX "IDX_39bacf40bb28fa91cdf8c3e1ea" ON section_playlists_playlist USIN
 CREATE INDEX "IDX_7e60b48429a43494fcd98f0a70" ON section_playlists_playlist USING btree ("sectionId");
 -- GIN index for full-text search (search_vector @@ tsquery) — mirrors migration 005.
 CREATE INDEX "IDX_sermon_search_vector" ON sermon USING gin (search_vector);
+-- GIN index for playlist full-text search (search_vector @@ tsquery) — mirrors migration 006.
+CREATE INDEX "IDX_playlist_search_vector" ON playlist USING gin (search_vector);
 
 -- ---------------------------------------------------------------------------
 -- Foreign keys

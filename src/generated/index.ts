@@ -5,7 +5,7 @@
  * REST API сервиса «Слово.Проповеди».
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.9.0
+ * OpenAPI spec version: 0.10.0
  */
 import * as zod from 'zod';
 
@@ -606,6 +606,15 @@ export const PlaylistControllerCreateResponse = zod.strictObject({
 /**
  * @summary Получить все плейлисты
  */
+
+export const PlaylistControllerFindAllQueryParams = zod.strictObject({
+  search: zod
+    .string()
+    .min(1)
+    .optional()
+    .describe('Поисковый запрос по названию и описанию'),
+});
+
 export const playlistControllerFindAllResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault =
   false;
 export const playlistControllerFindAllResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;

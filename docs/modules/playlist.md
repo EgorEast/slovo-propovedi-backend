@@ -10,7 +10,7 @@
 | Метод / путь | Guard | Body/Param | DTO ответа | Метод сервиса |
 |---------------|-------|------------|------------|----------------|
 | `POST /playlists` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `CreatePlaylistDto` | `PlaylistResponseDto` | `create` |
-| `GET /playlists` | публичный | — | `AllPlaylistsResponseDto` | `findAll` |
+| `GET /playlists` | публичный | query `FindAllPlaylistsQueryDto` (`search?`) | `AllPlaylistsResponseDto` | `findAll(search)` |
 | `GET /playlists/:id` | публичный | `IdParamDto` | `PlaylistResponseDto` | `findOne` |
 | `PATCH /playlists/:id/sermons/reorder` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` + `ReorderSermonsInPlaylistDto` | `StatusPlaylistResponseDto` | `reorderSermonsInPlaylist(id, sermonIds)` |
 | `PATCH /playlists/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` + `UpdatePlaylistDto` | `PlaylistResponseDto` | `update` |
@@ -43,6 +43,43 @@
 | `position` | int | NOT NULL default 0 |
 
 Сервис тянет `PLAYLIST_RELATIONS` и нормализует в `NormalizedPlaylistResponse` (`normalizePlaylist`), сортируя `sermonJoins` и `sectionJoins` по `position` на уровне БД (`PLAYLIST_ORDER`).
+
+## `findAll` — полная выборка и полнотекстовый поиск (`playlist.service.ts`)
+
+Сигнатура: `findAll(search?)`. Два пути:
+
+| Условие | Путь | Как фильтрует |
+|---------|------|----------------|
+| `search` не задан | **полная выборка** | `findAndCount` (как до поиска — поведение без изменений) |
+| `search` задан | **поиск** | QueryBuilder (`getManyAndCount`): `playlist.search_vector @@ tsquery`, порядок по релевантности |
+
+### Полнотекстовый поиск (FTS)
+
+Поиск — **независимый от порядка слов** (AND по всем словам запроса) и **ранжированный по релевантности**, на PostgreSQL full-text search (`russian` конфигурация):
+
+- Все поисковые поля свёрнуты в **генерируемую колонку** `playlist.search_vector` (`GENERATED ALWAYS AS ... STORED`, PostgreSQL >= 12) с весами `setweight`:
+  - `A` — `title` (наивысший приоритет);
+  - `D` — `description` (наинизший).
+- Веса — **единый источник правды** в коде: `PLAYLIST_SEARCH_WEIGHTS` + `buildPlaylistSearchVectorExpression()` (`src/playlist/playlist.service.ts`); SQL-миграция [`sql/migrations/006_playlist_search_tsvector.sql`](../../sql/migrations/006_playlist_search_tsvector.sql) и `sql/bootstrap.sql` используют то же выражение (дрейф ловится спеками).
+- Ранжирование: `ts_rank('{0.1,0.2,0.4,1.0}'::float4[], playlist.search_vector, tsquery)` — массив весов в порядке **D, C, B, A** (description 0.1, title 1.0; неиспользуемые C/B — дефолт 0.2/0.4). Тот же массив, что в sermon-поиске.
+- GIN-индекс `"IDX_playlist_search_vector"` покрывает `search_vector @@ tsquery` (миграция 006 + `sql/bootstrap.sql`).
+
+### Санитизация на границе (parse, don't validate)
+
+`buildSearchTsQuery` — **переиспользуется из sermon-сервиса** (`src/sermon/sermon.service`), не дублируется: та же чистая функция на границе строит tsquery из строки поиска (только буквы/цифры, `:*` на каждом токене, AND между токенами — порядок слов не важен). Строка без единого словного символа (`"&&&"`) → `BadRequestException` (fail fast). Подробности — [`sermon.md`](./sermon.md).
+
+### Условие и ранжирование
+
+`tsquery` строится **один раз на запрос** и биндится параметром `:tsquery`; выражение оборачивается в `to_tsquery('russian', ...)` (стеммер применяется и к запросу, и к вектору):
+
+```ts
+PLAYLIST_TS_SEARCH_CONDITION = "playlist.search_vector @@ to_tsquery('russian', :tsquery)";
+RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], playlist.search_vector, to_tsquery('russian', :tsquery))";
+```
+
+Порядок: **`rank DESC` → `playlist.id DESC`** → позиции join-ов (`sermonJoins.position`, `sectionJoins.position`) на уровне БД — та же реляционная модель, что у `findAndCount`.
+
+> ✅ `findAll` без `search` отдаёт **всю** выборку (backward-compat); форма ответа `{ playlists, count }` не изменилась ни в одном из путей.
 
 ## `create` (SERIALIZABLE)
 
@@ -110,6 +147,7 @@ await joinRepository.createQueryBuilder()
 |------|-------|
 | `src/playlist/dto/create-playlist.dto.ts` | `{ title, description, artwork, sermonsIds?, sectionsIds? }` |
 | `src/playlist/dto/update-playlist.dto.ts` | `{ title, description, artwork, sermonsIds, sectionsIds? }` |
+| `src/playlist/dto/find-all-playlists-query.dto.ts` | extends query + `.extend({ search: z.string().trim().min(1).optional() })` |
 | `src/playlist/dto/reorder-sermons-in-playlist.dto.ts` | `{ sermonIds: uuid[] }` |
 | `src/playlist/dto/playlist-response.dto.ts` | create/findOne |
 | `src/playlist/dto/all-playlists-response.dto.ts` | findAll |

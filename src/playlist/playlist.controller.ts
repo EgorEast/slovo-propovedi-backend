@@ -6,11 +6,13 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { PlaylistService } from './playlist.service';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
+import { FindAllPlaylistsQueryDto } from './dto/find-all-playlists-query.dto';
 import { ReorderSermonsInPlaylistDto } from './dto/reorder-sermons-in-playlist.dto';
 import { PlaylistResponseDto } from './dto/playlist-response.dto';
 import { AllPlaylistsResponseDto } from './dto/all-playlists-response.dto';
@@ -36,8 +38,8 @@ export class PlaylistController {
 
   @Get()
   @ZodResponse({ type: AllPlaylistsResponseDto })
-  async findAll() {
-    return await this.playlistService.findAll();
+  async findAll(@Query() query: FindAllPlaylistsQueryDto) {
+    return await this.playlistService.findAll(query.search);
   }
 
   @Get(':id')

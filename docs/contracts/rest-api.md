@@ -65,20 +65,22 @@
 | `PATCH /sermons/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.update` | `SermonService.update` |
 | `DELETE /sermons/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.remove` | `SermonService.remove` |
 
-> ✅ `GET /sermons` принимает query `take`, `cursor` (keyset-пагинация) и `search` (опциональный, min 1 символ, `ILIKE` по `title`/`artist`/`book`/`description`). Поиск применён в обоих путях `findAll`; без `take`/`search` отвечает полной выборкой. Подробности поиска — [`../modules/sermon.md`](../modules/sermon.md).
+> ✅ `GET /sermons` принимает query `take`, `cursor` (keyset-пагинация) и `search` (опциональный, min 1 символ, полнотекстовый поиск по `title`/`artist`/`book`/`description` через tsvector FTS с `ts_rank`-ранжированием). Поиск применён в обоих путях `findAll`; без `take`/`search` отвечает полной выборкой. Подробности поиска — [`../modules/sermon.md`](../modules/sermon.md).
 
 ### Playlists
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
 | `POST /playlists` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.create` | `PlaylistService.create` |
-| `GET /playlists` | публичный | `PlaylistController.findAll` | `PlaylistService.findAll` |
+| `GET /playlists` | публичный | `PlaylistController.findAll` | `PlaylistService.findAll(search)` |
 | `GET /playlists/:id` | публичный | `PlaylistController.findOne` | `PlaylistService.findOne` |
 | `PATCH /playlists/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.update` | `PlaylistService.update` (bulk-replace состава) |
 | `PATCH /playlists/:id/sermons/reorder` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.reorderSermons` | `PlaylistService.reorderSermonsInPlaylist(id, sermonIds)` |
 | `DELETE /playlists/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.remove` | `PlaylistService.remove` |
 
 > ✅ `POST /playlists` body: `{ title, description, artwork, sermonsIds?, sectionsIds? }`. `sectionsIds?` (добавлен в v0.8.0) прикрепляет плейлист к разделам — позиция в каждом разделе = `max(position) + 1`; отсутствующий/пустой массив — no-op. Ошибки: дубликаты в `sectionsIds` → `400 Bad Request` (`Duplicate section IDs detected`); несуществующий id раздела → `404 Not Found` (`Some sections not found`). Валидация выполняется в транзакции create — при ошибке плейлист не создаётся.
+
+> ✅ `GET /playlists` принимает query `search` (опциональный, min 1 символ, полнотекстовый поиск по `title`/`description`: PostgreSQL FTS `russian` + `ts_rank`-ранжирование, порядок `rank DESC` → `id DESC`). Без `search` отвечает полной выборкой, форма `{ playlists, count }` не меняется. Подробности — [`../modules/playlist.md`](../modules/playlist.md).
 
 ### Sections
 

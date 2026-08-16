@@ -8,9 +8,11 @@ import { PlaylistSermonJoinEntity } from './entities/playlist-sermon-join.entity
 import { SectionEntity } from 'src/section/entities/section.entity';
 import { SectionPlaylistJoinEntity } from 'src/section/entities/section-playlist-join.entity';
 import { SermonService } from 'src/sermon/sermon.service';
+import { FindAllPlaylistsQueryDto } from './dto/find-all-playlists-query.dto';
 
 describe('PlaylistController', () => {
   let controller: PlaylistController;
+  let service: PlaylistService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -49,9 +51,24 @@ describe('PlaylistController', () => {
     }).compile();
 
     controller = module.get<PlaylistController>(PlaylistController);
+    service = module.get<PlaylistService>(PlaylistService);
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('delegates findAll, forwarding the optional search query to the service', async () => {
+    const findAllSpy = jest
+      .spyOn(service, 'findAll')
+      .mockResolvedValue({ playlists: [], count: 0 });
+
+    await controller.findAll({
+      search: 'благодать',
+    } as FindAllPlaylistsQueryDto);
+    await controller.findAll({} as FindAllPlaylistsQueryDto);
+
+    expect(findAllSpy).toHaveBeenCalledWith('благодать');
+    expect(findAllSpy).toHaveBeenCalledWith(undefined);
   });
 });

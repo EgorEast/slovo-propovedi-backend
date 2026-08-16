@@ -12,13 +12,13 @@ import { PlaylistEntity } from './entities/playlist.entity';
 import { PlaylistSermonJoinEntity } from './entities/playlist-sermon-join.entity';
 import { SectionEntity } from 'src/section/entities/section.entity';
 import { SectionPlaylistJoinEntity } from 'src/section/entities/section-playlist-join.entity';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 import {
   AllPlaylistsResponse,
   NormalizedPlaylistResponse,
   StatusPlaylistResponse,
 } from './interfaces/interface';
-import { SermonService } from 'src/sermon/sermon.service';
+import { buildSearchTsQuery, SermonService } from 'src/sermon/sermon.service';
 
 const PLAYLIST_RELATIONS = [
   'sermonJoins',
@@ -36,6 +36,64 @@ const PLAYLIST_ORDER = {
   sermonJoins: { position: 'ASC' },
   sectionJoins: { position: 'ASC' },
 } as const;
+
+// ---------------------------------------------------------------------------
+// Full-text search: boundary parsing + single source of truth for the weights
+// ---------------------------------------------------------------------------
+//
+// Search is word-order-independent AND relevance-ranked via PostgreSQL FTS on
+// the generated column playlist.search_vector (sql/migrations/006_playlist
+// _search_tsvector.sql): the fields below are folded into the vector once,
+// weighted, and the findAll search path matches a tsquery against it and ranks
+// with the same ts_rank expression. The raw search string is parsed into a
+// tsquery at the boundary by buildSearchTsQuery — shared with the sermon module
+// (it throws a BadRequestException for punctuation-only input, which is the
+// desired fail-loud behavior).
+
+const TS_CONFIG = 'russian';
+
+// Weighted searchable fields — the single source of truth for what the FTS
+// vector indexes and how it ranks. The generated column expression (migration
+// 006 + bootstrap) is derived from this exact definition.
+const PLAYLIST_SEARCH_WEIGHTS = {
+  A: ['title'],
+  D: ['description'],
+} as const;
+
+// Canonical tsvector expression backing playlist.search_vector — must match
+// sql/migrations/006_playlist_search_tsvector.sql and sql/bootstrap.sql.
+export const buildPlaylistSearchVectorExpression = (): string =>
+  (
+    Object.entries(PLAYLIST_SEARCH_WEIGHTS) as Array<
+      [string, readonly string[]]
+    >
+  )
+    .flatMap(([weight, fields]) =>
+      fields.map(
+        (field) =>
+          `setweight(to_tsvector('${TS_CONFIG}', coalesce(${field}, '')), '${weight}')`,
+      ),
+    )
+    .join(' || ');
+
+// Postgres ts_rank weight array — elements are D, C, B, A in that order, so
+// description (D) ranks lowest and title (A) highest; B and C are unused by
+// playlist search (B is the sermon-only artist/book weight, C keeps the
+// default 0.2). Same array as the sermon search.
+const TS_RANK_WEIGHTS = '{0.1,0.2,0.4,1.0}';
+
+// The sanitized token string is bound as :tsquery and parsed by to_tsquery
+// (which applies the russian stemmer — a raw text param bound to @@ would NOT
+// stem and would miss matches).
+const toTsQuerySql = () => `to_tsquery('${TS_CONFIG}', :tsquery)`;
+
+// FTS match condition for the playlist search path.
+const PLAYLIST_TS_SEARCH_CONDITION = `playlist.search_vector @@ ${toTsQuerySql()}`;
+
+// ts_rank expression used by ORDER BY — the SAME :tsquery parameter is bound
+// in the WHERE clause and here, so a row's rank matches its filter.
+const buildPlaylistRankExpression = (): string =>
+  `ts_rank('${TS_RANK_WEIGHTS}'::float4[], playlist.search_vector, ${toTsQuerySql()})`;
 
 @Injectable()
 export class PlaylistService {
@@ -131,12 +189,39 @@ export class PlaylistService {
     }
   }
 
-  async findAll(): Promise<AllPlaylistsResponse> {
+  async findAll(search?: string): Promise<AllPlaylistsResponse> {
     try {
-      const [playlists, count] = await this.playlistRepository.findAndCount({
-        relations: PLAYLIST_RELATIONS,
-        order: PLAYLIST_ORDER,
-      });
+      // Parse the search term at the boundary ONCE: the sanitized tsquery
+      // drives the WHERE condition and the ORDER BY ranking. Punctuation-only
+      // input fails fast inside buildSearchTsQuery.
+      const tsquery = search ? buildSearchTsQuery(search) : undefined;
+
+      if (!tsquery) {
+        // Backward-compatible full fetch — byte-for-byte the pre-search
+        // implementation (findAndCount with the deep relation graph and the
+        // DB-level join ordering).
+        const [playlists, count] = await this.playlistRepository.findAndCount({
+          relations: PLAYLIST_RELATIONS,
+          order: PLAYLIST_ORDER,
+        });
+        return {
+          playlists: playlists.map((p) => this.normalizePlaylist(p)),
+          count,
+        };
+      }
+
+      // Relevance-ranked search: (rank DESC, id DESC) followed by the
+      // join-position orders, loading the same relation graph findAndCount
+      // would.
+      const queryBuilder = this.buildPlaylistSearchQueryBuilder([
+        ['rank', 'DESC'],
+        ['playlist.id', 'DESC'],
+      ]);
+      queryBuilder
+        .addSelect(buildPlaylistRankExpression(), 'rank')
+        .where(PLAYLIST_TS_SEARCH_CONDITION)
+        .setParameter('tsquery', tsquery);
+      const [playlists, count] = await queryBuilder.getManyAndCount();
       return {
         playlists: playlists.map((p) => this.normalizePlaylist(p)),
         count,
@@ -150,6 +235,37 @@ export class PlaylistService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  // QueryBuilder for the search path: the deep relation graph (the six
+  // PLAYLIST_RELATIONS paths) plus the primary ordering (rank DESC, id DESC
+  // under search) followed by the join-position orders normalizePlaylist
+  // expects.
+  private buildPlaylistSearchQueryBuilder(
+    primaryOrders: Array<[order: string, direction: 'ASC' | 'DESC']>,
+  ): SelectQueryBuilder<PlaylistEntity> {
+    const queryBuilder = this.playlistRepository
+      .createQueryBuilder('playlist')
+      .leftJoinAndSelect('playlist.sermonJoins', 'sermonJoins')
+      .leftJoinAndSelect('sermonJoins.sermon', 'sermons')
+      .leftJoinAndSelect('sermons.playlistJoins', 'sermonPlaylistJoins')
+      .leftJoinAndSelect('sermonPlaylistJoins.playlist', 'sermonPlaylists')
+      .leftJoinAndSelect('playlist.sectionJoins', 'sectionJoins')
+      .leftJoinAndSelect('sectionJoins.section', 'sections');
+
+    // orderBy replaces any previous order, addOrderBy appends — apply the
+    // primary orders first, then the relation orders.
+    primaryOrders.forEach(([order, direction], index) => {
+      if (index === 0) {
+        queryBuilder.orderBy(order, direction);
+      } else {
+        queryBuilder.addOrderBy(order, direction);
+      }
+    });
+
+    return queryBuilder
+      .addOrderBy('sermonJoins.position', 'ASC')
+      .addOrderBy('sectionJoins.position', 'ASC');
   }
 
   async findByIds(ids: string[]): Promise<PlaylistEntity[]> {

@@ -209,6 +209,7 @@
 | `sql/migrations/003_revoked_refresh_tokens.sql` | **существующие БД** (2026-08-14): `CREATE TABLE IF NOT EXISTS revoked_refresh_token`; PK, UNIQUE `token_hash`, FK `user_id → user(id) ON DELETE CASCADE` — каждый в DO-блоке с guard по `pg_constraint` (идемпотентно; на fresh-bootstrap БД — no-op). Идемпотентен. |
 | `sql/migrations/004_fix_db_collation.md` | **заметка-требование к провижионингу** (2026-08-14, не SQL-миграция): БД должна создаваться с UTF-8-локалью (`--locale=ru_RU.UTF-8` / `en_US.UTF-8` при `initdb`/`POSTGRES_INITDB_ARGS`), иначе `ILIKE`/`lower()` не сворачивают регистр кириллицы (`LC_CTYPE=C`/`POSIX`). Диагностика + пересоздание существующей БД с дампом — в файле. |
 | `sql/migrations/005_sermon_search_tsvector.sql` | **существующие БД** (2026-08-14): генерируемая колонка `sermon.search_vector` (`GENERATED ALWAYS AS ... STORED`, выражение — взвешенный `to_tsvector('russian', ...)` по title/artist/book/description) + GIN-индекс `IDX_sermon_search_vector`. Требует **PostgreSQL >= 12** (generated columns). Идемпотентен (`ADD COLUMN IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`). |
+| `sql/migrations/006_playlist_search_tsvector.sql` | **существующие БД** (2026-08-16): генерируемая колонка `playlist.search_vector` (`GENERATED ALWAYS AS ... STORED`, выражение — взвешенный `to_tsvector('russian', ...)` по title (A) / description (D)) + GIN-индекс `IDX_playlist_search_vector`. Требует **PostgreSQL >= 12** (generated columns). Идемпотентен (`ADD COLUMN IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`). |
 
 Команды применения (как DB-owner):
 
@@ -222,6 +223,7 @@ psql -h <host> -U <user> -d <db> -f sql/migrations/001_add_positions.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/002_add_user_roles.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/003_revoked_refresh_tokens.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/005_sermon_search_tsvector.sql
+psql -h <host> -U <user> -d <db> -f sql/migrations/006_playlist_search_tsvector.sql
 ```
 
 > ⚠️ **Нет TypeORM migration runner и нет npm-скрипта миграций.** Применение — строго ручное через `psql`. Новые изменения схемы оформлять идемпотентным SQL-файлом и синхронно отражать в `bootstrap.sql`.
