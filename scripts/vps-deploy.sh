@@ -362,20 +362,22 @@ else
 fi
 
 # --- 10. Post-deploy cleanup (non-fatal, best effort) ---
-# Runs only after the new version is verified healthy (step 9). Bounds disk
-# growth on the VPS across repeated releases: prunes dangling images (keeps
-# unused tagged images on purpose) and caps the buildx builder cache.
+# Runs only after step 9 confirms the new service is active (systemctl
+# is-active, not an app-level healthcheck). Bounds disk growth on the VPS
+# across repeated releases: prunes dangling images only (no --all; the
+# previous release's image becomes dangling once slovo-backend:latest is
+# retagged and is removed) and caps the buildx builder cache.
 # Both prunes are strictly non-fatal — with `set -e` in effect, a cleanup
 # failure must never fail a successful deployment, so errors are logged as
 # warnings and the deploy continues.
 echo ">> Pruning dangling Docker images..."
 if ! docker image prune --force; then
-  echo "WARN: docker image prune failed — skipping dangling image cleanup"
+  echo "WARN: docker image prune failed — skipping dangling image cleanup" >&2
 fi
 
 echo ">> Pruning buildx builder cache ($BUILDER, keep 4GB)..."
 if ! docker buildx prune --builder "$BUILDER" --keep-storage 4GB --force; then
-  echo "WARN: docker buildx prune failed — skipping builder cache cleanup"
+  echo "WARN: docker buildx prune failed — skipping builder cache cleanup" >&2
 fi
 
 # --- 11. Cleanup ---
