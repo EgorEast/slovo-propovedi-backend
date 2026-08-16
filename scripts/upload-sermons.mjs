@@ -415,7 +415,7 @@ async function apiRequest(baseUrl, path, { method = 'GET', token = null, json = 
   return response.json();
 }
 
-async function login(baseUrl, username, password) {
+async function requestAccessToken(baseUrl, username, password) {
   try {
     const data = await apiRequest(baseUrl, '/auth/login', { method: 'POST', json: { username, password } });
     if (!data.accessToken) throw new Error('Сервер не вернул accessToken после входа.');
@@ -439,8 +439,16 @@ async function login(baseUrl, username, password) {
 function createApiClient(baseUrl, credentials) {
   let token = null;
 
+  // Initial authentication: fetches the access token without logging — the
+  // caller (main) prints its own «Вход выполнен» message. relogin() reuses
+  // this and adds its own message for the 401-retry path.
+  async function login() {
+    token = await requestAccessToken(baseUrl, credentials.username, credentials.password);
+    return token;
+  }
+
   async function relogin() {
-    token = await login(baseUrl, credentials.username, credentials.password);
+    await login();
     console.log(`🔑 Повторный вход выполнен (${baseUrl})`);
   }
 
@@ -461,7 +469,7 @@ function createApiClient(baseUrl, credentials) {
     }
   }
 
-  return { request, relogin };
+  return { request, login, relogin };
 }
 
 async function findOrCreatePlaylist(request, title, artwork) {
@@ -476,16 +484,25 @@ async function findOrCreatePlaylist(request, title, artwork) {
   if (matches.length === 1) return matches[0];
   const created = await request('/playlists', {
     method: 'POST',
-    json: { title, description: null, artwork },
+    json: { title, description: '', artwork },
   });
   console.log(`✅ Плейлист «${title}» создан`);
   return created;
 }
 
 // Cursor-paginated sweep over ALL sermons (GET /sermons, take ≤ 100 per page).
-// Returns a title → matches map where each match carries the sermon id and the
-// ids of the playlists it already belongs to (from item.playlists).
+// Returns a normalized-title → matches map where each match carries the sermon
+// id, its ORIGINAL title (for logging/warnings) and the ids of the playlists
+// it already belongs to (from item.playlists).
 const SERMONS_PAGE_SIZE = 100;
+
+// Dedup matching is case-insensitive and ignores leading/trailing whitespace —
+// «Свидетельства о пришествии Мессии (Часть 1)» on the site matches a file
+// parsed as «Свидетельства о пришествии Мессии (часть 1)». The normalized
+// form is ONLY the Map key: the stored sermon title is never modified.
+function normalizeTitleForDedup(title) {
+  return title.trim().toLowerCase();
+}
 
 async function sweepAllSermons(request) {
   const byTitle = new Map();
@@ -501,10 +518,12 @@ async function sweepAllSermons(request) {
     for (const sermon of data.sermons) {
       const entry = {
         id: sermon.id,
+        title: sermon.title,
         playlistIds: new Set((sermon.playlists ?? []).map((playlist) => playlist.id)),
       };
-      if (!byTitle.has(sermon.title)) byTitle.set(sermon.title, []);
-      byTitle.get(sermon.title).push(entry);
+      const key = normalizeTitleForDedup(sermon.title);
+      if (!byTitle.has(key)) byTitle.set(key, []);
+      byTitle.get(key).push(entry);
     }
     cursor = data.nextCursor;
   } while (cursor);
@@ -539,7 +558,7 @@ async function createSermon(request, { title, artist, artwork, parsed, audioUrl,
     method: 'POST',
     json: {
       title,
-      description: null,
+      description: '',
       textFileUrl: null,
       audioUrl,
       youtubeUrl: null,
@@ -628,7 +647,7 @@ async function runUpload(args, { folderName, playlistTitle, parsed, unparsed, no
   try {
     const credentials = await resolveCredentials(args);
     const api = createApiClient(args.api, credentials);
-    await api.relogin();
+    await api.login();
     console.log(`🔑 Вход выполнен (${args.api})`);
 
     const playlist = await findOrCreatePlaylist(api.request, playlistTitle, args.artwork);
@@ -656,12 +675,13 @@ async function runUpload(args, { folderName, playlistTitle, parsed, unparsed, no
       const title = file.parsed.title;
 
       if (args.skipExisting) {
-        const matches = sweep.byTitle.get(title) ?? [];
+        const key = normalizeTitleForDedup(title);
+        const matches = sweep.byTitle.get(key) ?? [];
         if (matches.length > 1) {
           console.log(
-            `${label} ⚠ «${title}» — найдено несколько проповедей с таким названием (id: ${matches
-              .map((match) => match.id)
-              .join(', ')}), файл пропущен`,
+            `${label} ⚠ «${title}» — найдено несколько проповедей с таким названием: ${matches
+              .map((match) => `«${match.title}» (id=${match.id})`)
+              .join(', ')}; файл пропущен`,
           );
           ambiguous.push(title);
           continue;
@@ -669,21 +689,34 @@ async function runUpload(args, { folderName, playlistTitle, parsed, unparsed, no
         if (matches.length === 1) {
           const existing = matches[0];
           if (playlistSermonIds.includes(existing.id)) {
-            console.log(`${label} ⏭ уже существует и в плейлисте: «${title}»`);
+            console.log(
+              `${label} ⏭ уже существует и в плейлисте: «${existing.title}» (id=${existing.id})`,
+            );
             skipped.push(title);
             continue;
           }
           const sermonsIds = [...playlistSermonIds, existing.id];
           await replacePlaylistSermons(api.request, playlist.id, playlistDetail, sermonsIds);
-          console.log(`${label} ↩ добавлена существующая «${title}» (id=${existing.id})`);
+          console.log(
+            `${label} ↩ добавлена существующая «${existing.title}» (id=${existing.id})`,
+          );
           attached.push(title);
           playlistSermonIds.push(existing.id);
           continue;
         }
       }
 
+      let audioUrl;
       try {
-        const audioUrl = await uploadAudio(api.request, file.path, file.fileName);
+        audioUrl = await uploadAudio(api.request, file.path, file.fileName);
+      } catch (error) {
+        console.error(`✗ Ошибка при загрузке аудио «${file.fileName}»:`);
+        console.error(`  файл: ${file.path}`);
+        console.error(`  ${describeRequestError(error)}`);
+        process.exit(1);
+      }
+
+      try {
         const sermonId = await createSermon(api.request, {
           title,
           artist: args.artist,
@@ -696,10 +729,16 @@ async function runUpload(args, { folderName, playlistTitle, parsed, unparsed, no
         uploaded.push(title);
         playlistSermonIds.push(sermonId);
         // Track in-run creations so later in-folder duplicates are skipped too.
-        if (!sweep.byTitle.has(title)) sweep.byTitle.set(title, []);
-        sweep.byTitle.get(title).push({ id: sermonId, playlistIds: new Set([playlist.id]) });
+        const createdKey = normalizeTitleForDedup(title);
+        if (!sweep.byTitle.has(createdKey)) sweep.byTitle.set(createdKey, []);
+        sweep.byTitle
+          .get(createdKey)
+          .push({ id: sermonId, title, playlistIds: new Set([playlist.id]) });
       } catch (error) {
-        console.error(`✗ Ошибка при обработке «${file.fileName}»:`);
+        console.error(
+          `⚠ Аудио загружено, но проповедь не создана — файл остался в MinIO без записи: ${audioUrl}`,
+        );
+        console.error(`✗ Ошибка при создании проповеди «${file.fileName}»:`);
         console.error(`  файл: ${file.path}`);
         console.error(`  ${describeRequestError(error)}`);
         process.exit(1);
