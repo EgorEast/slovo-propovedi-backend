@@ -58,4 +58,28 @@ async function bootstrap() {
 
   await app.listen('3000');
 }
-bootstrap();
+
+const bootstrapLogger = new Logger('bootstrap');
+
+// A rejected promise that nobody handles is a programming error, but not one
+// that should kill the process — log it and let the request/event loop
+// continue (systemd would restart the app anyway, losing in-flight requests).
+process.on('unhandledRejection', (reason: unknown) => {
+  const message =
+    reason instanceof Error ? reason.stack ?? reason.message : String(reason);
+  bootstrapLogger.warn(`Unhandled promise rejection: ${message}`);
+});
+
+// An uncaught exception leaves the process in an undefined state — fail fast
+// and let systemd (Restart=always) recover with a clean restart.
+process.on('uncaughtException', (error: Error) => {
+  bootstrapLogger.error(`Uncaught exception: ${error.stack ?? error.message}`);
+  process.exit(1);
+});
+
+bootstrap().catch((error: unknown) => {
+  const message =
+    error instanceof Error ? error.stack ?? error.message : String(error);
+  bootstrapLogger.error(`Bootstrap failed: ${message}`);
+  process.exit(1);
+});

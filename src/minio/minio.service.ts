@@ -192,19 +192,35 @@ export class MinioService {
   /**
    * Extracts the object name from a stored file URL (e.g. the `audioUrl` of a
    * sermon). File URLs look like `${MINIO_PUBLIC_URI}/files/<object-name>`.
-   * Throws when the URL does not point at an object in the default bucket.
+   * Only the PATH is checked — it must start with the default bucket (`files`);
+   * the host is deliberately ignored so stored URLs survive MINIO_PUBLIC_URI
+   * domain changes. Throws when the path does not start with the bucket or
+   * names no object (a foreign path could otherwise delete an object from OUR
+   * bucket by accident).
    */
   static extractFileNameFromUrl(fileUrl: string): string {
     const pathSegments = new URL(fileUrl).pathname.split('/').filter(Boolean);
-    const bucketIndex = pathSegments.findIndex(
-      (segment) => segment === MinioService.BUCKET_NAME,
-    );
-    if (bucketIndex === -1 || bucketIndex === pathSegments.length - 1) {
+    if (
+      pathSegments[0] !== MinioService.BUCKET_NAME ||
+      pathSegments.length < 2
+    ) {
       throw new Error(
         `File URL "${fileUrl}" does not point to an object in the "${MinioService.BUCKET_NAME}" bucket`,
       );
     }
-    return pathSegments.slice(bucketIndex + 1).join('/');
+    return pathSegments.slice(1).join('/');
+  }
+
+  /**
+   * Removes an object from the default bucket by its stored file URL (e.g. a
+   * sermon's `audioUrl`). URLs whose path does not start with the default
+   * bucket throw; the host is not checked (survives public-URI domain
+   * changes). Callers decide whether to swallow the error for best-effort
+   * cleanup.
+   */
+  async removeObjectByUrl(fileUrl: string): Promise<void> {
+    const fileName = MinioService.extractFileNameFromUrl(fileUrl);
+    await this.minioClient.removeObject(MinioService.BUCKET_NAME, fileName);
   }
 
   getContentType(fileType: string): string {

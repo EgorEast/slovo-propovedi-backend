@@ -50,6 +50,7 @@
 | `getPresignedUrl(bucket, fileName, expiry=3600)` | presigned GET для произвольного bucket |
 | `getPresignedFileUrl(fileName, expiry=3600)` | presigned GET в default bucket `files` |
 | `extractFileNameFromUrl(fileUrl)` (static) | вытащить имя объекта из сохранённого URL |
+| `removeObjectByUrl(fileUrl)` | удалить объект из default bucket `files` по сохранённому URL |
 | `getContentType(fileType)` | ext → MIME (`image/*`, `audio/mp3`, иначе `application/octet-stream`) |
 
 ### `uploadFile`
@@ -87,12 +88,25 @@ async getPresignedFileUrl(fileName, expirySeconds = 3600) {
 
 ```ts
 static extractFileNameFromUrl(fileUrl: string): string {
-  // pathname сегменты; найти bucket 'files', имя объекта — после него
-  // throws, если URL не указывает на объект в default bucket
+  // pathname сегменты; путь ДОЛЖЕН начинаться с bucket 'files', имя объекта — после него
+  // throws, если путь не начинается с default bucket или не содержит имени объекта
 }
 ```
 
-Используется в `SermonService.getStreamUrl`, чтобы из `sermon.audioUrl` получить имя объекта.
+Проверяется **только путь**: он должен начинаться с default bucket (`files`); **host не проверяется** — сохранённые URL переживают смену домена `MINIO_PUBLIC_URI`. URL, чей путь не начинается с bucket (например, `https://cdn.example.com/podcast/files/ep1.mp3`), бросает ошибку — иначе чужой путь мог бы удалить объект из НАШЕГО bucket.
+
+Используется в `SermonService.getStreamUrl`, чтобы из `sermon.audioUrl` получить имя объекта, и внутри `removeObjectByUrl` (см. ниже).
+
+### `removeObjectByUrl`
+
+```ts
+async removeObjectByUrl(fileUrl: string): Promise<void> {
+  const fileName = MinioService.extractFileNameFromUrl(fileUrl);
+  await this.minioClient.removeObject(MinioService.BUCKET_NAME, fileName);
+}
+```
+
+Извлекает имя объекта через `extractFileNameFromUrl` и вызывает `removeObject` на default bucket `files`. URL, чей путь не начинается с default bucket, бросает ошибку; **host не проверяется** (переживает смену домена `MINIO_PUBLIC_URI`) — вызывающий решает, проглатывать ли ошибку. Используется в `SermonService.remove` для best-effort очистки аудио после удаления проповеди: сбои очистки логируются как `WARN`, запрос не падает (см. [`sermon.md`](./sermon.md)).
 
 ## Связанные документы
 

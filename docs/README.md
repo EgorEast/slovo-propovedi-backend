@@ -13,6 +13,7 @@
 | [`conventions.md`](./conventions.md) | Соглашения: nestjs-zod, extend/override DTO, сущности, SERIALIZABLE, OpenAPI-first codegen, ручные SQL-миграции |
 | [`db.md`](./db.md) | TypeORM-конфиг, карта сущностей и связей, ASCII ER-диаграмма, ручные SQL-миграции |
 | [`validation-pipeline.md`](./validation-pipeline.md) | Конвейер валидации: OpenAPI-first workflow, слои валидации (Zod-пайп / `@ZodResponse`), CI-freshness check |
+| [`debt.md`](./debt.md) | Реестр технического долга и инцидентов (срезанные углы, known-issues) |
 | [`scripts.md`](./scripts.md) | CLI-скрипты: bulk-загрузка mp3-проповедей в API (`npm run upload-sermons`), кодогенерация |
 | [`modules/README.md`](./modules/README.md) | Индекс модулей: module → endpoints → entity → doc |
 | [`modules/app.md`](./modules/app.md) | Файловое хранилище: `POST/GET /files`, stream-url |
@@ -35,7 +36,7 @@
    - общие принципы → `architecture.md` и `conventions.md`.
    Отсутствует документ? Прочитай код и создай/дополни документ (правило 4).
 2. **При изменении кода** обнови затронутые `docs/**` **в том же PR/коммите**. Изменение кода без обновления документации — неполное.
-3. **Срезанный угол** (TODO, hack) → запись в отдельный документ технического долга (например, `docs/debt.md`, пока отсутствует) в том же PR.
+3. **Срезанный угол** (TODO, hack) → запись в отдельный документ технического долга [`debt.md`](./debt.md) в том же PR.
 4. **Сгенерированный код** (`src/generated/index.ts`) — **не редактировать руками**; правится только через регенерацию (`npm run gen:schemas`). Ручная правка — нарушение конвенции (см. [`conventions.md`](./conventions.md)).
 5. **DDL — только через SQL-файлы** (`sql/bootstrap.sql` + ручные миграции). `synchronize: false` в TypeORM; схему через ORM-миграции не менять (см. [`db.md`](./db.md)).
 
@@ -70,6 +71,7 @@
 
 - [./architecture.md](./architecture.md) — bootstrap, стек, env
 - [./conventions.md](./conventions.md) — OpenAPI-first workflow, git, DoD
+- [./debt.md](./debt.md) — технический долг, инциденты
 - [./contracts/rest-api.md](./contracts/rest-api.md) — внешний REST-контракт и конвейер кодогенерации
 - [./modules/sermon.md](./modules/sermon.md) — домен sermons
 - [./modules/playlist.md](./modules/playlist.md) — домен playlists

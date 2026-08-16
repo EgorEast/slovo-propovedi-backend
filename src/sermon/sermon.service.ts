@@ -3,6 +3,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateSermonDto } from './dto/create-sermon.dto';
@@ -11,7 +12,9 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { SermonEntity } from './entities/sermon.entity';
 import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
 import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-join.entity';
-import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
+import { SectionEntity } from 'src/section/entities/section.entity';
+import { SectionPlaylistJoinEntity } from 'src/section/entities/section-playlist-join.entity';
+import { DataSource, In, Repository } from 'typeorm';
 import {
   AllSermonsResponse,
   DistinctValuesResponse,
@@ -144,6 +147,8 @@ export { encodeCompositeCursor, decodeCompositeCursor };
 
 @Injectable()
 export class SermonService {
+  private readonly logger = new Logger(SermonService.name);
+
   constructor(
     @InjectRepository(SermonEntity)
     private sermonRepository: Repository<SermonEntity>,
@@ -151,6 +156,10 @@ export class SermonService {
     private playlistRepository: Repository<PlaylistEntity>,
     @InjectRepository(PlaylistSermonJoinEntity)
     private playlistSermonJoinRepository: Repository<PlaylistSermonJoinEntity>,
+    @InjectRepository(SectionEntity)
+    private sectionRepository: Repository<SectionEntity>,
+    @InjectRepository(SectionPlaylistJoinEntity)
+    private sectionPlaylistJoinRepository: Repository<SectionPlaylistJoinEntity>,
     private readonly minioService: MinioService,
     @InjectDataSource()
     private dataSource: DataSource,
@@ -211,20 +220,40 @@ export class SermonService {
           ]
         : [['sermon.id', 'DESC']];
 
+      // Page query: sermons only, no relation joins. The relation graph is
+      // assembled afterwards from linear queries (assembleSermonGraph) — the
+      // former 8-level leftJoinAndSelect chain produced a cartesian row
+      // explosion on GET /sermons that OOM-killed the production container.
+      const pageQueryBuilder =
+        this.sermonRepository.createQueryBuilder('sermon');
+
+      if (tsquery) {
+        pageQueryBuilder
+          .addSelect(buildRankExpression(), 'rank')
+          .where(TS_SEARCH_CONDITION)
+          .setParameter('tsquery', tsquery);
+      }
+
+      // orderBy replaces any previous order, addOrderBy appends — apply the
+      // primary orders first (relation orders are irrelevant now: each sermon
+      // row appears exactly once).
+      primaryOrders.forEach(([order, direction], index) => {
+        if (index === 0) {
+          pageQueryBuilder.orderBy(order, direction);
+        } else {
+          pageQueryBuilder.addOrderBy(order, direction);
+        }
+      });
+
       if (!take) {
         // Backward-compatible full fetch — used by the admin UI when no
         // pagination params are supplied. When search is present it is ranked
         // by relevance like the keyset path; the response shape is unchanged.
-        const queryBuilder = this.buildSermonQueryBuilder(primaryOrders);
-        if (tsquery) {
-          queryBuilder
-            .addSelect(buildRankExpression(), 'rank')
-            .where(TS_SEARCH_CONDITION)
-            .setParameter('tsquery', tsquery);
-        }
-        const [sermons, count] = await queryBuilder.getManyAndCount();
+        const sermons = await pageQueryBuilder.getMany();
+        const count = await this.countSermons(tsquery);
+        const graph = await this.assembleSermonGraph(sermons);
         return {
-          sermons: sermons.map((s) => this.normalizeSermonRelations(s)),
+          sermons: graph.map((s) => this.normalizeSermonRelations(s)),
           count,
           nextCursor: null,
         };
@@ -233,13 +262,7 @@ export class SermonService {
       // Keyset (cursor) pagination: instead of OFFSET — which rescans and skips
       // every row before the offset on each page — fetch take+1 rows after the
       // cursor and use the extra row to decide whether another page exists.
-      const queryBuilder = this.buildSermonQueryBuilder(primaryOrders);
-
       if (tsquery) {
-        queryBuilder
-          .addSelect(buildRankExpression(), 'rank')
-          .where(TS_SEARCH_CONDITION)
-          .setParameter('tsquery', tsquery);
         if (cursor) {
           // Relevance pages are ordered by (rank DESC, id DESC), so a bare id
           // cursor is wrong — the composite cursor carries both values and
@@ -247,26 +270,26 @@ export class SermonService {
           // DB; the bound JS number is float8, so cast it back to float4 for
           // an exact (not approximate) comparison.
           const { rank, id } = decodeCompositeCursor(cursor);
-          queryBuilder.andWhere(
+          pageQueryBuilder.andWhere(
             `(${buildRankExpression()}, sermon.id) < (:rank::float4, :id)`,
             { rank, id },
           );
         }
       } else if (cursor) {
-        queryBuilder.andWhere('sermon.id < :cursor', { cursor });
+        pageQueryBuilder.andWhere('sermon.id < :cursor', { cursor });
       }
 
-      queryBuilder.take(take + 1);
+      pageQueryBuilder.take(take + 1);
 
       // The search path selects the rank expression (for the composite cursor)
       // and reads it back from the raw rows; the no-search path needs no extra
       // select and can stay on the plain getMany.
       const rawAndEntities = tsquery
-        ? await queryBuilder.getRawAndEntities()
+        ? await pageQueryBuilder.getRawAndEntities()
         : undefined;
       const rows = rawAndEntities
         ? rawAndEntities.entities
-        : await queryBuilder.getMany();
+        : await pageQueryBuilder.getMany();
       const hasMore = rows.length > take;
       const sermons = hasMore ? rows.slice(0, take) : rows;
 
@@ -291,8 +314,9 @@ export class SermonService {
         }
       }
 
+      const graph = await this.assembleSermonGraph(sermons);
       return {
-        sermons: sermons.map((s) => this.normalizeSermonRelations(s)),
+        sermons: graph.map((s) => this.normalizeSermonRelations(s)),
         count: null,
         nextCursor,
       };
@@ -307,43 +331,236 @@ export class SermonService {
     }
   }
 
-  // Shared QueryBuilder for both findAll code paths: the deep relation graph
-  // plus the primary ordering (id DESC, or rank DESC + id DESC under search)
-  // followed by the join-position orders normalizePlaylistRelations expects.
-  private buildSermonQueryBuilder(
-    primaryOrders: Array<[order: string, direction: 'ASC' | 'DESC']>,
-  ): SelectQueryBuilder<SermonEntity> {
-    const queryBuilder = this.sermonRepository
-      .createQueryBuilder('sermon')
-      .leftJoinAndSelect('sermon.playlistJoins', 'playlistJoins')
-      .leftJoinAndSelect('playlistJoins.playlist', 'playlists')
-      .leftJoinAndSelect('playlists.sectionJoins', 'playlistSectionJoins')
-      .leftJoinAndSelect('playlistSectionJoins.section', 'playlistSections')
-      .leftJoinAndSelect('playlists.sermonJoins', 'playlistSermonJoins')
-      .leftJoinAndSelect('playlistSermonJoins.sermon', 'playlistSermons')
-      .leftJoinAndSelect(
-        'playlistSermons.playlistJoins',
-        'playlistSermonPlaylistJoins',
-      )
-      .leftJoinAndSelect(
-        'playlistSermonPlaylistJoins.playlist',
-        'playlistSermonPlaylists',
-      );
+  // Cheap total for the full-fetch response: COUNT over the sermon table
+  // (search filter applied when present) instead of getManyAndCount over the
+  // join explosion — both count distinct sermon ids, so the value is identical.
+  private async countSermons(tsquery?: string): Promise<number> {
+    const countQueryBuilder =
+      this.sermonRepository.createQueryBuilder('sermon');
+    if (tsquery) {
+      countQueryBuilder
+        .where(TS_SEARCH_CONDITION)
+        .setParameter('tsquery', tsquery);
+    }
+    return await countQueryBuilder.getCount();
+  }
 
-    // orderBy replaces any previous order, addOrderBy appends — apply the
-    // primary orders first, then the relation orders.
-    primaryOrders.forEach(([order, direction], index) => {
-      if (index === 0) {
-        queryBuilder.orderBy(order, direction);
+  /**
+   * Assembles the relation graph for a page of sermons with linear queries and
+   * in-memory joins, replacing the former deep leftJoinAndSelect chain (whose
+   * cartesian row explosion OOM-killed the 256MB production container).
+   *
+   * Query set per page:
+   *   1. playlist_sermons WHERE sermonId IN (page)      — top-level playlists
+   *   2. playlists WHERE id IN (page playlists)
+   *   3. playlist_sermons WHERE playlistId IN (playlists) — each playlist's
+   *      full sermon list, including sermons not on the page
+   *   4. sermons WHERE id IN (off-page nested sermons)
+   *   5. playlist_sermons WHERE sermonId IN (involved)  — nested playlists of
+   *      every involved sermon (skipped for full-fetch: every sermon is on the
+   *      page, so query 1 already contains every link)
+   *   6. playlists (id, title) WHERE id IN (nested playlists)
+   *   7. section_playlists WHERE playlistId IN (playlists)
+   *   8. sections WHERE id IN (involved sections)
+   *
+   * The returned hydrated graph feeds the SAME normalizeSermonRelations /
+   * normalizePlaylistRelations shape builders as the join query did, so the
+   * response JSON is byte-for-byte unchanged. Missing related rows fail fast
+   * (they indicate corrupted FK data, not an empty result).
+   *
+   * The read is not snapshot-atomic: a concurrent FK-cascade DELETE between
+   * query 1 and query 2 can surface a dangling join and fail fast with a 500
+   * instead of returning stale data. Accepted trade-off at admin-scale traffic
+   * (milliseconds window); the REPEATABLE READ transaction remedy is tracked
+   * in docs/debt.md.
+   */
+  private async assembleSermonGraph(
+    sermons: SermonEntity[],
+  ): Promise<SermonEntity[]> {
+    if (!sermons.length) {
+      return [];
+    }
+
+    const pageSermonIds = sermons.map((sermon) => sermon.id);
+
+    const pageSermonJoins = await this.playlistSermonJoinRepository
+      .createQueryBuilder('playlistSermonJoin')
+      .where('playlistSermonJoin.sermonId IN (:...pageSermonIds)', {
+        pageSermonIds,
+      })
+      .orderBy('playlistSermonJoin.position', 'ASC')
+      .addOrderBy('playlistSermonJoin.id', 'ASC')
+      .getMany();
+
+    const playlistIds = this.uniqueIds(
+      pageSermonJoins.map((join) => join.playlistId),
+    );
+    const playlists = playlistIds.length
+      ? await this.playlistRepository.find({ where: { id: In(playlistIds) } })
+      : [];
+
+    const playlistSermonJoins = playlistIds.length
+      ? await this.playlistSermonJoinRepository
+          .createQueryBuilder('playlistSermonJoin')
+          .where('playlistSermonJoin.playlistId IN (:...playlistIds)', {
+            playlistIds,
+          })
+          .orderBy('playlistSermonJoin.position', 'ASC')
+          .addOrderBy('playlistSermonJoin.id', 'ASC')
+          .getMany()
+      : [];
+
+    const pageSermonIdSet = new Set(pageSermonIds);
+    const deepSermonIds = this.uniqueIds(
+      playlistSermonJoins.map((join) => join.sermonId),
+    ).filter((id) => !pageSermonIdSet.has(id));
+    const deepSermons = deepSermonIds.length
+      ? await this.sermonRepository.find({ where: { id: In(deepSermonIds) } })
+      : [];
+
+    const allSermonIds = [...pageSermonIds, ...deepSermonIds];
+    const nestedPlaylistJoins = deepSermonIds.length
+      ? await this.playlistSermonJoinRepository
+          .createQueryBuilder('playlistSermonJoin')
+          .where('playlistSermonJoin.sermonId IN (:...allSermonIds)', {
+            allSermonIds,
+          })
+          .orderBy('playlistSermonJoin.position', 'ASC')
+          .addOrderBy('playlistSermonJoin.id', 'ASC')
+          .getMany()
+      : pageSermonJoins;
+
+    const nestedPlaylistIds = this.uniqueIds(
+      nestedPlaylistJoins.map((join) => join.playlistId),
+    );
+    const nestedPlaylists = nestedPlaylistIds.length
+      ? await this.playlistRepository.find({
+          select: ['id', 'title'],
+          where: { id: In(nestedPlaylistIds) },
+        })
+      : [];
+
+    const sectionJoins = playlistIds.length
+      ? await this.sectionPlaylistJoinRepository
+          .createQueryBuilder('sectionPlaylistJoin')
+          .where('sectionPlaylistJoin.playlistId IN (:...playlistIds)', {
+            playlistIds,
+          })
+          .orderBy('sectionPlaylistJoin.position', 'ASC')
+          .addOrderBy('sectionPlaylistJoin.id', 'ASC')
+          .getMany()
+      : [];
+    const sectionIds = this.uniqueIds(
+      sectionJoins.map((join) => join.sectionId),
+    );
+    const sections = sectionIds.length
+      ? await this.sectionRepository.find({ where: { id: In(sectionIds) } })
+      : [];
+
+    const playlistsById = new Map(
+      playlists.map((playlist) => [playlist.id, playlist]),
+    );
+    const sectionsById = new Map(
+      sections.map((section) => [section.id, section]),
+    );
+    const sermonsById = new Map(
+      [...sermons, ...deepSermons].map((sermon) => [sermon.id, sermon]),
+    );
+    const nestedPlaylistsById = new Map(
+      nestedPlaylists.map((playlist) => [playlist.id, playlist]),
+    );
+
+    const joinsBySermonId = this.groupJoinsBy(pageSermonJoins, 'sermonId');
+    const joinsByPlaylistId = this.groupJoinsBy(
+      playlistSermonJoins,
+      'playlistId',
+    );
+    const nestedJoinsBySermonId = this.groupJoinsBy(
+      nestedPlaylistJoins,
+      'sermonId',
+    );
+    const sectionJoinsByPlaylistId = this.groupJoinsBy(
+      sectionJoins,
+      'playlistId',
+    );
+
+    return sermons.map((sermon) => ({
+      ...sermon,
+      playlistJoins: (joinsBySermonId.get(sermon.id) ?? []).map((join) => {
+        const playlist = playlistsById.get(join.playlistId);
+        if (!playlist) {
+          throw new Error(
+            `Playlist "${join.playlistId}" of sermon "${sermon.id}" not found`,
+          );
+        }
+        return {
+          ...join,
+          playlist: {
+            ...playlist,
+            sectionJoins: (sectionJoinsByPlaylistId.get(playlist.id) ?? []).map(
+              (sectionJoin) => {
+                const section = sectionsById.get(sectionJoin.sectionId);
+                if (!section) {
+                  throw new Error(
+                    `Section "${sectionJoin.sectionId}" of playlist "${playlist.id}" not found`,
+                  );
+                }
+                return { ...sectionJoin, section };
+              },
+            ),
+            sermonJoins: (joinsByPlaylistId.get(playlist.id) ?? []).map(
+              (sermonJoin) => {
+                const nestedSermon = sermonsById.get(sermonJoin.sermonId);
+                if (!nestedSermon) {
+                  throw new Error(
+                    `Sermon "${sermonJoin.sermonId}" of playlist "${playlist.id}" not found`,
+                  );
+                }
+                return {
+                  ...sermonJoin,
+                  sermon: {
+                    ...nestedSermon,
+                    playlistJoins: (
+                      nestedJoinsBySermonId.get(nestedSermon.id) ?? []
+                    ).map((nestedJoin) => {
+                      const nestedPlaylist = nestedPlaylistsById.get(
+                        nestedJoin.playlistId,
+                      );
+                      if (!nestedPlaylist) {
+                        throw new Error(
+                          `Playlist "${nestedJoin.playlistId}" of sermon "${nestedSermon.id}" not found`,
+                        );
+                      }
+                      return { ...nestedJoin, playlist: nestedPlaylist };
+                    }),
+                  },
+                };
+              },
+            ),
+          },
+        };
+      }),
+    }));
+  }
+
+  private uniqueIds(ids: string[]): string[] {
+    return [...new Set(ids)];
+  }
+
+  private groupJoinsBy<T extends Record<K, string>, K extends keyof T & string>(
+    joins: T[],
+    key: K,
+  ): Map<string, T[]> {
+    const groups = new Map<string, T[]>();
+    for (const join of joins) {
+      const group = groups.get(join[key]);
+      if (group) {
+        group.push(join);
       } else {
-        queryBuilder.addOrderBy(order, direction);
+        groups.set(join[key], [join]);
       }
-    });
-
-    return queryBuilder
-      .addOrderBy('playlistJoins.position', 'ASC')
-      .addOrderBy('playlistSectionJoins.position', 'ASC')
-      .addOrderBy('playlistSermonJoins.position', 'ASC');
+    }
+    return groups;
   }
 
   async getStreamUrl(id: string): Promise<StreamUrlResponse> {
@@ -499,7 +716,13 @@ export class SermonService {
 
   async remove(id: string): Promise<StatusSermonResponse> {
     try {
+      // Read the audio URL before the row is gone: the DB deletion stays the
+      // source of truth and always succeeds; file cleanup is best-effort.
+      const sermon = await this.sermonRepository.findOne({ where: { id } });
       await this.sermonRepository.delete(id);
+      if (sermon?.audioUrl) {
+        await this.removeAudioFileBestEffort(sermon.audioUrl);
+      }
       return { status: 'success' };
     } catch (error) {
       if (error instanceof HttpException) {
@@ -508,6 +731,20 @@ export class SermonService {
       throw new HttpException(
         'from:remove ' + error.message,
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // Best-effort cleanup of the stored audio file after the DB row is gone. Any
+  // failure (missing file, MinIO down, malformed URL) is logged and swallowed —
+  // the HTTP request must never fail because of file cleanup.
+  private async removeAudioFileBestEffort(audioUrl: string): Promise<void> {
+    try {
+      await this.minioService.removeObjectByUrl(audioUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Failed to remove audio file "${audioUrl}" after sermon deletion: ${message}`,
       );
     }
   }

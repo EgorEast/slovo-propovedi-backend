@@ -5,6 +5,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SermonEntity } from './entities/sermon.entity';
 import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
 import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-join.entity';
+import { SectionEntity } from 'src/section/entities/section.entity';
+import { SectionPlaylistJoinEntity } from 'src/section/entities/section-playlist-join.entity';
 import { MinioModule } from 'src/minio/minio.module';
 
 @Module({
@@ -13,6 +15,8 @@ import { MinioModule } from 'src/minio/minio.module';
       SermonEntity,
       PlaylistEntity,
       PlaylistSermonJoinEntity,
+      SectionEntity,
+      SectionPlaylistJoinEntity,
     ]),
     MinioModule,
   ],

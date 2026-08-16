@@ -33,7 +33,7 @@
 | `verse` | `verse` | json | nullable (`number \| number[]`) |
 | `playlistJoins` | relation | — | `@OneToMany → PlaylistSermonJoinEntity`, cascade |
 
-Сервис тянет глубокие отношения (`SERMON_RELATIONS` — до плейлистов, разделов и вложенных проповедей) и нормализует их в `NormalizedSermonResponse` (`normalizeSermonRelations` / `normalizePlaylistRelations`), сортируя join-ы по `position` на уровне БД (`SERMON_RELATION_ORDER`).
+Сервис тянет глубокие отношения (`SERMON_RELATIONS` — до плейлистов, разделов и вложенных проповедей) и нормализует их в `NormalizedSermonResponse` (`normalizeSermonRelations` / `normalizePlaylistRelations`), сортируя join-ы по `position` на уровне БД (`SERMON_RELATION_ORDER`). Так делает `findOne`; `findAll` собирает тот же граф из линейных запросов (см. ниже) — глубокий join остался только у `findOne`.
 
 ## `findAll` — полная выборка и keyset-пагинация (`sermon.service.ts`)
 
@@ -41,7 +41,7 @@
 
 | Условие | Путь | Как фильтрует |
 |---------|------|----------------|
-| `take` не задан | **полная выборка** | QueryBuilder (`getManyAndCount`): `sermon.search_vector @@ tsquery`, порядок по релевантности |
+| `take` не задан | **полная выборка** | join-свободная страница (`getMany`) + `getCount` (`countSermons`) + `assembleSermonGraph` (линейные запросы); `sermon.search_vector @@ tsquery`, порядок по релевантности |
 | `take` задан | **keyset (cursor)** | QueryBuilder: `take + 1` строк, порядок по релевантности + составной курсор `{ rank, id }` |
 
 ### Полнотекстовый поиск (FTS)
@@ -110,9 +110,19 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 `getMany`/`getRawAndEntities` с `take` + join-ами пагинирует двумя запросами и **не умеет** сложное выражение в `ORDER BY` (разбирает строку как `alias.column` и падает на `'{0.1,...`). Поэтому ранг выносится в **select-алиас**: `addSelect(RANK_EXPRESSION, 'rank')` + `orderBy('rank', 'DESC')` — алиас переживает подзапрос пагинации, а `rank` в сущность не попадает (unmapped).
 
-### Полная выборка
+### Полная выборка и сборка графа (production OOM-фикс)
 
-Полная выборка (без `take`) переведена с `findAndCount` на QueryBuilder + `getManyAndCount`, чтобы **оба пути** использовали одно FTS-условие и ранжирование. Ответ: `{ sermons, count, nextCursor: null }` — форма не изменилась.
+Полная выборка (без `take`) — join-свободная страница проповедей + `assembleSermonGraph`: граф отношений собирается из ~10 ограниченных линейных запросов (page-проповеди; `playlist_sermons` по `sermonId` страницы; `playlists` по id; `playlist_sermons` по `playlistId` — включая проповеди вне страницы; недостающие проповеди; вложенные `playlist_sermons`; вложенные `playlists` проекцией `{id, title}`; `section_playlists`; `sections`) и склеивается через `Map`. Результат кормит те же `normalizeSermonRelations` / `normalizePlaylistRelations`, что и прежний join — HTTP-контракт байт-в-байт не изменился.
+
+**Зачем:** прежний 8-уровневый `leftJoinAndSelect` давал декартово размножение строк и OOM-убивал контейнер (256 МБ) на `GET /sermons` без `take` при ~420 проповедях. Пик памяти теперь ограничен размером ответа (~1300 строк для 421 проповеди / 20 плейлистов / 421 связи), а не взрывом join-ов.
+
+- `count` в полной выборке — дешёвый `getCount()` (`countSermons`), а не `getManyAndCount` по join-размножению; значение совпадает (оба считают distinct проповеди).
+- Самые глубокие вложенные плейлисты теперь явно упорядочены по позиции join-а ASC (ранее — порядок из БД, произвольный).
+- Вспомогательные помощники: `countSermons`, `uniqueIds`, `groupJoinsBy`. Репозитории `SectionEntity` + `SectionPlaylistJoinEntity` инжектируются в модуль (`src/sermon/sermon.module.ts`).
+- Отсутствующие связанные строки (нарушенные FK) — fail-fast с `Error`, а не пустой результат.
+- Keyset-путь (`take` + `cursor`) не изменён; оба пути используют единое FTS-условие и ранжирование.
+
+Ответ: `{ sermons, count, nextCursor: null }` — форма не изменилась.
 
 > ✅ `findAll` без `take`/`search` отдаёт **всю** выборку (backward-compat, используется админкой при первичной загрузке). Поиск применён в **обоих** путях.
 
@@ -143,7 +153,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 ## `remove`
 
-`delete(id)` → `{ status: 'success' }`.
+Удаляет строку из БД, затем (best-effort) чистит аудио-файл из MinIO через `MinioService.removeObjectByUrl(audioUrl)`. `audioUrl` читается до удаления строки (пока запись ещё существует). Любой сбой очистки — файл не найден, невалидный/чужой URL, MinIO недоступен — логируется как `WARN` и не валит HTTP-запрос: БД остаётся источником истины. Ответ: `{ status: 'success' }`.
 
 ## DTO
 
