@@ -180,8 +180,10 @@ export class SermonService {
         artist: createSermonDto.artist,
         artwork: createSermonDto.artwork,
         book: createSermonDto.book,
-        chapter: createSermonDto.chapter,
-        verse: createSermonDto.verse,
+        // chapter/verse are optional in the schema — an absent key must still
+        // land as an explicit NULL in the column, not an omitted INSERT field.
+        chapter: createSermonDto.chapter ?? null,
+        verse: createSermonDto.verse ?? null,
       });
       const savedSermon = await this.sermonRepository.save(sermon);
       await this.attachSermonToPlaylists(

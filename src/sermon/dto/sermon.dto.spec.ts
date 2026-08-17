@@ -1,8 +1,9 @@
 import { CreateSermonDto } from './create-sermon.dto';
 import { UpdateSermonDto } from './update-sermon.dto';
 
-// The create/update schemas require every scripture field, so a shared valid
-// base body keeps each case focused on the chapter/verse cross-field rule.
+// The create/update schemas require every non-scripture field, so a shared
+// valid base body keeps each case focused on the chapter/verse cross-field
+// rule. chapter/verse are optional — a book-only payload is valid.
 const baseBody = {
   title: 'Проповедь',
   description: '',
@@ -14,8 +15,8 @@ const baseBody = {
   book: 'Иоанна',
 };
 
-const RANGE_WITH_SINGLE_VERSE_MESSAGE =
-  'verse must be an array or null when chapter is a range';
+const RANGE_WITH_INVALID_VERSE_MESSAGE =
+  'verse must be a two-integer range or null when chapter is a range';
 
 describe('Sermon DTO chapter-range rule', () => {
   describe('CreateSermonDto', () => {
@@ -31,7 +32,26 @@ describe('Sermon DTO chapter-range rule', () => {
           expect.arrayContaining([
             expect.objectContaining({
               path: ['verse'],
-              message: RANGE_WITH_SINGLE_VERSE_MESSAGE,
+              message: RANGE_WITH_INVALID_VERSE_MESSAGE,
+            }),
+          ]),
+        );
+      }
+    });
+
+    it('rejects a chapter range paired with verse segments', () => {
+      const result = CreateSermonDto.schema.safeParse({
+        ...baseBody,
+        chapter: [1, 2],
+        verse: [[9, 18], 20],
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: ['verse'],
+              message: RANGE_WITH_INVALID_VERSE_MESSAGE,
             }),
           ]),
         );
@@ -50,7 +70,7 @@ describe('Sermon DTO chapter-range rule', () => {
     it('accepts a chapter range with a null verse', () => {
       const result = CreateSermonDto.schema.safeParse({
         ...baseBody,
-        chapter: [118, 119],
+        chapter: [1, 2],
         verse: null,
       });
       expect(result.success).toBe(true);
@@ -65,12 +85,17 @@ describe('Sermon DTO chapter-range rule', () => {
       expect(result.success).toBe(true);
     });
 
-    it('accepts a chapter range alone (verse null)', () => {
+    it('accepts a single chapter with verse segments', () => {
       const result = CreateSermonDto.schema.safeParse({
         ...baseBody,
-        chapter: [3, 4],
-        verse: null,
+        chapter: 1,
+        verse: [[9, 18], 20],
       });
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts a book-only payload without chapter/verse keys', () => {
+      const result = CreateSermonDto.schema.safeParse(baseBody);
       expect(result.success).toBe(true);
     });
   });
@@ -89,7 +114,27 @@ describe('Sermon DTO chapter-range rule', () => {
           expect.arrayContaining([
             expect.objectContaining({
               path: ['verse'],
-              message: RANGE_WITH_SINGLE_VERSE_MESSAGE,
+              message: RANGE_WITH_INVALID_VERSE_MESSAGE,
+            }),
+          ]),
+        );
+      }
+    });
+
+    it('rejects a chapter range paired with verse segments', () => {
+      const result = UpdateSermonDto.schema.safeParse({
+        ...baseBody,
+        chapter: [1, 2],
+        verse: [[9, 18], 20],
+        playlistsIds: [],
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: ['verse'],
+              message: RANGE_WITH_INVALID_VERSE_MESSAGE,
             }),
           ]),
         );
@@ -101,6 +146,14 @@ describe('Sermon DTO chapter-range rule', () => {
         ...baseBody,
         chapter: [3, 4],
         verse: [16, 2],
+        playlistsIds: [],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts a book-only payload without chapter/verse keys', () => {
+      const result = UpdateSermonDto.schema.safeParse({
+        ...baseBody,
         playlistsIds: [],
       });
       expect(result.success).toBe(true);

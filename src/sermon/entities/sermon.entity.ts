@@ -34,7 +34,7 @@ export class SermonEntity {
   chapter?: number | number[];
 
   @Column({ name: 'verse', type: 'json', nullable: true })
-  verse?: number | number[];
+  verse?: number | number[] | (number | number[])[];
 
   @OneToMany(() => PlaylistSermonJoinEntity, (join) => join.sermon, {
     cascade: true,

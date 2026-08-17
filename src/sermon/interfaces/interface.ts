@@ -15,7 +15,7 @@ export interface UpdateSermon {
   artwork?: string;
   book?: string;
   chapter?: number | number[];
-  verse?: number | number[];
+  verse?: number | number[] | (number | number[])[];
 }
 
 export type NormalizedSermonResponse = z.infer<
