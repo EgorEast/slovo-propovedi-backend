@@ -10,7 +10,7 @@
 | Метод / путь | Guard | Body/Param | DTO ответа | Метод сервиса |
 |---------------|-------|------------|------------|----------------|
 | `POST /playlists` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `CreatePlaylistDto` | `PlaylistResponseDto` | `create` |
-| `GET /playlists` | публичный | query `FindAllPlaylistsQueryDto` (`search?`) | `AllPlaylistsResponseDto` | `findAll(search)` |
+| `GET /playlists` | публичный | query `FindAllPlaylistsQueryDto` (`search?`, `page?`, `limit?`) | `AllPlaylistsResponseDto` | `findAll(search, page, limit)` |
 | `GET /playlists/:id` | публичный | `IdParamDto` | `PlaylistResponseDto` | `findOne` |
 | `PATCH /playlists/:id/sermons/reorder` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` + `ReorderSermonsInPlaylistDto` | `StatusPlaylistResponseDto` | `reorderSermonsInPlaylist(id, sermonIds)` |
 | `PATCH /playlists/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` + `UpdatePlaylistDto` | `PlaylistResponseDto` | `update` |
@@ -44,14 +44,28 @@
 
 Сервис тянет `PLAYLIST_RELATIONS` и нормализует в `NormalizedPlaylistResponse` (`normalizePlaylist`), сортируя `sermonJoins` и `sectionJoins` по `position` на уровне БД (`PLAYLIST_ORDER`).
 
-## `findAll` — полная выборка и полнотекстовый поиск (`playlist.service.ts`)
+## `findAll` — полная выборка, offset-пагинация и полнотекстовый поиск (`playlist.service.ts`)
 
-Сигнатура: `findAll(search?)`. Два пути:
+Сигнатура: `findAll(search?, page?, limit?)`. Три пути:
 
 | Условие | Путь | Как фильтрует |
 |---------|------|----------------|
-| `search` не задан | **полная выборка** | `findAndCount` (как до поиска — поведение без изменений) |
-| `search` задан | **поиск** | QueryBuilder (`getManyAndCount`): `playlist.search_vector @@ tsquery`, порядок по релевантности |
+| `page`/`limit` задан | **offset** | пагинация **родительских id** (join-свободный запрос) + отдельный дешёвый `getCount` + гидрация страницы через `WHERE id IN (...)` + восстановление порядка в памяти |
+| `search` задан (без `page`/`limit`) | **поиск** | QueryBuilder (`getManyAndCount`): `playlist.search_vector @@ tsquery`, порядок по релевантности |
+| ни то, ни другое | **полная выборка** | `findAndCount` (как до поиска — поведение без изменений, кроме детерминированного порядка родителя `id DESC`) |
+
+`limit` без `page` означает первую страницу (`page = 1`); `page` без `limit` — размер страницы по умолчанию `DEFAULT_PAGE_LIMIT = 100` (максимум схемы). У плейлистов нет keyset-режима, поэтому правило взаимоисключения (как у sermons) не нужно.
+
+### Offset-пагинация: пагинация id, а не join-запроса
+
+Прежний `findAndCount`-по-join-ам пагинировал **декартово произведение** глубокого графа отношений: страница из N плейлистов могла вернуть меньше N строк (или дубликаты), как только у плейлиста появлялось несколько проповедей/разделов. Поэтому offset-путь:
+
+1. **Страница родительских id** — join-свободный запрос `SELECT playlist.id` с `ORDER BY id DESC` (при поиске — `rank DESC, id DESC`) и `skip`/`take`.
+2. **Общее число** — отдельный лёгкий `getCount` (`countPlaylists`, поисковый фильтр применён при наличии) вместо `getManyAndCount` по join-размножению; значение совпадает (оба считают distinct плейлисты).
+3. **Гидрация страницы** — существующая загрузка отношений (`PLAYLIST_RELATIONS` + `PLAYLIST_ORDER`) с `WHERE id IN (страница)`.
+4. **Восстановление порядка в памяти** — `WHERE IN` теряет порядок id-страницы, поэтому гидратированные строки переупорядочиваются по порядку id-страницы. Отсутствующая строка (нарушенный FK: id-страница видела плейлист, гидрация — нет) — fail-fast с `Error`, а не молчаливое выпадение из ответа.
+
+Без `page`/`limit` поведение прежнее, но порядок родителя в полной выборке теперь **детерминированный `id DESC`** (новые первыми; ранее — произвольный порядок из БД). Это видимое изменение зафиксировано в спецификации 0.15.0.
 
 ### Полнотекстовый поиск (FTS)
 
@@ -79,7 +93,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], playlist.search_vector
 
 Порядок: **`rank DESC` → `playlist.id DESC`** → позиции join-ов (`sermonJoins.position`, `sectionJoins.position`) на уровне БД — та же реляционная модель, что у `findAndCount`.
 
-> ✅ `findAll` без `search` отдаёт **всю** выборку (backward-compat); форма ответа `{ playlists, count }` не изменилась ни в одном из путей.
+> ✅ `findAll` без `search`/`page`/`limit` отдаёт **всю** выборку (backward-compat); форма ответа `{ playlists, count }` не изменилась ни в одном из путей.
 
 ## `create` (SERIALIZABLE)
 
@@ -149,7 +163,7 @@ await joinRepository.createQueryBuilder()
 |------|-------|
 | `src/playlist/dto/create-playlist.dto.ts` | `{ title, description, artwork, sermonsIds?, sectionsIds? }` |
 | `src/playlist/dto/update-playlist.dto.ts` | `{ title, description, artwork, sermonsIds, sectionsIds? }` |
-| `src/playlist/dto/find-all-playlists-query.dto.ts` | extends query + `.extend({ search: z.string().trim().min(1).optional() })` |
+| `src/playlist/dto/find-all-playlists-query.dto.ts` | extends query + `.extend({ search: z.string().trim().min(1).optional(), page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional() })` |
 | `src/playlist/dto/reorder-sermons-in-playlist.dto.ts` | `{ sermonIds: uuid[] }` |
 | `src/playlist/dto/playlist-response.dto.ts` | create/findOne |
 | `src/playlist/dto/all-playlists-response.dto.ts` | findAll |

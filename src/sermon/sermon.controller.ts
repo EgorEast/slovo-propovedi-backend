@@ -48,6 +48,8 @@ export class SermonController {
       query.take,
       query.cursor,
       query.search,
+      query.page,
+      query.limit,
     );
   }
 

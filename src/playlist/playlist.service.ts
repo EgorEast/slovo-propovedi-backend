@@ -19,6 +19,7 @@ import {
   StatusPlaylistResponse,
 } from './interfaces/interface';
 import { buildSearchTsQuery, SermonService } from 'src/sermon/sermon.service';
+import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
 
 const PLAYLIST_RELATIONS = [
   'sermonJoins',
@@ -31,8 +32,11 @@ const PLAYLIST_RELATIONS = [
 
 // DB-level ordering for every relation path the normalize function exposes —
 // sermon and section joins are both ordered by position, so no in-memory
-// re-sorting is needed.
+// re-sorting is needed. The parent playlist rows are ordered by id DESC so
+// the plain list is deterministic (newest first), matching the offset-mode
+// id-page order.
 const PLAYLIST_ORDER = {
+  id: 'DESC',
   sermonJoins: { position: 'ASC' },
   sectionJoins: { position: 'ASC' },
 } as const;
@@ -192,17 +196,31 @@ export class PlaylistService {
     }
   }
 
-  async findAll(search?: string): Promise<AllPlaylistsResponse> {
+  async findAll(
+    search?: string,
+    page?: number,
+    limit?: number,
+  ): Promise<AllPlaylistsResponse> {
     try {
       // Parse the search term at the boundary ONCE: the sanitized tsquery
       // drives the WHERE condition and the ORDER BY ranking. Punctuation-only
       // input fails fast inside buildSearchTsQuery.
       const tsquery = search ? buildSearchTsQuery(search) : undefined;
 
+      // Offset mode is selected by the presence of page/limit (limit without
+      // page means page 1). Playlists have no keyset mode, so there is no
+      // exclusivity rule to enforce.
+      const offsetMode = page !== undefined || limit !== undefined;
+
+      if (offsetMode) {
+        return await this.findOffsetPage(tsquery, page, limit);
+      }
+
       if (!tsquery) {
         // Backward-compatible full fetch — byte-for-byte the pre-search
         // implementation (findAndCount with the deep relation graph and the
-        // DB-level join ordering).
+        // DB-level join ordering), now with a deterministic id-DESC parent
+        // order (newest first).
         const [playlists, count] = await this.playlistRepository.findAndCount({
           relations: PLAYLIST_RELATIONS,
           order: PLAYLIST_ORDER,
@@ -238,6 +256,83 @@ export class PlaylistService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  // Offset pagination pages the PARENT ids, not the join query: the former
+  // findAndCount-over-joins paginated the cartesian product of the deep
+  // relation graph, so a page of N playlists could return fewer than N rows
+  // (or duplicate rows) once a playlist held several sermons/sections.
+  private async findOffsetPage(
+    tsquery: string | undefined,
+    page: number | undefined,
+    limit: number | undefined,
+  ): Promise<AllPlaylistsResponse> {
+    const effectivePage = page ?? 1;
+    const effectiveLimit = limit ?? DEFAULT_PAGE_LIMIT;
+
+    // 1. Page the parent ids only — a join-free query ordered by id DESC
+    // (rank DESC, id DESC under search).
+    const idQueryBuilder =
+      this.playlistRepository.createQueryBuilder('playlist');
+    idQueryBuilder.select('playlist.id', 'id');
+    if (tsquery) {
+      idQueryBuilder
+        .addSelect(buildPlaylistRankExpression(), 'rank')
+        .where(PLAYLIST_TS_SEARCH_CONDITION)
+        .setParameter('tsquery', tsquery)
+        .orderBy('rank', 'DESC')
+        .addOrderBy('playlist.id', 'DESC');
+    } else {
+      idQueryBuilder.orderBy('playlist.id', 'DESC');
+    }
+    idQueryBuilder
+      .skip((effectivePage - 1) * effectiveLimit)
+      .take(effectiveLimit);
+    const idRows = await idQueryBuilder.getRawMany<{ id: string }>();
+    const pageIds = idRows.map((row) => row.id);
+
+    // 2. Total count via a separate lightweight count query (no joins).
+    const count = await this.countPlaylists(tsquery);
+
+    // 3. Hydrate the page with the existing relation loading.
+    const playlists = pageIds.length
+      ? await this.playlistRepository.find({
+          where: { id: In(pageIds) },
+          relations: PLAYLIST_RELATIONS,
+          order: PLAYLIST_ORDER,
+        })
+      : [];
+
+    // 4. WHERE IN loses the id-page order — restore it in memory. A missing
+    // row means a dangling FK (the id page saw it, the hydration did not) —
+    // fail fast instead of silently dropping it.
+    const playlistsById = new Map(playlists.map((p) => [p.id, p]));
+    const orderedPlaylists = pageIds.map((id) => {
+      const playlist = playlistsById.get(id);
+      if (!playlist) {
+        throw new Error(`Playlist "${id}" missing from hydration query`);
+      }
+      return playlist;
+    });
+
+    return {
+      playlists: orderedPlaylists.map((p) => this.normalizePlaylist(p)),
+      count,
+    };
+  }
+
+  // Cheap total for the offset response: COUNT over the playlist table (search
+  // filter applied when present) instead of getManyAndCount over the join
+  // explosion — both count distinct playlists, so the value is identical.
+  private async countPlaylists(tsquery?: string): Promise<number> {
+    const countQueryBuilder =
+      this.playlistRepository.createQueryBuilder('playlist');
+    if (tsquery) {
+      countQueryBuilder
+        .where(PLAYLIST_TS_SEARCH_CONDITION)
+        .setParameter('tsquery', tsquery);
+    }
+    return await countQueryBuilder.getCount();
   }
 
   // QueryBuilder for the search path: the deep relation graph (the six

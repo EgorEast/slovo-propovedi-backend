@@ -14,6 +14,7 @@ import { UserRole } from './user-role.enum';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
 
 const BCRYPT_ROUNDS = 10;
 
@@ -38,6 +39,11 @@ export interface UserResponse {
   username: string;
   email: string;
   role: UserRole;
+}
+
+export interface AllUsersResponse {
+  users: UserResponse[];
+  count: number;
 }
 
 @Injectable()
@@ -81,10 +87,24 @@ export class UsersService {
     await this.usersRepository.update(id, { password: hashedPassword });
   }
 
-  async findAll(): Promise<UserResponse[]> {
+  async findAll(page?: number, limit?: number): Promise<AllUsersResponse> {
     try {
-      const users = await this.usersRepository.find();
-      return users.map((user) => this.toResponse(user));
+      // Offset mode is selected by the presence of page/limit (limit without
+      // page means page 1). The full fetch keeps the same deterministic
+      // id-DESC order (newest first) and reports the total as count.
+      const offsetMode = page !== undefined || limit !== undefined;
+      const effectivePage = page ?? 1;
+      const effectiveLimit = limit ?? DEFAULT_PAGE_LIMIT;
+      const [users, count] = await this.usersRepository.findAndCount(
+        offsetMode
+          ? {
+              order: { id: 'DESC' },
+              skip: (effectivePage - 1) * effectiveLimit,
+              take: effectiveLimit,
+            }
+          : { order: { id: 'DESC' } },
+      );
+      return { users: users.map((user) => this.toResponse(user)), count };
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;

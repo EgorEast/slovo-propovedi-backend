@@ -22,7 +22,7 @@
 | Метод / путь | Guard | Body/Param | DTO ответа | Метод сервиса |
 |---------------|-------|------------|------------|----------------|
 | `POST /users` | ✅ `AuthGuard` + `RolesGuard` (admin) | body `CreateUserDto` | `UserResponseDto` | `create` |
-| `GET /users` | ✅ `AuthGuard` + `RolesGuard` (admin) | — | `UserListResponseDto` | `findAll` |
+| `GET /users` | ✅ `AuthGuard` + `RolesGuard` (admin) | query `FindAllUsersQueryDto` (`page?`, `limit?`) | `UserListResponseDto` | `findAll(page, limit)` |
 | `GET /users/:id` | ✅ `AuthGuard` + `RolesGuard` (admin) | param `IdParamDto` | `UserResponseDto` | `findOne` |
 | `PATCH /users/:id` | ✅ `AuthGuard` + `RolesGuard` (admin) | param + body `UpdateUserDto` | `UserResponseDto` | `update` |
 | `PATCH /users/:id/password` | ✅ `AuthGuard` + `RolesGuard` (admin) | param + body `ChangePasswordDto` | — (`204 No Content`) | `changePassword` |
@@ -55,7 +55,7 @@
 
 | Метод | Назначение |
 |-------|------------|
-| `findAll()` | список всех пользователей → `UserResponse[]` |
+| `findAll(page?, limit?)` | список пользователей → `{ users, count }`; offset-пагинация по `page`/`limit` (порядок `id DESC`), `limit` без `page` — первая страница, `page` без `limit` — `DEFAULT_PAGE_LIMIT = 100` |
 | `findOne(id)` | поиск по `id` (иначе `NotFoundException`) |
 | `create(dto)` | создание: bcrypt-хэш пароля + сохранение; `role = dto.role ?? UserRole.User` (least privilege) |
 | `update(id, dto, currentUserId)` | частичное обновление (только заданные поля) + защита роли (см. ниже) |
@@ -108,10 +108,13 @@ export class UsersModule {}
 | `src/users/dto/create-user.dto.ts` | `UsersControllerCreateBody` (`{ name, email, username, password, role? }`) |
 | `src/users/dto/update-user.dto.ts` | `UsersControllerUpdateBody` (`{ name?, email?, username?, role? }`) |
 | `src/users/dto/change-password.dto.ts` | `UsersControllerChangePasswordBody` (`{ password }`) |
+| `src/users/dto/find-all-users-query.dto.ts` | `UsersControllerFindAllQueryParams` + `.extend({ page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional() })` (findAll) |
 | `src/users/dto/user-response.dto.ts` | `UsersControllerCreateResponse` (create/findOne/update) |
 | `src/users/dto/user-list-response.dto.ts` | `UsersControllerFindAllResponse` (findAll) |
 
 Роль в ответах обязательна (`zod.enum(['admin','moderator','user'])`), в create/update — опциональна (дефолт `'user'`).
+
+> ⚠️ **Breaking change (спецификация 0.15.0):** `GET /users` больше не возвращает голый массив — ответ обёрнут в `{ users, count }` (`AllUsersResponse`), где `count` — общее число пользователей. Старые admin-клиенты, ожидающие массив, должны быть обновлены. Добавлены опциональные query `page`/`limit` (offset-пагинация, порядок `id DESC`).
 
 ## Связанные документы
 

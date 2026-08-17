@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
+import { In } from 'typeorm';
 import {
   PlaylistService,
   buildPlaylistSearchVectorExpression,
@@ -37,6 +38,7 @@ const PLAYLIST_RELATIONS = [
 ];
 
 const PLAYLIST_ORDER = {
+  id: 'DESC',
   sermonJoins: { position: 'ASC' },
   sectionJoins: { position: 'ASC' },
 };
@@ -46,6 +48,7 @@ describe('PlaylistService', () => {
   let playlistRepository: {
     createQueryBuilder: jest.Mock;
     findAndCount: jest.Mock;
+    find: jest.Mock;
     create: jest.Mock;
     save: jest.Mock;
     findOne: jest.Mock;
@@ -56,6 +59,7 @@ describe('PlaylistService', () => {
     playlistRepository = {
       createQueryBuilder: jest.fn(),
       findAndCount: jest.fn(),
+      find: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
       findOne: jest.fn(),
@@ -111,22 +115,32 @@ describe('PlaylistService', () => {
     function mockQueryBuilder() {
       const queryBuilder = {
         leftJoinAndSelect: jest.fn(),
+        select: jest.fn(),
         orderBy: jest.fn(),
         addOrderBy: jest.fn(),
         addSelect: jest.fn(),
         where: jest.fn(),
         setParameter: jest.fn(),
+        skip: jest.fn(),
+        take: jest.fn(),
         getManyAndCount: jest.fn(),
+        getRawMany: jest.fn(),
+        getCount: jest.fn(),
       };
       [
         'leftJoinAndSelect',
+        'select',
         'orderBy',
         'addOrderBy',
         'addSelect',
         'where',
         'setParameter',
+        'skip',
+        'take',
       ].forEach((method) => queryBuilder[method].mockReturnValue(queryBuilder));
       queryBuilder.getManyAndCount.mockResolvedValue([[], 0]);
+      queryBuilder.getRawMany.mockResolvedValue([]);
+      queryBuilder.getCount.mockResolvedValue(0);
       playlistRepository.createQueryBuilder.mockReturnValue(queryBuilder);
       return queryBuilder;
     }
@@ -232,6 +246,119 @@ describe('PlaylistService', () => {
       await service.findAll('');
 
       expect(playlistRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    describe('offset path (page/limit supplied)', () => {
+      const playlistEntity = (id: string): PlaylistEntity => ({
+        id,
+        title: `Плейлист ${id}`,
+        description: '',
+        artwork: '',
+        sectionJoins: [],
+        sermonJoins: [],
+      });
+
+      it('pages parent ids by id DESC, counts separately and hydrates via IN', async () => {
+        const idBuilder = mockQueryBuilder();
+        idBuilder.getRawMany.mockResolvedValue([
+          { id: 'pl-3' },
+          { id: 'pl-2' },
+        ]);
+        const countBuilder = mockQueryBuilder();
+        countBuilder.getCount.mockResolvedValue(5);
+        playlistRepository.createQueryBuilder
+          .mockReturnValueOnce(idBuilder)
+          .mockReturnValueOnce(countBuilder);
+        playlistRepository.find.mockResolvedValue([
+          playlistEntity('pl-2'),
+          playlistEntity('pl-3'),
+        ]);
+
+        const result = await service.findAll(undefined, 1, 2);
+
+        expect(idBuilder.select).toHaveBeenCalledWith('playlist.id', 'id');
+        expect(idBuilder.orderBy).toHaveBeenCalledWith('playlist.id', 'DESC');
+        expect(idBuilder.skip).toHaveBeenCalledWith(0);
+        expect(idBuilder.take).toHaveBeenCalledWith(2);
+        expect(idBuilder.getRawMany).toHaveBeenCalledTimes(1);
+        expect(countBuilder.getCount).toHaveBeenCalledTimes(1);
+        expect(playlistRepository.find).toHaveBeenCalledWith({
+          where: { id: In(['pl-3', 'pl-2']) },
+          relations: PLAYLIST_RELATIONS,
+          order: PLAYLIST_ORDER,
+        });
+        // The hydrated rows came back shuffled — the response must follow the
+        // id-page order (pl-3 before pl-2).
+        expect(result.playlists.map((p) => p.id)).toEqual(['pl-3', 'pl-2']);
+        expect(result.count).toBe(5);
+      });
+
+      it('orders the id page by rank DESC then id DESC under search', async () => {
+        const idBuilder = mockQueryBuilder();
+        idBuilder.getRawMany.mockResolvedValue([{ id: 'pl-1' }]);
+        const countBuilder = mockQueryBuilder();
+        countBuilder.getCount.mockResolvedValue(1);
+        playlistRepository.createQueryBuilder
+          .mockReturnValueOnce(idBuilder)
+          .mockReturnValueOnce(countBuilder);
+        playlistRepository.find.mockResolvedValue([playlistEntity('pl-1')]);
+
+        await service.findAll('благодать', 1, 10);
+
+        expect(idBuilder.addSelect).toHaveBeenCalledWith(
+          PLAYLIST_RANK_EXPRESSION,
+          'rank',
+        );
+        expect(idBuilder.where).toHaveBeenCalledWith(PLAYLIST_SEARCH_CONDITION);
+        expect(idBuilder.setParameter).toHaveBeenCalledWith(
+          'tsquery',
+          'благодать:*',
+        );
+        expect(idBuilder.orderBy).toHaveBeenCalledWith('rank', 'DESC');
+        expect(idBuilder.addOrderBy).toHaveBeenCalledWith(
+          'playlist.id',
+          'DESC',
+        );
+        // The count query applies the same FTS filter on its own builder.
+        expect(countBuilder.where).toHaveBeenCalledWith(
+          PLAYLIST_SEARCH_CONDITION,
+        );
+      });
+
+      it('uses page 1 when only limit is supplied', async () => {
+        const idBuilder = mockQueryBuilder();
+        idBuilder.getRawMany.mockResolvedValue([]);
+        const countBuilder = mockQueryBuilder();
+        countBuilder.getCount.mockResolvedValue(0);
+        playlistRepository.createQueryBuilder
+          .mockReturnValueOnce(idBuilder)
+          .mockReturnValueOnce(countBuilder);
+        playlistRepository.find.mockResolvedValue([]);
+
+        const result = await service.findAll(undefined, undefined, 20);
+
+        expect(idBuilder.skip).toHaveBeenCalledWith(0);
+        expect(idBuilder.take).toHaveBeenCalledWith(20);
+        expect(result).toEqual({ playlists: [], count: 0 });
+      });
+
+      it('fails fast when a page id is missing from the hydration query (dangling FK)', async () => {
+        const idBuilder = mockQueryBuilder();
+        idBuilder.getRawMany.mockResolvedValue([
+          { id: 'pl-1' },
+          { id: 'pl-missing' },
+        ]);
+        const countBuilder = mockQueryBuilder();
+        countBuilder.getCount.mockResolvedValue(2);
+        playlistRepository.createQueryBuilder
+          .mockReturnValueOnce(idBuilder)
+          .mockReturnValueOnce(countBuilder);
+        playlistRepository.find.mockResolvedValue([playlistEntity('pl-1')]);
+
+        await expect(service.findAll(undefined, 1, 10)).rejects.toThrow(
+          'Playlist "pl-missing" missing from hydration query',
+        );
+      });
     });
   });
 

@@ -39,7 +39,11 @@ export class PlaylistController {
   @Get()
   @ZodResponse({ type: AllPlaylistsResponseDto })
   async findAll(@Query() query: FindAllPlaylistsQueryDto) {
-    return await this.playlistService.findAll(query.search);
+    return await this.playlistService.findAll(
+      query.search,
+      query.page,
+      query.limit,
+    );
   }
 
   @Get(':id')

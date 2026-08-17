@@ -25,6 +25,7 @@ import {
   UpdateSermon,
 } from './interfaces/interface';
 import { MinioService } from 'src/minio/minio.service';
+import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
 
 const SERMON_RELATIONS = [
   'playlistJoins',
@@ -207,11 +208,18 @@ export class SermonService {
     take?: number,
     cursor?: string,
     search?: string,
+    page?: number,
+    limit?: number,
   ): Promise<AllSermonsResponse> {
     try {
       // Parse the search term at the boundary ONCE: the sanitized tsquery
       // drives the WHERE condition and the ORDER BY ranking in both paths.
       const tsquery = search ? buildSearchTsQuery(search) : undefined;
+
+      // Offset mode is selected by the presence of page/limit (limit without
+      // page means page 1). The DTO rejects page combined with take/cursor,
+      // so the service never sees an ambiguous combination.
+      const offsetMode = page !== undefined || limit !== undefined;
 
       // Relevance-ranked search orders by (rank DESC, id DESC); without search
       // the plain id-DESC order is preserved exactly (non-search pagination
@@ -247,6 +255,26 @@ export class SermonService {
           pageQueryBuilder.addOrderBy(order, direction);
         }
       });
+
+      if (offsetMode) {
+        // Offset pagination: skip/take over the same join-free page query.
+        // count is the TOTAL number of matching sermons (same cheap getCount
+        // as the full fetch), and there is no cursor — the client pages by
+        // number.
+        const effectivePage = page ?? 1;
+        const effectiveLimit = limit ?? DEFAULT_PAGE_LIMIT;
+        pageQueryBuilder
+          .skip((effectivePage - 1) * effectiveLimit)
+          .take(effectiveLimit);
+        const sermons = await pageQueryBuilder.getMany();
+        const count = await this.countSermons(tsquery);
+        const graph = await this.assembleSermonGraph(sermons);
+        return {
+          sermons: graph.map((s) => this.normalizeSermonRelations(s)),
+          count,
+          nextCursor: null,
+        };
+      }
 
       if (!take) {
         // Backward-compatible full fetch — used by the admin UI when no

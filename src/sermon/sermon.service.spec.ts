@@ -363,6 +363,7 @@ describe('SermonService', () => {
       where: jest.fn(),
       andWhere: jest.fn(),
       setParameter: jest.fn(),
+      skip: jest.fn(),
       take: jest.fn(),
       getMany: jest.fn(),
       getManyAndCount: jest.fn(),
@@ -378,6 +379,7 @@ describe('SermonService', () => {
       'where',
       'andWhere',
       'setParameter',
+      'skip',
       'take',
     ].forEach((method) => queryBuilder[method].mockReturnValue(queryBuilder));
     queryBuilder.getMany.mockResolvedValue(overrides.getMany ?? []);
@@ -604,6 +606,102 @@ describe('SermonService', () => {
           sermonA.id,
           sermonB.id,
         ]);
+        expect(result.nextCursor).toBeNull();
+      });
+    });
+
+    describe('offset path (page/limit supplied)', () => {
+      it('uses page 1 when only limit is supplied and skips the cursor logic entirely', async () => {
+        const pageBuilder = mockBuilder();
+        pageBuilder.getMany.mockResolvedValue([]);
+        pageBuilder.getCount.mockResolvedValue(42);
+        sermonRepository.createQueryBuilder.mockReturnValue(pageBuilder);
+        mockEmptyGraphQueries();
+
+        const result = await service.findAll(
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          20,
+        );
+
+        expect(pageBuilder.skip).toHaveBeenCalledWith(0);
+        expect(pageBuilder.take).toHaveBeenCalledWith(20);
+        expect(pageBuilder.andWhere).not.toHaveBeenCalled();
+        expect(pageBuilder.getRawAndEntities).not.toHaveBeenCalled();
+        expect(pageBuilder.getCount).toHaveBeenCalledTimes(1);
+        expect(result).toEqual({ sermons: [], count: 42, nextCursor: null });
+      });
+
+      it('skips (page-1)*limit rows and takes limit', async () => {
+        const pageBuilder = mockBuilder();
+        pageBuilder.getMany.mockResolvedValue([]);
+        pageBuilder.getCount.mockResolvedValue(42);
+        sermonRepository.createQueryBuilder.mockReturnValue(pageBuilder);
+        mockEmptyGraphQueries();
+
+        await service.findAll(undefined, undefined, undefined, 3, 20);
+
+        expect(pageBuilder.skip).toHaveBeenCalledWith(40);
+        expect(pageBuilder.take).toHaveBeenCalledWith(20);
+      });
+
+      it('applies the FTS filter and relevance order in offset mode', async () => {
+        const pageBuilder = mockBuilder();
+        pageBuilder.getMany.mockResolvedValue([]);
+        const countBuilder = mockBuilder();
+        countBuilder.getCount.mockResolvedValue(3);
+        sermonRepository.createQueryBuilder
+          .mockReturnValueOnce(pageBuilder)
+          .mockReturnValueOnce(countBuilder);
+        mockEmptyGraphQueries();
+
+        const result = await service.findAll(
+          undefined,
+          undefined,
+          'благодать',
+          1,
+          10,
+        );
+
+        expect(pageBuilder.addSelect).toHaveBeenCalledWith(
+          RANK_EXPRESSION,
+          'rank',
+        );
+        expect(pageBuilder.where).toHaveBeenCalledWith(SEARCH_CONDITION);
+        expect(pageBuilder.orderBy).toHaveBeenCalledWith('rank', 'DESC');
+        expect(pageBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sermon.id',
+          'DESC',
+        );
+        // The count query applies the same FTS filter on its own builder.
+        expect(countBuilder.where).toHaveBeenCalledWith(SEARCH_CONDITION);
+        expect(result).toEqual({ sermons: [], count: 3, nextCursor: null });
+      });
+
+      it('returns the total count and a null nextCursor in offset mode', async () => {
+        const sermonA = { id: 'sermon-a', playlistJoins: [] };
+        const sermonB = { id: 'sermon-b', playlistJoins: [] };
+        const pageBuilder = mockBuilder();
+        pageBuilder.getMany.mockResolvedValue([sermonA, sermonB]);
+        pageBuilder.getCount.mockResolvedValue(5);
+        sermonRepository.createQueryBuilder.mockReturnValue(pageBuilder);
+        mockEmptyGraphQueries();
+
+        const result = await service.findAll(
+          undefined,
+          undefined,
+          undefined,
+          1,
+          2,
+        );
+
+        expect(result.sermons.map((s) => s.id)).toEqual([
+          'sermon-a',
+          'sermon-b',
+        ]);
+        expect(result.count).toBe(5);
         expect(result.nextCursor).toBeNull();
       });
     });

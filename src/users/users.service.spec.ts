@@ -33,6 +33,7 @@ describe('UsersService', () => {
   let service: UsersService;
   let repository: {
     find: jest.Mock;
+    findAndCount: jest.Mock;
     findOne: jest.Mock;
     save: jest.Mock;
     delete: jest.Mock;
@@ -67,6 +68,7 @@ describe('UsersService', () => {
 
     repository = {
       find: jest.fn(),
+      findAndCount: jest.fn(),
       findOne: jest.fn(),
       save: jest.fn(),
       delete: jest.fn(),
@@ -101,24 +103,53 @@ describe('UsersService', () => {
   });
 
   describe('findAll', () => {
-    it('returns users without password', async () => {
-      repository.find.mockResolvedValue([
-        mockUser,
-        { ...mockUser, id: 'user-2' },
+    it('returns users without password wrapped with the total count', async () => {
+      repository.findAndCount.mockResolvedValue([
+        [mockUser, { ...mockUser, id: 'user-2' }],
+        2,
       ]);
 
       const result = await service.findAll();
 
-      expect(repository.find).toHaveBeenCalled();
-      expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({
+      expect(repository.findAndCount).toHaveBeenCalledWith({
+        order: { id: 'DESC' },
+      });
+      expect(result.users).toHaveLength(2);
+      expect(result.count).toBe(2);
+      expect(result.users[0]).toEqual({
         id: mockUser.id,
         name: mockUser.name,
         username: mockUser.username,
         email: mockUser.email,
         role: UserRole.User,
       });
-      expect(result[0]).not.toHaveProperty('password');
+      expect(result.users[0]).not.toHaveProperty('password');
+    });
+
+    it('applies skip/take when page/limit are supplied', async () => {
+      repository.findAndCount.mockResolvedValue([[mockUser], 5]);
+
+      const result = await service.findAll(2, 10);
+
+      expect(repository.findAndCount).toHaveBeenCalledWith({
+        order: { id: 'DESC' },
+        skip: 10,
+        take: 10,
+      });
+      expect(result.users).toHaveLength(1);
+      expect(result.count).toBe(5);
+    });
+
+    it('uses page 1 when only limit is supplied', async () => {
+      repository.findAndCount.mockResolvedValue([[], 0]);
+
+      await service.findAll(undefined, 20);
+
+      expect(repository.findAndCount).toHaveBeenCalledWith({
+        order: { id: 'DESC' },
+        skip: 0,
+        take: 20,
+      });
     });
   });
 

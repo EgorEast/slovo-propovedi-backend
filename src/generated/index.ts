@@ -5,7 +5,7 @@
  * REST API сервиса «Слово.Проповеди».
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.13.0
+ * OpenAPI spec version: 0.15.0
  */
 import * as zod from 'zod';
 
@@ -819,12 +819,27 @@ export const PlaylistControllerCreateResponse = zod.strictObject({
  * @summary Получить все плейлисты
  */
 
+export const playlistControllerFindAllQueryLimitMax = 100;
+
 export const PlaylistControllerFindAllQueryParams = zod.strictObject({
   search: zod
     .string()
     .min(1)
     .optional()
     .describe('Поисковый запрос по названию и описанию'),
+  page: zod
+    .int()
+    .min(1)
+    .optional()
+    .describe('Номер страницы для оффсетной пагинации'),
+  limit: zod
+    .int()
+    .min(1)
+    .max(playlistControllerFindAllQueryLimitMax)
+    .optional()
+    .describe(
+      'Размер страницы; если указан без page, используется первая страница',
+    ),
 });
 
 export const playlistControllerFindAllResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault =
@@ -1769,6 +1784,8 @@ export const SermonControllerCreateResponse = zod.strictObject({
  */
 export const sermonControllerFindAllQueryTakeMax = 100;
 
+export const sermonControllerFindAllQueryLimitMax = 100;
+
 export const SermonControllerFindAllQueryParams = zod.strictObject({
   take: zod.int().min(1).max(sermonControllerFindAllQueryTakeMax).optional(),
   cursor: zod.uuid().optional(),
@@ -1777,6 +1794,21 @@ export const SermonControllerFindAllQueryParams = zod.strictObject({
     .min(1)
     .optional()
     .describe('Поисковый запрос по названию, проповеднику, книге и описанию'),
+  page: zod
+    .int()
+    .min(1)
+    .optional()
+    .describe(
+      'Номер страницы для оффсетной пагинации; взаимоисключителен с take и cursor (одновременное использование → 400)',
+    ),
+  limit: zod
+    .int()
+    .min(1)
+    .max(sermonControllerFindAllQueryLimitMax)
+    .optional()
+    .describe(
+      'Размер страницы; если указан без page, используется первая страница; взаимоисключителен с take и cursor (одновременное использование → 400)',
+    ),
 });
 
 export const sermonControllerFindAllResponseSermonsItemChapterTwoMin = 2;
@@ -2453,18 +2485,38 @@ export const AuthControllerGetProfileResponse = zod.strictObject({
     .describe('Роль пользователя в системе'),
 });
 
-export const UsersControllerFindAllResponseItem = zod.strictObject({
-  id: zod.string(),
-  name: zod.string(),
-  username: zod.string().describe('Имя пользователя для входа в систему'),
-  email: zod.string(),
-  role: zod
-    .enum(['admin', 'moderator', 'user'])
-    .describe('Роль пользователя в системе'),
+export const usersControllerFindAllQueryLimitMax = 100;
+
+export const UsersControllerFindAllQueryParams = zod.strictObject({
+  page: zod
+    .int()
+    .min(1)
+    .optional()
+    .describe('Номер страницы для оффсетной пагинации'),
+  limit: zod
+    .int()
+    .min(1)
+    .max(usersControllerFindAllQueryLimitMax)
+    .optional()
+    .describe(
+      'Размер страницы; если указан без page, используется первая страница',
+    ),
 });
-export const UsersControllerFindAllResponse = zod.array(
-  UsersControllerFindAllResponseItem,
-);
+
+export const UsersControllerFindAllResponse = zod.strictObject({
+  users: zod.array(
+    zod.strictObject({
+      id: zod.string(),
+      name: zod.string(),
+      username: zod.string().describe('Имя пользователя для входа в систему'),
+      email: zod.string(),
+      role: zod
+        .enum(['admin', 'moderator', 'user'])
+        .describe('Роль пользователя в системе'),
+    }),
+  ),
+  count: zod.int(),
+});
 
 export const UsersControllerCreateBody = zod.strictObject({
   name: zod.string(),

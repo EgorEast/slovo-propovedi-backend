@@ -1,6 +1,6 @@
 # Модуль `sermon` — проповеди
 
-Проповедь — основная единица контента. Модуль: CRUD, поиск (полнотекстовый, независимый от порядка слов, с ранжированием по релевантности: PostgreSQL FTS `russian` + `ts_rank`), keyset-пагинация (`take`/`cursor`), presigned-URL аудио, синхронизация членства в плейлистах.
+Проповедь — основная единица контента. Модуль: CRUD, поиск (полнотекстовый, независимый от порядка слов, с ранжированием по релевантности: PostgreSQL FTS `russian` + `ts_rank`), пагинация (keyset `take`/`cursor` **или** offset `page`/`limit`), presigned-URL аудио, синхронизация членства в плейлистах.
 
 **Слой:** backend (module `sermon`)
 **Статус:** актуально
@@ -10,7 +10,7 @@
 | Метод / путь | Guard | Query/Body/Param | DTO ответа | Метод сервиса |
 |---------------|-------|------------------|------------|----------------|
 | `POST /sermons` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | body `CreateSermonDto` | `SermonResponseDto` | `create` |
-| `GET /sermons` | публичный | query `FindAllSermonsQueryDto` | `AllSermonsResponseDto` | `findAll(take, cursor, search)` |
+| `GET /sermons` | публичный | query `FindAllSermonsQueryDto` | `AllSermonsResponseDto` | `findAll(take, cursor, search, page, limit)` |
 | `GET /sermons/distinct-values` | публичный | — | `DistinctValuesResponseDto` | `getDistinctValues` |
 | `GET /sermons/:id` | публичный | param `IdParamDto` | `SermonResponseDto` | `findOne` |
 | `GET /sermons/:id/stream-url` | публичный | param `IdParamDto` | `StreamUrlResponseDto` | `getStreamUrl` |
@@ -35,14 +35,17 @@
 
 Сервис тянет глубокие отношения (`SERMON_RELATIONS` — до плейлистов, разделов и вложенных проповедей) и нормализует их в `NormalizedSermonResponse` (`normalizeSermonRelations` / `normalizePlaylistRelations`), сортируя join-ы по `position` на уровне БД (`SERMON_RELATION_ORDER`). Так делает `findOne`; `findAll` собирает тот же граф из линейных запросов (см. ниже) — глубокий join остался только у `findOne`.
 
-## `findAll` — полная выборка и keyset-пагинация (`sermon.service.ts`)
+## `findAll` — полная выборка, keyset- и offset-пагинация (`sermon.service.ts`)
 
-Сигнатура: `findAll(take?, cursor?, search?)`. Два пути:
+Сигнатура: `findAll(take?, cursor?, search?, page?, limit?)`. Три пути:
 
 | Условие | Путь | Как фильтрует |
 |---------|------|----------------|
-| `take` не задан | **полная выборка** | join-свободная страница (`getMany`) + `getCount` (`countSermons`) + `assembleSermonGraph` (линейные запросы); `sermon.search_vector @@ tsquery`, порядок по релевантности |
-| `take` задан | **keyset (cursor)** | QueryBuilder: `take + 1` строк, порядок по релевантности + составной курсор `{ rank, id }` |
+| `page`/`limit` задан | **offset** | join-свободная страница (`skip`/`take`) + `getCount` (`countSermons`) + `assembleSermonGraph`; `count` — **общее** число совпадений, `nextCursor: null` |
+| `take` задан (без `page`) | **keyset (cursor)** | QueryBuilder: `take + 1` строк, порядок по релевантности + составной курсор `{ rank, id }` |
+| ни то, ни другое | **полная выборка** | join-свободная страница (`getMany`) + `getCount` (`countSermons`) + `assembleSermonGraph` (линейные запросы); `sermon.search_vector @@ tsquery`, порядок по релевантности |
+
+`page` и `limit` **взаимоисключительны** с `take`/`cursor` (одновременное использование → `400 Bad Request`; правило навешивается в DTO через `superRefine`). `limit` без `page` означает первую страницу (`page = 1`); `page` без `limit` — размер страницы по умолчанию `DEFAULT_PAGE_LIMIT = 100` (максимум схемы).
 
 ### Полнотекстовый поиск (FTS)
 
@@ -120,11 +123,11 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 - Самые глубокие вложенные плейлисты теперь явно упорядочены по позиции join-а ASC (ранее — порядок из БД, произвольный).
 - Вспомогательные помощники: `countSermons`, `uniqueIds`, `groupJoinsBy`. Репозитории `SectionEntity` + `SectionPlaylistJoinEntity` инжектируются в модуль (`src/sermon/sermon.module.ts`).
 - Отсутствующие связанные строки (нарушенные FK) — fail-fast с `Error`, а не пустой результат.
-- Keyset-путь (`take` + `cursor`) не изменён; оба пути используют единое FTS-условие и ранжирование.
+- Keyset-путь (`take` + `cursor`) не изменён; offset-путь (`page`/`limit`) использует тот же join-свободный page-запрос с `skip`/`take`; все пути используют единое FTS-условие и ранжирование.
 
-Ответ: `{ sermons, count, nextCursor: null }` — форма не изменилась.
+Ответ: `{ sermons, count, nextCursor }` — форма не изменилась. В полной выборке и offset-режиме `count` — общее число совпадений, `nextCursor: null`; в keyset-режиме `count: null`, `nextCursor` — курсор следующей страницы (или `null`).
 
-> ✅ `findAll` без `take`/`search` отдаёт **всю** выборку (backward-compat, используется админкой при первичной загрузке). Поиск применён в **обоих** путях.
+> ✅ `findAll` без `take`/`search`/`page`/`limit` отдаёт **всю** выборку (backward-compat, используется админкой при первичной загрузке). Поиск применён во **всех** путях.
 
 ## `getDistinctValues` — уникальные проповедники и книги (автодополнение)
 
@@ -162,7 +165,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 |------|-------|
 | `src/sermon/dto/create-sermon.dto.ts` | `SermonControllerCreateBody` + `.superRefine(...)` — cross-field правило «глава-диапазон» |
 | `src/sermon/dto/update-sermon.dto.ts` | `SermonControllerUpdateBody` + `.superRefine(...)` — то же правило |
-| `src/sermon/dto/find-all-sermons-query.dto.ts` | extends query + `.extend({ take: z.coerce.number().int().min(1).max(100).optional(), search: z.string().trim().min(1).optional(), cursor: z.string().min(1).optional() })` + `.superRefine(...)` |
+| `src/sermon/dto/find-all-sermons-query.dto.ts` | extends query + `.extend({ take: z.coerce.number().int().min(1).max(100).optional(), search: z.string().trim().min(1).optional(), cursor: z.string().min(1).optional(), page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional() })` + `.superRefine(...)` — валидный uuid-курсор без search + взаимоисключение `page`/`limit` с `take`/`cursor` |
 | `src/sermon/dto/sermon-response.dto.ts` | create/findOne |
 | `src/sermon/dto/all-sermons-response.dto.ts` | findAll |
 | `src/sermon/dto/distinct-values-response.dto.ts` | distinct-values |
@@ -171,7 +174,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 > ✅ **Cross-field правило «глава-диапазон»** (OpenAPI 0.13.0): `chapter` — `integer | [integer, integer] | null`; `verse` — `integer | [integer, integer] | (integer | [integer, integer])[] | null` (список разрозненных отрезков, например `[[9,18],20]`). Диапазон глав (`chapter: [3, 4]`) обязан сочетаться с диапазоном стихов (`verse: [16, 2]`) или отсутствием стиха (`verse: null`) — одиночный стих (`verse: 16`) и список отрезков (`verse: [[9,18],20]`) не могут быть привязаны к диапазону глав (отрезки имеют смысл только внутри одной главы). Оба DTO (`create`/`update`) навешивают `.superRefine(...)` на сгенерированную схему: `Array.isArray(chapter) && verse !== undefined && verse !== null && !isVerseRange(verse)` → ошибка `'verse must be a two-integer range or null when chapter is a range'` по пути `verse`. `chapter`/`verse` — **необязательные** ключи (book-only ссылка валидна): отсутствующий ключ в `create` нормализуется в `null` на границе сервиса, в `update` — означает «не менять поле». Правило продублировано в сервисе: `update()` проверяет **эффективные** значения (присутствующий ключ, иначе сохранённое) — дыра «cross-request» (PATCH меняет стих, не трогая главу) закрыта на сервисном уровне. **Неоднозначность на проводе:** массив из ровно двух целых чисел всегда трактуется как диапазон — список отрезков из двух одиночных стихов неотличим от диапазона, поэтому клиенты оборачивают одиночные стихи как `[n,n]` (`[[9,9],[20,20]]`). Сгенерированная схема не переписывается — правило добавляется поверх (см. [`../validation-pipeline.md`](../validation-pipeline.md)).
 
-> ✅ `find-all-sermons-query.dto.ts` — канонический пример **extend/override** DTO: переопределяет `take` (string→number coercion), `search` (trim + reject empty) и `cursor` (сгенерированный `zod.uuid()` → непрозрачная строка: search-страницы несут составной курсор, non-search — прежний uuid-id). `superRefine` возвращает прежний fail-fast для мусорного курсора на non-search-странице. Подробнее — [`../conventions.md`](../conventions.md).
+> ✅ `find-all-sermons-query.dto.ts` — канонический пример **extend/override** DTO: переопределяет `take` (string→number coercion), `search` (trim + reject empty), `cursor` (сгенерированный `zod.uuid()` → непрозрачная строка: search-страницы несут составной курсор, non-search — прежний uuid-id) и добавляет `page`/`limit` (string→number coercion). `superRefine` возвращает прежний fail-fast для мусорного курсора на non-search-странице и отклоняет `page`/`limit` вместе с `take`/`cursor` (`'page and limit are mutually exclusive with take and cursor'`). Подробнее — [`../conventions.md`](../conventions.md).
 
 ## Связанные документы
 

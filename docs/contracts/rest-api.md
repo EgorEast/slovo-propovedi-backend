@@ -57,7 +57,7 @@
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
-| `GET /sermons` | публичный | `SermonController.findAll` | `SermonService.findAll(take, cursor, search)` |
+| `GET /sermons` | публичный | `SermonController.findAll` | `SermonService.findAll(take, cursor, search, page, limit)` |
 | `GET /sermons/distinct-values` | публичный | `SermonController.getDistinctValues` | `SermonService.getDistinctValues` |
 | `GET /sermons/:id` | публичный | `SermonController.findOne` | `SermonService.findOne` |
 | `GET /sermons/:id/stream-url` | публичный | `SermonController.getStreamUrl` | `SermonService.getStreamUrl` |
@@ -65,14 +65,14 @@
 | `PATCH /sermons/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.update` | `SermonService.update` |
 | `DELETE /sermons/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.remove` | `SermonService.remove` |
 
-> ✅ `GET /sermons` принимает query `take`, `cursor` (keyset-пагинация) и `search` (опциональный, min 1 символ, полнотекстовый поиск по `title`/`artist`/`book`/`description` через tsvector FTS с `ts_rank`-ранжированием). Поиск применён в обоих путях `findAll`; без `take`/`search` отвечает полной выборкой. Подробности поиска — [`../modules/sermon.md`](../modules/sermon.md).
+> ✅ `GET /sermons` принимает query `take`, `cursor` (keyset-пагинация), `search` (опциональный, min 1 символ, полнотекстовый поиск по `title`/`artist`/`book`/`description` через tsvector FTS с `ts_rank`-ранжированием) и `page`/`limit` (offset-пагинация, `limit` max 100). `page`/`limit` **взаимоисключительны** с `take`/`cursor` (одновременное использование → `400`); в offset-режиме `count` — общее число совпадений, `nextCursor: null`. Поиск применён во всех путях `findAll`; без `take`/`search`/`page`/`limit` отвечает полной выборкой. Подробности поиска — [`../modules/sermon.md`](../modules/sermon.md).
 
 ### Playlists
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
 | `POST /playlists` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.create` | `PlaylistService.create` |
-| `GET /playlists` | публичный | `PlaylistController.findAll` | `PlaylistService.findAll(search)` |
+| `GET /playlists` | публичный | `PlaylistController.findAll` | `PlaylistService.findAll(search, page, limit)` |
 | `GET /playlists/:id` | публичный | `PlaylistController.findOne` | `PlaylistService.findOne` |
 | `PATCH /playlists/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.update` | `PlaylistService.update` (bulk-replace состава) |
 | `PATCH /playlists/:id/sermons/reorder` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.reorderSermons` | `PlaylistService.reorderSermonsInPlaylist(id, sermonIds)` |
@@ -80,7 +80,7 @@
 
 > ✅ `POST /playlists` body: `{ title, description, artwork, sermonsIds?, sectionsIds? }`. `sectionsIds?` (добавлен в v0.8.0) прикрепляет плейлист к разделам — позиция в каждом разделе = `max(position) + 1`; отсутствующий/пустой массив — no-op. Ошибки: дубликаты в `sectionsIds` → `400 Bad Request` (`Duplicate section IDs detected`); несуществующий id раздела → `404 Not Found` (`Some sections not found`). Валидация выполняется в транзакции create — при ошибке плейлист не создаётся.
 
-> ✅ `GET /playlists` принимает query `search` (опциональный, min 1 символ, полнотекстовый поиск по `title`/`description`: PostgreSQL FTS `russian` + `ts_rank`-ранжирование, порядок `rank DESC` → `id DESC`). Без `search` отвечает полной выборкой, форма `{ playlists, count }` не меняется. Подробности — [`../modules/playlist.md`](../modules/playlist.md).
+> ✅ `GET /playlists` принимает query `search` (опциональный, min 1 символ, полнотекстовый поиск по `title`/`description`: PostgreSQL FTS `russian` + `ts_rank`-ранжирование, порядок `rank DESC` → `id DESC`) и `page`/`limit` (offset-пагинация, `limit` max 100; keyset-режима нет). Offset-путь пагинирует **родительские id** (`ORDER BY id DESC`, при поиске — `rank DESC, id DESC`), считает общее число отдельным лёгким запросом и гидратирует страницу через `WHERE id IN (...)` с восстановлением порядка в памяти. Без `search`/`page`/`limit` отвечает полной выборкой, форма `{ playlists, count }` не меняется; порядок родителя в полной выборке теперь детерминированный `id DESC`. Подробности — [`../modules/playlist.md`](../modules/playlist.md).
 
 ### Sections
 
@@ -118,7 +118,7 @@
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
-| `GET /users` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.findAll` | `UsersService.findAll` |
+| `GET /users` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.findAll` | `UsersService.findAll(page, limit)` |
 | `POST /users` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.create` | `UsersService.create` |
 | `GET /users/:id` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.findOne` | `UsersService.findOne` |
 | `PATCH /users/:id` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.update` | `UsersService.update(id, dto, currentUserId)` |
@@ -126,6 +126,8 @@
 | `DELETE /users/:id` | `AuthGuard` + `RolesGuard` (admin) | `UsersController.remove` | `UsersService.remove(id, currentUserId)` |
 
 > ✅ В отличие от sermons/playlists, **все** users-эндпоинты защищены `AuthGuard` + `RolesGuard` с `@Roles(UserRole.Admin)` — включая `GET /users` и `GET /users/:id` (нет публичных чтений). Схемы: `UserResponse` `{ id, name, username, email, role }` (**без `password`**), `CreateUserRequest` `{ name, email, username, password, role? }`, `UpdateUserRequest` `{ name?, email?, username?, role? }`, `ChangePasswordRequest` `{ password }`. Роль: `zod.enum(['admin','moderator','user'])` — обязательна в ответах, опциональна в create/update (дефолт `'user'`). `PATCH /users/:id/password` и `DELETE /users/:id` возвращают **`204 No Content`** (не `StatusResponseDto`). Защита self-delete/last-admin/self-role-change (403) — [`../modules/users.md`](../modules/users.md).
+
+> ⚠️ **Breaking change (спецификация 0.15.0):** `GET /users` больше не возвращает голый массив — ответ обёрнут в `{ users, count }` (`AllUsersResponse`), где `count` — общее число пользователей. Добавлены опциональные query `page`/`limit` (offset-пагинация, `limit` max 100, порядок `id DESC`; `limit` без `page` — первая страница). Старые admin-клиенты, ожидающие массив, должны быть обновлены.
 
 ## База URL и аутентификация
 

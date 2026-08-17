@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -21,6 +22,7 @@ import { UserRole } from './user-role.enum';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { FindAllUsersQueryDto } from './dto/find-all-users-query.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UserListResponseDto } from './dto/user-list-response.dto';
 
@@ -36,8 +38,8 @@ export class UsersController {
   @Roles(UserRole.Admin)
   @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: UserListResponseDto })
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@Query() query: FindAllUsersQueryDto) {
+    return this.usersService.findAll(query.page, query.limit);
   }
 
   @Post()
