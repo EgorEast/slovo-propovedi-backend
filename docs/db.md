@@ -69,7 +69,7 @@
 | `artwork` | varchar | NOT NULL |
 | `book` | varchar | nullable |
 | `chapter` | json | nullable (`number \| number[]`) — одиночная глава или диапазон `[start, end]` |
-| `verse` | json | nullable (`number \| number[]`) |
+| `verse` | json | nullable (`number \| number[] \| (number \| number[])[]`) — стих, диапазон или список отрезков `[[9,18],20]` |
 
 Связь: `@OneToMany(() => PlaylistSermonJoinEntity, join => join.sermon, { cascade: true })` → `playlistJoins`.
 

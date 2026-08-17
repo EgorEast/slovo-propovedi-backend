@@ -43,6 +43,7 @@ BEGIN
         WHERE table_name = 'sermon'
           AND column_name = 'chapter'
           AND data_type = 'integer'
+          AND table_schema = current_schema()
     ) THEN
         ALTER TABLE sermon ALTER COLUMN chapter TYPE json USING to_json(chapter);
     END IF;

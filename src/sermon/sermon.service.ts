@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { CreateSermonDto } from './dto/create-sermon.dto';
 import { UpdateSermonDto } from './dto/update-sermon.dto';
+import { CHAPTER_RANGE_VERSE_MESSAGE, isVerseRange } from './dto/verse-range';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { SermonEntity } from './entities/sermon.entity';
 import { PlaylistEntity } from 'src/playlist/entities/playlist.entity';
@@ -697,6 +698,31 @@ export class SermonService {
       }
       if (updateSermonDto.verse !== undefined) {
         updateFields.verse = updateSermonDto.verse;
+      }
+
+      // The DTO superRefine rule is request-scoped: it only sees the fields
+      // present in THIS request, so a PATCH that changes verse while leaving
+      // chapter absent (absent = no change) could combine a stored chapter
+      // range with a segments verse — a state the DTOs declare impossible.
+      // Resolve the EFFECTIVE values (absent → existing stored value; explicit
+      // null is a legal "clear" and must flow through) and reject the
+      // impossible combination here, before it reaches the DB.
+      const effectiveChapter =
+        updateFields.chapter !== undefined
+          ? updateFields.chapter
+          : existingSermon.chapter;
+      const effectiveVerse =
+        updateFields.verse !== undefined
+          ? updateFields.verse
+          : existingSermon.verse;
+
+      if (
+        Array.isArray(effectiveChapter) &&
+        effectiveVerse !== undefined &&
+        effectiveVerse !== null &&
+        !isVerseRange(effectiveVerse)
+      ) {
+        throw new BadRequestException(CHAPTER_RANGE_VERSE_MESSAGE);
       }
 
       await this.sermonRepository.update(id, updateFields);

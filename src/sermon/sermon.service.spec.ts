@@ -774,6 +774,63 @@ describe('SermonService', () => {
     });
   });
 
+  describe('update (cross-request chapter-range verse consistency)', () => {
+    // The DTO superRefine rule is request-scoped, so a PATCH that changes
+    // verse while leaving chapter absent must be checked against the STORED
+    // chapter — otherwise a stored chapter range could end up paired with a
+    // segments verse, a state the DTOs declare impossible.
+    it('rejects a segments verse when the stored chapter is a range and the PATCH leaves chapter absent', async () => {
+      sermonRepository.findOne = jest.fn().mockResolvedValue({
+        id: 's-1',
+        title: 'Тест',
+        description: 'Старое',
+        chapter: [1, 2],
+        verse: null,
+      });
+      sermonRepository.update = jest.fn().mockResolvedValue({ affected: 1 });
+
+      await expect(
+        service.update('s-1', { verse: [[9, 18], 20] } as never),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(sermonRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('accepts a verse range when the stored chapter is a range', async () => {
+      sermonRepository.findOne = jest.fn().mockResolvedValue({
+        id: 's-1',
+        title: 'Тест',
+        description: 'Старое',
+        chapter: [1, 2],
+        verse: null,
+      });
+      sermonRepository.update = jest.fn().mockResolvedValue({ affected: 1 });
+
+      await service.update('s-1', { verse: [9, 18] } as never);
+
+      expect(sermonRepository.update).toHaveBeenCalledWith('s-1', {
+        verse: [9, 18],
+      });
+    });
+
+    it('accepts a segments verse when the stored chapter is a single chapter', async () => {
+      sermonRepository.findOne = jest.fn().mockResolvedValue({
+        id: 's-1',
+        title: 'Тест',
+        description: 'Старое',
+        chapter: 1,
+        verse: null,
+      });
+      sermonRepository.update = jest.fn().mockResolvedValue({ affected: 1 });
+
+      await service.update('s-1', { verse: [[9, 18], 20] } as never);
+
+      expect(sermonRepository.update).toHaveBeenCalledWith('s-1', {
+        verse: [[9, 18], 20],
+      });
+    });
+  });
+
   describe('findAll normalized shape (characterization)', () => {
     const SERMONS_BY_ID = new Map(SEED_SERMONS.map((s) => [s.id, s]));
     const PLAYLISTS_BY_ID = new Map(SEED_PLAYLISTS.map((p) => [p.id, p]));

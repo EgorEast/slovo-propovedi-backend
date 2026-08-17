@@ -76,6 +76,14 @@ describe('Sermon DTO chapter-range rule', () => {
       expect(result.success).toBe(true);
     });
 
+    it('accepts a chapter range without a verse key', () => {
+      const result = CreateSermonDto.schema.safeParse({
+        ...baseBody,
+        chapter: [1, 2],
+      });
+      expect(result.success).toBe(true);
+    });
+
     it('accepts a single chapter with a single verse', () => {
       const result = CreateSermonDto.schema.safeParse({
         ...baseBody,
@@ -146,6 +154,25 @@ describe('Sermon DTO chapter-range rule', () => {
         ...baseBody,
         chapter: [3, 4],
         verse: [16, 2],
+        playlistsIds: [],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts a chapter range with a null verse', () => {
+      const result = UpdateSermonDto.schema.safeParse({
+        ...baseBody,
+        chapter: [1, 2],
+        verse: null,
+        playlistsIds: [],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts a chapter range without a verse key', () => {
+      const result = UpdateSermonDto.schema.safeParse({
+        ...baseBody,
+        chapter: [1, 2],
         playlistsIds: [],
       });
       expect(result.success).toBe(true);
