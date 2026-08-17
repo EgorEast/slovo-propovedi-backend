@@ -2,6 +2,11 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.8.1] - 2026-08-17
+
+### Maintenance
+- raise container limits for larger VPS (memory 1g, buildx 2.4 cpu)
+
 ## [0.8.0] - 2026-08-16
 
 ### Features
