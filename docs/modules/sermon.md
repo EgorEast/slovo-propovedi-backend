@@ -29,7 +29,7 @@
 | `title` / `description` / `artist` / `artwork` | — | varchar | NOT NULL |
 | `textFileUrl` / `audioUrl` / `youtubeUrl` | `text-file-url` / `audio-url` / `youtube-url` | varchar | nullable |
 | `book` | `book` | varchar | nullable |
-| `chapter` | `chapter` | int | nullable |
+| `chapter` | `chapter` | json | nullable (`number \| number[]`) — одиночная глава или диапазон `[start, end]` |
 | `verse` | `verse` | json | nullable (`number \| number[]`) |
 | `playlistJoins` | relation | — | `@OneToMany → PlaylistSermonJoinEntity`, cascade |
 
@@ -159,14 +159,16 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 | Файл | Схема |
 |------|-------|
-| `src/sermon/dto/create-sermon.dto.ts` | `SermonControllerCreateBody` |
-| `src/sermon/dto/update-sermon.dto.ts` | `SermonControllerUpdateBody` |
+| `src/sermon/dto/create-sermon.dto.ts` | `SermonControllerCreateBody` + `.superRefine(...)` — cross-field правило «глава-диапазон» |
+| `src/sermon/dto/update-sermon.dto.ts` | `SermonControllerUpdateBody` + `.superRefine(...)` — то же правило |
 | `src/sermon/dto/find-all-sermons-query.dto.ts` | extends query + `.extend({ take: z.coerce.number().int().min(1).max(100).optional(), search: z.string().trim().min(1).optional(), cursor: z.string().min(1).optional() })` + `.superRefine(...)` |
 | `src/sermon/dto/sermon-response.dto.ts` | create/findOne |
 | `src/sermon/dto/all-sermons-response.dto.ts` | findAll |
 | `src/sermon/dto/distinct-values-response.dto.ts` | distinct-values |
 | `src/sermon/dto/stream-url-response.dto.ts` | stream-url |
 | `src/sermon/dto/status-sermon-response.dto.ts` | update/remove |
+
+> ✅ **Cross-field правило «глава-диапазон»** (OpenAPI 0.12.0): `chapter` — `integer | [integer, integer] | null` (зеркало `verse`). Диапазон глав (`chapter: [3, 4]`) обязан сочетаться с диапазоном стихов (`verse: [16, 2]`) или отсутствием стиха (`verse: null`) — одиночный стих (`verse: 16`) не может быть привязан к диапазону глав. Оба DTO (`create`/`update`) навешивают `.superRefine(...)` на сгенерированную схему: `Array.isArray(chapter) && typeof verse === 'number'` → ошибка `'verse must be an array or null when chapter is a range'` по пути `verse`. Сгенерированная схема не переписывается — правило добавляется поверх (см. [`../validation-pipeline.md`](../validation-pipeline.md)).
 
 > ✅ `find-all-sermons-query.dto.ts` — канонический пример **extend/override** DTO: переопределяет `take` (string→number coercion), `search` (trim + reject empty) и `cursor` (сгенерированный `zod.uuid()` → непрозрачная строка: search-страницы несут составной курсор, non-search — прежний uuid-id). `superRefine` возвращает прежний fail-fast для мусорного курсора на non-search-странице. Подробнее — [`../conventions.md`](../conventions.md).
 

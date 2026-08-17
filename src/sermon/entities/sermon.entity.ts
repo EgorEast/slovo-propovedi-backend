@@ -30,8 +30,8 @@ export class SermonEntity {
   @Column({ name: 'book', type: 'varchar', nullable: true })
   book?: string;
 
-  @Column({ name: 'chapter', type: 'int', nullable: true })
-  chapter?: number;
+  @Column({ name: 'chapter', type: 'json', nullable: true })
+  chapter?: number | number[];
 
   @Column({ name: 'verse', type: 'json', nullable: true })
   verse?: number | number[];

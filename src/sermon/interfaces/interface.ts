@@ -14,7 +14,7 @@ export interface UpdateSermon {
   artist?: string;
   artwork?: string;
   book?: string;
-  chapter?: number;
+  chapter?: number | number[];
   verse?: number | number[];
 }
 

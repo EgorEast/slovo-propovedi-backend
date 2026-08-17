@@ -66,7 +66,10 @@ CREATE TABLE sermon (
     artist character varying NOT NULL,
     artwork character varying NOT NULL,
     book character varying,
-    chapter integer,
+    -- Chapter range support (OpenAPI 0.12.0): a single value stays a JSON
+    -- number (3), a range becomes a JSON array ([10, 11]) — mirrors the
+    -- adjacent `verse` column and migration sql/migrations/007_chapter_range.sql.
+    chapter json,
     verse json,
     -- Full-text search vector (word-order-independent, relevance-ranked search
     -- via ts_rank). STORED GENERATED — PostgreSQL >= 12. The expression is the

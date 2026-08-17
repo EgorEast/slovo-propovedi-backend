@@ -68,7 +68,7 @@
 | `artist` | varchar | NOT NULL |
 | `artwork` | varchar | NOT NULL |
 | `book` | varchar | nullable |
-| `chapter` | int | nullable |
+| `chapter` | json | nullable (`number \| number[]`) — одиночная глава или диапазон `[start, end]` |
 | `verse` | json | nullable (`number \| number[]`) |
 
 Связь: `@OneToMany(() => PlaylistSermonJoinEntity, join => join.sermon, { cascade: true })` → `playlistJoins`.
@@ -210,6 +210,7 @@
 | `sql/migrations/004_fix_db_collation.md` | **заметка-требование к провижионингу** (2026-08-14, не SQL-миграция): БД должна создаваться с UTF-8-локалью (`--locale=ru_RU.UTF-8` / `en_US.UTF-8` при `initdb`/`POSTGRES_INITDB_ARGS`), иначе `ILIKE`/`lower()` не сворачивают регистр кириллицы (`LC_CTYPE=C`/`POSIX`). Диагностика + пересоздание существующей БД с дампом — в файле. |
 | `sql/migrations/005_sermon_search_tsvector.sql` | **существующие БД** (2026-08-14): генерируемая колонка `sermon.search_vector` (`GENERATED ALWAYS AS ... STORED`, выражение — взвешенный `to_tsvector('russian', ...)` по title/artist/book/description) + GIN-индекс `IDX_sermon_search_vector`. Требует **PostgreSQL >= 12** (generated columns). Идемпотентен (`ADD COLUMN IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`). |
 | `sql/migrations/006_playlist_search_tsvector.sql` | **существующие БД** (2026-08-16): генерируемая колонка `playlist.search_vector` (`GENERATED ALWAYS AS ... STORED`, выражение — взвешенный `to_tsvector('russian', ...)` по title (A) / description (D)) + GIN-индекс `IDX_playlist_search_vector`. Требует **PostgreSQL >= 12** (generated columns). Идемпотентен (`ADD COLUMN IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`). |
+| `sql/migrations/007_chapter_range.sql` | **существующие БД** (2026-08-17): `sermon.chapter` `integer → json` (поддержка диапазона глав, OpenAPI 0.12.0): `ALTER TABLE ... TYPE json USING to_json(chapter)` — одиночное значение остаётся JSON-числом (`3`), диапазон становится JSON-массивом (`[10, 11]`), как у соседней колонки `verse`. DO-блок с guard по `information_schema` (`data_type = 'integer'`) — идемпотентен; на fresh-bootstrap БД (уже `json`) — no-op. Revert: `ALTER TABLE sermon ALTER COLUMN chapter TYPE integer USING (chapter::text)::integer` (падает на строках с массивом — их нужно отредактировать). |
 
 Команды применения (как DB-owner):
 
@@ -224,6 +225,7 @@ psql -h <host> -U <user> -d <db> -f sql/migrations/002_add_user_roles.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/003_revoked_refresh_tokens.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/005_sermon_search_tsvector.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/006_playlist_search_tsvector.sql
+psql -h <host> -U <user> -d <db> -f sql/migrations/007_chapter_range.sql
 ```
 
 > ⚠️ **Нет TypeORM migration runner и нет npm-скрипта миграций.** Применение — строго ручное через `psql`. Новые изменения схемы оформлять идемпотентным SQL-файлом и синхронно отражать в `bootstrap.sql`.
