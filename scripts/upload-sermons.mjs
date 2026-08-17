@@ -53,8 +53,10 @@ const USAGE = `
 // "<track>. <Title>. <Book> <chapter> <verseStart>-<verseEnd>" with any mix of
 // space/dot/underscore separators and optional trailing junk without digits
 // (e.g. "]"). A letter marker in parentheses after a verse number, like
-// "5(б)-6(а)", is consumed and dropped.
-const MAIN_REF = /^(?<rest>.+?)[\s._]+(?<chapter>\d+)[\s._]+(?<verseStart>\d+)(?:\([^()]*\))?(?:[\s._]*[-–—][\s._]*(?<verseEnd>\d+)(?:\([^()]*\))?)?(?<tail>[^0-9]*)$/u;
+// "5(б)-6(а)", is consumed and dropped. A chapter RANGE is supported:
+// "10 23-11 1" → chapter [10, 11], verse [23, 1] — two numbers after the dash
+// are endChapter + verseEnd, one number is verseEnd only.
+const MAIN_REF = /^(?<rest>.+?)[\s._]+(?<chapter>\d+)[\s._]+(?<verseStart>\d+)(?:\([^()]*\))?(?:[\s._]*[-–—][\s._]*(?:(?<endChapter>\d+)[\s._]+)?(?<verseEnd>\d+)(?:\([^()]*\))?)?(?<tail>[^0-9]*)$/u;
 
 // "<Title> (Отк.1,1-3)" — the reference is parenthesized with comma
 // separators (book abbreviations used in the Откровение folder).
@@ -136,9 +138,13 @@ function containsDigit(text) {
 }
 
 // A parsed book must not carry stray digits after its ordinal prefix:
-// "2 Коринфянам" is fine, "Иоанна 18 39" means the reference crosses
-// chapters and cannot be stored in the API's single (chapter, verse) pair.
-function bookCrossesChapters(book) {
+// "2 Коринфянам" is fine, but "Иоанна 18" in «Title. Иоанна 18 39 40» means
+// the reference was written with a space-separated range («18 39 40») that
+// MAIN_REF cannot consume — the regex backtracked and leaked the chapter into
+// the book. Chapter RANGES are supported («10 23-11 1» → chapter [10, 11]),
+// but only in the dash form; a stray digit in the book is still a parse
+// failure and must fail loudly instead of uploading garbage metadata.
+function bookHasStrayDigits(book) {
   return containsDigit(book.replace(ORDINAL_PREFIX, ''));
 }
 
@@ -175,10 +181,10 @@ function parseSermonFileName(fileName) {
 
   const main = MAIN_REF.exec(core);
   if (main) {
-    const { rest, chapter, verseStart, verseEnd } = main.groups;
+    const { rest, chapter, verseStart, verseEnd, endChapter } = main.groups;
     const { title, book } = splitTitleBook(rest);
-    if (bookCrossesChapters(book)) {
-      throw new Error('Ссылка на Писание пересекает главы и не может быть сохранена в одном поле «глава»');
+    if (bookHasStrayDigits(book)) {
+      throw new Error('В названии книги остались цифры — ссылка на Писание не распознана (диапазон глав поддерживается только в виде «10 23-11 1»)');
     }
     // A reference-only name (no «Title.» prefix) leaves the book empty and the
     // reference digits folded into the title — it cannot be represented by the
@@ -191,7 +197,7 @@ function parseSermonFileName(fileName) {
       {
         title,
         book,
-        chapter: Number(chapter),
+        chapter: endChapter ? [Number(chapter), Number(endChapter)] : Number(chapter),
         verse: verseEnd ? [Number(verseStart), Number(verseEnd)] : Number(verseStart),
         warning: isAsciiOnly(title) || isAsciiOnly(book) ? 'имя файла транслитерировано (латиница)' : null,
       },
@@ -299,6 +305,26 @@ function parseAllFileNames(mp3Names, folderPath) {
 function formatVerse(verse) {
   if (verse === null || verse === undefined) return '—';
   return Array.isArray(verse) ? `[${verse[0]}, ${verse[1]}]` : String(verse);
+}
+
+function formatChapter(chapter) {
+  if (chapter === null || chapter === undefined) return '—';
+  return Array.isArray(chapter) ? `${chapter[0]}–${chapter[1]}` : String(chapter);
+}
+
+// Renders the scripture reference for the plan output. A chapter range
+// renders as «3:16–4:2» (chapterStart:verseStart–chapterEnd:verseEnd) or
+// «118–119» when the verse is absent; a single chapter keeps the existing
+// «3:[16, 18]» style.
+function formatReference(book, chapter, verse) {
+  if (!book) return 'без ссылки на Писание';
+  if (Array.isArray(chapter)) {
+    if (Array.isArray(verse)) {
+      return `${book} ${chapter[0]}:${verse[0]}–${chapter[1]}:${verse[1]}`;
+    }
+    return `${book} ${chapter[0]}–${chapter[1]}`;
+  }
+  return `${book} ${formatChapter(chapter)}:${formatVerse(verse)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -584,7 +610,7 @@ function printPlan({ folderName, playlistTitle, artist, parsed, unparsed, nonMp3
   for (let index = 0; index < parsed.length; index++) {
     const file = parsed[index];
     const { title, book, chapter, verse, warning } = file.parsed;
-    const reference = book ? `${book} ${chapter}:${formatVerse(verse)}` : 'без ссылки на Писание';
+    const reference = formatReference(book, chapter, verse);
     const note = warning ? `  ⚠ ${warning}` : '';
     console.log(`[${index + 1}/${parsed.length}] «${title}» — ${reference}${note}`);
   }
