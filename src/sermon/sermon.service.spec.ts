@@ -829,6 +829,43 @@ describe('SermonService', () => {
         verse: [[9, 18], 20],
       });
     });
+
+    it('accepts a null verse clearing a stored chapter range (repair path)', async () => {
+      // The subtlest edge: an explicit null must flow through as a "clear",
+      // not fall back to the stored verse (a `??`-style refactor or a dropped
+      // `!== null` check would turn this legal clear into a 400).
+      sermonRepository.findOne = jest.fn().mockResolvedValue({
+        id: 's-1',
+        title: 'Тест',
+        description: 'Старое',
+        chapter: [1, 2],
+        verse: [[9, 18], 20],
+      });
+      sermonRepository.update = jest.fn().mockResolvedValue({ affected: 1 });
+
+      await service.update('s-1', { verse: null } as never);
+
+      expect(sermonRepository.update).toHaveBeenCalledWith('s-1', {
+        verse: null,
+      });
+    });
+
+    it('rejects a chapter range when the stored verse is segments and the PATCH leaves verse absent', async () => {
+      sermonRepository.findOne = jest.fn().mockResolvedValue({
+        id: 's-1',
+        title: 'Тест',
+        description: 'Старое',
+        chapter: 1,
+        verse: [[9, 18], 20],
+      });
+      sermonRepository.update = jest.fn().mockResolvedValue({ affected: 1 });
+
+      await expect(
+        service.update('s-1', { chapter: [10, 11] } as never),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(sermonRepository.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('findAll normalized shape (characterization)', () => {

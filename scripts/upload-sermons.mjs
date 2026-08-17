@@ -230,7 +230,7 @@ function parseSermonFileName(fileName) {
     const { rest, chapter, verseStart, verseEnd, endChapter, moreParts } = main.groups;
     const { title, book } = splitTitleBook(rest);
     if (bookHasStrayDigits(book)) {
-      throw new Error('В названии книги остались цифры — ссылка на Писание не распознана (диапазон глав поддерживается только в виде «10 23-11 1»');
+      throw new Error('В названии книги остались цифры — ссылка на Писание не распознана (диапазон глав поддерживается только в виде «10 23-11 1»)');
     }
     // A segments list (comma parts) cannot be anchored to a chapter range: the
     // API's verse union has no shape for «chapter [10,11] + verse [[23,1],5]».

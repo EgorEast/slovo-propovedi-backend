@@ -26,7 +26,7 @@
 -- running this migration there is a no-op too.
 --
 -- Run as the DB owner, e.g.:
---   psql -h <host> -U <user> -d <db> -f backend/sql/migrations/007_chapter_range.sql
+--   psql -h <host> -U <user> -d <db> -f sql/migrations/007_chapter_range.sql
 --
 -- REVERT (rollback on a broken deploy):
 --   ALTER TABLE sermon ALTER COLUMN chapter TYPE integer USING (chapter::text)::integer;
