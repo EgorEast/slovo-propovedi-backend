@@ -55,8 +55,10 @@ const USAGE = `
 // (e.g. "]"). A letter marker in parentheses after a verse number, like
 // "5(б)-6(а)", is consumed and dropped. A chapter RANGE is supported:
 // "10 23-11 1" → chapter [10, 11], verse [23, 1] — two numbers after the dash
-// are endChapter + verseEnd, one number is verseEnd only.
-const MAIN_REF = /^(?<rest>.+?)[\s._]+(?<chapter>\d+)[\s._]+(?<verseStart>\d+)(?:\([^()]*\))?(?:[\s._]*[-–—][\s._]*(?:(?<endChapter>\d+)[\s._]+)?(?<verseEnd>\d+)(?:\([^()]*\))?)?(?<tail>[^0-9]*)$/u;
+// are endChapter + verseEnd, one number is verseEnd only. DISJOINT VERSE
+// SEGMENTS are supported: comma-separated parts after the main verse, each a
+// single number or a range — "1 9-18, 20" → chapter 1, verse [[9,18],20].
+const MAIN_REF = /^(?<rest>.+?)[\s._]+(?<chapter>\d+)[\s._]+(?<verseStart>\d+)(?:\([^()]*\))?(?:[\s._]*[-–—][\s._]*(?:(?<endChapter>\d+)[\s._]+)?(?<verseEnd>\d+)(?:\([^()]*\))?)?(?<moreParts>(?:[\s._]*,[\s._]*\d+(?:\([^()]*\))?(?:[\s._]*[-–—][\s._]*\d+(?:\([^()]*\))?)?)*)(?<tail>[^0-9]*)$/u;
 
 // "<Title> (Отк.1,1-3)" — the reference is parenthesized with comma
 // separators (book abbreviations used in the Откровение folder).
@@ -76,6 +78,12 @@ const KNOWN_BOOKS = [
 
 // \b is ASCII-only, so Cyrillic books need explicit Unicode boundaries.
 const BOOK_TOKEN_RE = new RegExp(`(?<!\\p{L})(?:${KNOWN_BOOKS.join('|')})(?!\\p{L})`, 'iu');
+
+// A book-only reference: the name ends with a known book (optionally with an
+// ordinal prefix like «2 Тимофею») and nothing after it — «Введение к посланию
+// к Филимону» → book Филимону, chapter/verse null. The API accepts book-only
+// references since 0.13.0.
+const BOOK_ONLY_RE = new RegExp(`(?:^|[\\s._-])(?<book>(?:\\d+[а-яё]?\\s+)?(?:${KNOWN_BOOKS.join('|')}))$`, 'iu');
 
 // "1е Петра", "2 Коринфянам" — the ordinal prefix is part of the book name.
 const ORDINAL_PREFIX = /^\d+[а-яё]?\s+/iu;
@@ -156,6 +164,44 @@ function hasBookRefPattern(core) {
   return containsDigit(core.slice(match.index + match[0].length));
 }
 
+// Builds the verse value from the main part and any comma-separated extra
+// parts. One part keeps the existing number | [a,b] shape; several parts
+// become a segments array. WHY the guard: on the wire a segments array of
+// exactly two plain integers ([9, 20]) is indistinguishable from a range —
+// the API reads any 2-int array as a range — so two single parts are wrapped
+// as [n,n] each to survive the round-trip.
+function buildVerse(verseStart, verseEnd, moreParts) {
+  const parts = [{ start: Number(verseStart), end: verseEnd ? Number(verseEnd) : null }];
+  if (moreParts) {
+    const extraPartRe = /[\s._]*,[\s._]*(\d+)(?:\([^()]*\))?(?:[\s._]*[-–—][\s._]*(\d+)(?:\([^()]*\))?)?/gu;
+    for (const match of moreParts.matchAll(extraPartRe)) {
+      parts.push({ start: Number(match[1]), end: match[2] ? Number(match[2]) : null });
+    }
+  }
+  if (parts.length === 1) {
+    return parts[0].end === null ? parts[0].start : [parts[0].start, parts[0].end];
+  }
+  const segments = parts.map((part) => (part.end === null ? part.start : [part.start, part.end]));
+  if (segments.length === 2 && segments.every((segment) => typeof segment === 'number')) {
+    return segments.map((segment) => [segment, segment]);
+  }
+  return segments;
+}
+
+// A book-only reference: the name ends with a known book and no digits follow
+// it — «Введение к посланию к Филимону» → book Филимону, chapter/verse null.
+function tryBookOnlyReference(core) {
+  const match = BOOK_ONLY_RE.exec(core);
+  if (!match) return null;
+  return {
+    title: cleanTitle(core.slice(0, match.index)),
+    book: cleanBook(match.groups.book),
+    chapter: null,
+    verse: null,
+    warning: null,
+  };
+}
+
 // A parsed sermon must carry a non-empty title. Title-less names — a
 // reference-only file («Филимону 1-7») or a trailing book token that swallowed
 // the title («Иоанна 18 39») — cannot be stored by the API and would poison
@@ -173,15 +219,15 @@ function requireNonEmptyTitle(parsed, fileName) {
  * including names that parse to an empty title.
  *
  * Returns { title, book, chapter, verse, warning } where verse is
- * number | [number, number] | null and book/chapter/verse are null for
- * title-only files.
+ * number | [number, number] | (number | [number, number])[] | null and
+ * book/chapter/verse are null for title-only files.
  */
 function parseSermonFileName(fileName) {
   const core = stripTrackNumber(stripExtension(fileName));
 
   const main = MAIN_REF.exec(core);
   if (main) {
-    const { rest, chapter, verseStart, verseEnd, endChapter } = main.groups;
+    const { rest, chapter, verseStart, verseEnd, endChapter, moreParts } = main.groups;
     const { title, book } = splitTitleBook(rest);
     if (bookHasStrayDigits(book)) {
       throw new Error('В названии книги остались цифры — ссылка на Писание не распознана (диапазон глав поддерживается только в виде «10 23-11 1»)');
@@ -198,7 +244,7 @@ function parseSermonFileName(fileName) {
         title,
         book,
         chapter: endChapter ? [Number(chapter), Number(endChapter)] : Number(chapter),
-        verse: verseEnd ? [Number(verseStart), Number(verseEnd)] : Number(verseStart),
+        verse: buildVerse(verseStart, verseEnd, moreParts),
         warning: isAsciiOnly(title) || isAsciiOnly(book) ? 'имя файла транслитерировано (латиница)' : null,
       },
       fileName,
@@ -236,6 +282,11 @@ function parseSermonFileName(fileName) {
         fileName,
       );
     }
+  }
+
+  const bookOnly = tryBookOnlyReference(core);
+  if (bookOnly) {
+    return requireNonEmptyTitle(bookOnly, fileName);
   }
 
   if (hasBookRefPattern(core)) {
@@ -304,7 +355,23 @@ function parseAllFileNames(mp3Names, folderPath) {
 
 function formatVerse(verse) {
   if (verse === null || verse === undefined) return '—';
-  return Array.isArray(verse) ? `[${verse[0]}, ${verse[1]}]` : String(verse);
+  if (Array.isArray(verse)) {
+    if (verse.length === 2 && verse.every((value) => typeof value === 'number')) {
+      return `[${verse[0]}, ${verse[1]}]`;
+    }
+    // Segments: each part renders as a single number or an en-dash range
+    // («9–18, 20»); a [n,n] pair is a guarded single and renders as n.
+    return verse
+      .map((part) =>
+        Array.isArray(part)
+          ? part[0] === part[1]
+            ? String(part[0])
+            : `${part[0]}–${part[1]}`
+          : String(part),
+      )
+      .join(', ');
+  }
+  return String(verse);
 }
 
 function formatChapter(chapter) {
@@ -315,9 +382,10 @@ function formatChapter(chapter) {
 // Renders the scripture reference for the plan output. A chapter range
 // renders as «3:16–4:2» (chapterStart:verseStart–chapterEnd:verseEnd) or
 // «118–119» when the verse is absent; a single chapter keeps the existing
-// «3:[16, 18]» style.
+// «3:[16, 18]» style; a book-only reference renders as just the book.
 function formatReference(book, chapter, verse) {
   if (!book) return 'без ссылки на Писание';
+  if (chapter === null || chapter === undefined) return book;
   if (Array.isArray(chapter)) {
     if (Array.isArray(verse)) {
       return `${book} ${chapter[0]}:${verse[0]}–${chapter[1]}:${verse[1]}`;
