@@ -91,7 +91,7 @@ export class UsersService {
     try {
       // Offset mode is selected by the presence of page/limit (limit without
       // page means page 1). The full fetch keeps the same deterministic
-      // id-DESC order (newest first) and reports the total as count.
+      // id-DESC order and reports the total as count.
       const offsetMode = page !== undefined || limit !== undefined;
       const effectivePage = page ?? 1;
       const effectiveLimit = limit ?? DEFAULT_PAGE_LIMIT;

@@ -33,8 +33,7 @@ const PLAYLIST_RELATIONS = [
 // DB-level ordering for every relation path the normalize function exposes —
 // sermon and section joins are both ordered by position, so no in-memory
 // re-sorting is needed. The parent playlist rows are ordered by id DESC so
-// the plain list is deterministic (newest first), matching the offset-mode
-// id-page order.
+// the plain list is deterministic, matching the offset-mode id-page order.
 const PLAYLIST_ORDER = {
   id: 'DESC',
   sermonJoins: { position: 'ASC' },
@@ -220,7 +219,7 @@ export class PlaylistService {
         // Backward-compatible full fetch — byte-for-byte the pre-search
         // implementation (findAndCount with the deep relation graph and the
         // DB-level join ordering), now with a deterministic id-DESC parent
-        // order (newest first).
+        // order.
         const [playlists, count] = await this.playlistRepository.findAndCount({
           relations: PLAYLIST_RELATIONS,
           order: PLAYLIST_ORDER,

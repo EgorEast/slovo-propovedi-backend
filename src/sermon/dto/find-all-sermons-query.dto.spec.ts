@@ -32,6 +32,15 @@ describe('FindAllSermonsQueryDto (offset vs keyset exclusivity)', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts search combined with the offset mode (search does not interact with the exclusivity rule)', () => {
+    const result = FindAllSermonsQueryDto.schema.safeParse({
+      search: 'grace',
+      page: '2',
+      limit: '20',
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('rejects page combined with take', () => {
     const result = FindAllSermonsQueryDto.schema.safeParse({
       page: '1',
