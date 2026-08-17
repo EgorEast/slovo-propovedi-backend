@@ -2,6 +2,23 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.9.0] - 2026-08-17
+
+### Features
+- add offset pagination to sermons playlists and users lists
+- parse verse segments and book-only references in upload filenames
+- support disjoint verse segments and optional scripture fields
+- parse chapter ranges in upload-sermons filenames
+- support chapter range in sermon scripture reference
+
+### Bug Fixes
+- harden chapter-range verse consistency
+
+### Maintenance
+- drop false newest-first wording and complete dto test matrix
+- fix stale sql path prefixes and align spec version references
+- pin guard edges and fix review nits
+
 ## [0.8.1] - 2026-08-17
 
 ### Maintenance
