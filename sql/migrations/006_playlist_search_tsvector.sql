@@ -27,7 +27,7 @@
 -- sql/bootstrap.sql, so running this migration there is a no-op too.
 --
 -- Run as the DB owner, e.g.:
---   psql -h <host> -U <user> -d <db> -f backend/sql/migrations/006_playlist_search_tsvector.sql
+--   psql -h <host> -U <user> -d <db> -f sql/migrations/006_playlist_search_tsvector.sql
 -- =============================================================================
 
 -- 1. Generated tsvector column (kept in sync on every INSERT/UPDATE)

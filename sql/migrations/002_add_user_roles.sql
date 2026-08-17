@@ -27,7 +27,7 @@
 -- Fresh databases get the column + CHECK directly from sql/bootstrap.sql.
 --
 -- Run as the DB owner, e.g.:
---   psql -h <host> -U <user> -d <db> -f backend/sql/migrations/002_add_user_roles.sql
+--   psql -h <host> -U <user> -d <db> -f sql/migrations/002_add_user_roles.sql
 -- =============================================================================
 
 -- 1. Add the column (nullable for the backfill step)

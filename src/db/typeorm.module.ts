@@ -26,7 +26,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
             __dirname + '/../**/*.entity.{js,ts}',
             'node_modules/nestjs-admin/**/*.entity.js',
           ],
-          // PgBouncer (transaction mode) setup — see backend/sql/bootstrap.sql.
+          // PgBouncer (transaction mode) setup — see sql/bootstrap.sql.
           //
           // The playbook puts PgBouncer in front of PostgreSQL
           // (POSTGRES_HOST=slovo-pgbouncer, POSTGRES_PORT=6432) so the DB only
@@ -34,7 +34,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
           // work the backend must avoid the things PgBouncer cannot proxy:
           //
           // - synchronize: false — DDL must not run through the pooler. The
-          //   schema is created once from backend/sql/bootstrap.sql instead.
+          //   schema is created once from sql/bootstrap.sql instead.
           // - installExtensions: false — extension provisioning ("CREATE
           //   EXTENSION uuid-ossp") is done in bootstrap.sql, not at runtime
           //   through the pooler.

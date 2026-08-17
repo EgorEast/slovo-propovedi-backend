@@ -11,7 +11,7 @@
 --   * On a FRESH database only. Existing installations keep their schema
 --     (it was created by TypeORM synchronize and matches this file exactly).
 --   * As a database superuser or as the DB owner, e.g.:
---       psql -h <host> -U <user> -d <db> -f backend/sql/bootstrap.sql
+--       psql -h <host> -U <user> -d <db> -f sql/bootstrap.sql
 --
 -- The DDL below is exactly what TypeORM 0.3.17 `synchronize` produces for the
 -- entities in `backend/src/**/*.entity.ts` (verified against a throwaway

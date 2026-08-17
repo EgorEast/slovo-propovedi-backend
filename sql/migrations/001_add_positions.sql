@@ -23,7 +23,7 @@
 -- guard keeps those persisted orders intact on every re-run.
 --
 -- Run as the DB owner, e.g.:
---   psql -h <host> -U <user> -d <db> -f backend/sql/migrations/001_add_positions.sql
+--   psql -h <host> -U <user> -d <db> -f sql/migrations/001_add_positions.sql
 -- =============================================================================
 
 -- 1. section.position — global order of sections

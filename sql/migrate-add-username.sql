@@ -22,7 +22,7 @@
 -- slovo-admin-user seeds exactly one.
 --
 -- Run as the DB owner, e.g.:
---   psql -h <host> -U <user> -d <db> -f backend/sql/migrate-add-username.sql
+--   psql -h <host> -U <user> -d <db> -f sql/migrate-add-username.sql
 -- =============================================================================
 
 ALTER TABLE "user" ADD COLUMN IF NOT EXISTS username character varying;

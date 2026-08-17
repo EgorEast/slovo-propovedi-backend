@@ -23,7 +23,7 @@
 -- (same constraint names), so running this migration there is a no-op too.
 --
 -- Run as the DB owner, e.g.:
---   psql -h <host> -U <user> -d <db> -f backend/sql/migrations/003_revoked_refresh_tokens.sql
+--   psql -h <host> -U <user> -d <db> -f sql/migrations/003_revoked_refresh_tokens.sql
 -- =============================================================================
 
 -- 1. Table: one row per revoked refresh token (keyed by token hash)
