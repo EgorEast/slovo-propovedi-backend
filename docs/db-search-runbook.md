@@ -337,6 +337,68 @@ done
 
 ---
 
+## Статус выполнения (2026-08-18)
+
+**Инцидент:** регистрозависимый поиск по кириллице (`GET /sermons`, `GET /playlists`, все ветки пагинации).
+
+### Корневая причина
+
+Код v0.9.1 (FTS через `to_tsquery('russian')`) и миграции 005/006/007 были корректно развёрнуты и применены. Корень — **инфраструктура**: кластер PostgreSQL инициализирован с `lc_collate=C` / `lc_ctype=C` (переменная `POSTGRES_INITDB_ARGS="--lc-collate C --lc-ctype C --encoding UTF8"` в `/slovo/postgres/env-postgres-server`). В результате `lower()` и `to_tsvector('russian')` не могут сворачивать регистр кириллицы: лексемы в tsvector зависимы от регистра (`Христос` и `христос` — два разных лексемы).
+
+### Выполненные действия
+
+**Дамп:**
+`pg_dump -Fc` → `/root/slovo_prod_20260818.dump` (153 016 байт, проверен через `pg_restore --list`).
+
+**Попытка blue-green (не сохранилась постоянно):**
+Контейнер `slovo-postgres-new` на docker-томе `slovo-pgdata-utf8`, `POSTGRES_INITDB_ARGS` с `ru_RU.UTF-8` (musl-locales в alpine-образе), полный restore + верификация (862 проповеди / 98 плейлистов / 3 пользователя; FTS-проверки: Христос:*=18=христос:*, любовь:*=6, андрей:*=862).
+
+**Gotcha: systemd-юнит `slovo-postgres.service`:**
+Swap через `docker rename` не сохранился. `ExecStartPre` юнита делает `docker rm -f slovo-postgres` + `docker create` из env-файла `/slovo/postgres/env-postgres-server` с bind-монтом `/slovo/postgres/data`. Перезапуск юнита пересоздал контейнер на **старых данных в C-локали**; blue-green том стал orphaned.
+
+> **Вывод:** postgres-контейнер управляется systemd-юнитом. Любые контейнерные изменения (rename, blue-green swap) **не переживают** рестарт юнита. Изменения должны проходить через env-файл / юнит / bind-data.
+
+**Финальный фикс (in-place):**
+
+```bash
+systemctl stop slovo-backend
+pg_dump -Fc -U postgres slovo > /tmp/slovo_pre_fix.dump
+psql -U postgres -c "DROP DATABASE slovo"
+psql -U postgres -c "CREATE DATABASE slovo LC_COLLATE 'ru_RU.UTF-8' LC_CTYPE 'ru_RU.UTF-8' TEMPLATE template0"
+pg_restore -d slovo /tmp/slovo_pre_fix.dump
+systemctl start slovo-backend
+```
+
+> **Ключевой инсайт:** `CREATE DATABASE ... TEMPLATE template0` с per-database локалью исправляет ctype **без полной re-init кластера** — легче, чем план из runbook «Решение Б» (dump → destroy cluster → restore).
+
+**Env-файл:** `/slovo/postgres/env-postgres-server` — `POSTGRES_INITDB_ARGS` обновлён на `"--lc-collate ru_RU.UTF-8 --lc-ctype ru_RU.UTF-8 --encoding UTF8"` (бэкап: `env-postgres-server.bak-20260818`). Страхует будущую re-init data-каталога.
+
+### Результаты верификации
+
+Все 9 live-проверок **PASS**:
+
+| Проверка | Результат |
+|----------|-----------|
+| `/sermons?search=Христос` (offset) | count=18 |
+| `/sermons?search=христос` (offset) | count=18 |
+| `/sermons?search=ХРИСТОС` (offset) | count=18 |
+| `/sermons?search=христос&take=5` (keyset) | count=18 (nextCursor) |
+| `/playlists?search=Христос` (offset) | count=2 |
+| `/playlists?search=христос` (offset) | count=2 |
+| `/playlists?search=ХРИСТОС` (full-fetch) | count=2 |
+| `/sermons?page=1&limit=5` (без поиска) | count=862 |
+| `/health` | 200 |
+
+**Состояние БД:** `datcollate=datctype=ru_RU.UTF-8`, sermon=862, playlist=98, users=3.
+
+### Артефакты (очистка pending)
+
+| Артефакт | Команда удаления | Комментарий |
+|----------|-----------------|-------------|
+| Docker-volume `slovo-pgdata-utf8` | `docker volume rm slovo-pgdata-utf8` | Orphaned blue-green том; данные не нужны |
+| `/root/slovo_prod_20260818.dump` | `rm /root/slovo_prod_20260818.dump` (через ≥2 недели) | Единственная копия pre-fix БД в C-локали (старый контейнер `rm -f` юнитом). Хранить до стабилизации |
+| `/slovo/postgres/env-postgres-server.bak-20260818` | `rm /slovo/postgres/env-postgres-server.bak-20260818` | Бэкап env-файла до изменения INITDB_ARGS |
+
 ## Связанные документы
 
 - [`db.md`](./db.md) — схема БД, список миграций, команды применения

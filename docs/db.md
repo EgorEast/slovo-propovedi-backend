@@ -230,6 +230,14 @@ psql -h <host> -U <user> -d <db> -f sql/migrations/007_chapter_range.sql
 
 > ⚠️ **Нет TypeORM migration runner и нет npm-скрипта миграций.** Применение — строго ручное через `psql`. Новые изменения схемы оформлять идемпотентным SQL-файлом и синхронно отражать в `bootstrap.sql`.
 
+### 2026-08-18: локаль БД исправлена
+
+Кластер PostgreSQL инициализирован с `lc_collate=C` / `lc_ctype=C` (env `POSTGRES_INITDB_ARGS` в `/slovo/postgres/env-postgres-server`). В результате `lower()` и `to_tsvector('russian')` не сворачивали регистр кириллицы — регистрозависимый поиск (см. [`db-search-runbook.md`](./db-search-runbook.md)).
+
+**Фикс:** per-database пересоздание через `CREATE DATABASE slovo LC_COLLATE 'ru_RU.UTF-8' LC_CTYPE 'ru_RU.UTF-8' TEMPLATE template0` + `pg_restore` (без re-init всего кластера). Env-файл `POSTGRES_INITDB_ARGS` обновлён на `--lc-collate ru_RU.UTF-8 --lc-ctype ru_RU.UTF-8 --encoding UTF8` (бэкап: `env-postgres-server.bak-20260818`).
+
+> **Текущее состояние:** дефолт кластера остаётся `C` (`lc_collate`/`lc_ctype` на уровне initdb не менялись), но **БД `slovo`** имеет `ru_RU.UTF-8` (per-database override). При полной re-init data-каталога (новый контейнер / `initdb`) будет создана БД с дефолтной C-локалью, если `POSTGRES_INITDB_ARGS` не указан. Env-файл обновлён, чтобы это предотвратить. Подробности выполнения — в [runbook](./db-search-runbook.md#статус-выполнения-2026-08-18).
+
 ## Связанные документы
 
 - [README.md](./README.md) — индекс документации backend-репозитория

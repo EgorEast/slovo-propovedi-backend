@@ -17,3 +17,13 @@
 ## Инцидент 2026-08-16: OOM на `GET /sermons`
 
 При ~420 проповедях `GET /sermons` без `take` через прежний 8-уровневый `leftJoinAndSelect` давал декартово размножение строк и OOM-убивал контейнер (256 МБ). Исправлено в `SermonService.findAll` переходом на join-свободную страницу + `assembleSermonGraph` (см. [`modules/sermon.md`](./modules/sermon.md)). `GET /playlists` (долг №1) остаётся уязвим по той же причине.
+
+## Артефакты инцидента 2026-08-18: cleanup pending
+
+См. [`db-search-runbook.md` — Статус выполнения](./db-search-runbook.md#статус-выполнения-2026-08-18).
+
+| Артефакт | Действие | Срок |
+|----------|----------|------|
+| Docker-volume `slovo-pgdata-utf8` (orphaned blue-green) | `docker volume rm slovo-pgdata-utf8` | Сейчас (данные не нужны) |
+| `/root/slovo_prod_20260818.dump` (pre-fix C-locale БД) | `rm /root/slovo_prod_20260818.dump` | Через ≥2 недели (единственная копия) |
+| `/slovo/postgres/env-postgres-server.bak-20260818` | `rm /slovo/postgres/env-postgres-server.bak-20260818` | После стабилизации |
