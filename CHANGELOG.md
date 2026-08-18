@@ -2,6 +2,11 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.9.1] - 2026-08-18
+
+### Maintenance
+- add db search case-sensitivity runbook
+
 ## [0.9.0] - 2026-08-17
 
 ### Features
