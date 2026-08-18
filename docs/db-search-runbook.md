@@ -391,13 +391,9 @@ systemctl start slovo-backend
 
 **Состояние БД:** `datcollate=datctype=ru_RU.UTF-8`, sermon=862, playlist=98, users=3.
 
-### Артефакты (очистка pending)
+### Артефакты (очистка выполнена 2026-08-18)
 
-| Артефакт | Команда удаления | Комментарий |
-|----------|-----------------|-------------|
-| Docker-volume `slovo-pgdata-utf8` | `docker volume rm slovo-pgdata-utf8` | Orphaned blue-green том; данные не нужны |
-| `/root/slovo_prod_20260818.dump` | `rm /root/slovo_prod_20260818.dump` (через ≥2 недели) | Единственная копия pre-fix БД в C-локали (старый контейнер `rm -f` юнитом). Хранить до стабилизации |
-| `/slovo/postgres/env-postgres-server.bak-20260818` | `rm /slovo/postgres/env-postgres-server.bak-20260818` | Бэкап env-файла до изменения INITDB_ARGS |
+Артефакты убраны тем же днём (2026-08-18): volume удалён, пре-фикс дамп удалён после снятия свежего верифицированного бэкапа `/root/slovo_prod_20260818-postfix.dump`, бэкап env-файла удалён. Живые проверки после уборки: `/health` 200, поиск «христос» → 18.
 
 ## Связанные документы
 
