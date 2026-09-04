@@ -66,12 +66,14 @@ jobs:
           VPS_SSH_USER: ${{ secrets.VPS_SSH_USER }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
-          BACKEND_API_HOSTNAME: api.slovo-propovedi.ru
+          BACKEND_API_HOSTNAME: ${{ vars.BACKEND_API_HOSTNAME }}
+          DOCS_HOSTNAME: ${{ vars.DOCS_HOSTNAME }}
           # Secrets for env file generation (NEVER passed to vps-deploy.sh as args)
           JWT_SECRET: ${{ secrets.BACKEND_JWT_SECRET }}
           JWT_REFRESH_SECRET: ${{ secrets.BACKEND_JWT_REFRESH_SECRET }}
           POSTGRES_PASSWORD: ${{ secrets.BACKEND_POSTGRES_PASSWORD }}
           MINIO_SECRET_KEY: ${{ secrets.BACKEND_MINIO_SECRET_KEY }}
+          MINIO_API_HOSTNAME: ${{ vars.MINIO_API_HOSTNAME }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no"
           SSH_TARGET="$VPS_SSH_USER@$VPS_HOST"
@@ -104,9 +106,9 @@ jobs:
             printf 'MINIO_MAIN_PORT_IN=%s\n' "9000"
             printf 'MINIO_ACCESS_KEY=%s\n' "slovo_minio"
             printf 'MINIO_SECRET_KEY=%s\n' "$MINIO_SECRET_KEY"
-            printf 'MINIO_PUBLIC_URI=%s\n' "https://minio-api.slovo-propovedi.ru"
+            printf 'MINIO_PUBLIC_URI=%s\n' "https://$MINIO_API_HOSTNAME"
             printf 'DOCS_ENABLED=%s\n' "false"
-            printf 'DOCS_UI_ORIGIN=%s\n' "https://docs.slovo-propovedi.ru"
+            printf 'DOCS_UI_ORIGIN=%s\n' "https://$DOCS_HOSTNAME"
             printf 'NODE_OPTIONS=%s\n' "--max-old-space-size=256"
           } | ssh $SSH_OPTS "$SSH_TARGET" \
             "mkdir -p /slovo/backend && cat > /slovo/backend/env && chmod 0640 /slovo/backend/env && chown slovo:slovo /slovo/backend/env"
