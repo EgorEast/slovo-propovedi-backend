@@ -2,6 +2,16 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.9.2] - 2026-09-04
+
+### Bug Fixes
+- allow app.slovo-propovedi.ru in CORS allowed origins
+
+### Maintenance
+- update variables in release workflow
+- mark 2026-08-18 incident cleanup as completed
+- record DB locale fix for Cyrillic search (2026-08-18)
+
 ## [0.9.1] - 2026-08-18
 
 ### Maintenance
