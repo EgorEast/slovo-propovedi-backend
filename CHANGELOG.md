@@ -2,6 +2,11 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.9.3] - 2026-09-07
+
+### Maintenance
+- upgrade dependencies to latest compatible versions
+
 ## [0.9.2] - 2026-09-04
 
 ### Bug Fixes
