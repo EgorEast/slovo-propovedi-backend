@@ -89,8 +89,7 @@ export const SectionControllerCreateBody = zod.strictObject({
   borderRadius: zod.boolean().optional(),
 });
 
-export const sectionControllerCreateResponseIsDescriptionTitleOnSlideLargeDefault =
-  false;
+export const sectionControllerCreateResponseIsDescriptionTitleOnSlideLargeDefault = false;
 export const sectionControllerCreateResponseWhereIsSlideTitleLocatedDefault = `under`;
 export const sectionControllerCreateResponseBorderRadiusDefault = false;
 export const sectionControllerCreateResponsePlaylistsItemSermonsItemChapterTwoMin = 2;
@@ -204,11 +203,9 @@ export const SectionControllerCreateResponse = zod.strictObject({
 /**
  * @summary Получить все разделы
  */
-export const sectionControllerFindAllResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault =
-  false;
+export const sectionControllerFindAllResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
 export const sectionControllerFindAllResponseSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const sectionControllerFindAllResponseSectionsItemBorderRadiusDefault =
-  false;
+export const sectionControllerFindAllResponseSectionsItemBorderRadiusDefault = false;
 export const sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemChapterTwoMin = 2;
 export const sectionControllerFindAllResponseSectionsItemPlaylistsItemSermonsItemChapterTwoMax = 2;
 
@@ -345,8 +342,7 @@ export const SectionControllerFindOneParams = zod.strictObject({
   id: zod.uuid(),
 });
 
-export const sectionControllerFindOneResponseIsDescriptionTitleOnSlideLargeDefault =
-  false;
+export const sectionControllerFindOneResponseIsDescriptionTitleOnSlideLargeDefault = false;
 export const sectionControllerFindOneResponseWhereIsSlideTitleLocatedDefault = `under`;
 export const sectionControllerFindOneResponseBorderRadiusDefault = false;
 export const sectionControllerFindOneResponsePlaylistsItemSermonsItemChapterTwoMin = 2;
@@ -476,8 +472,7 @@ export const SectionControllerUpdateBody = zod.strictObject({
   borderRadius: zod.boolean(),
 });
 
-export const sectionControllerUpdateResponseIsDescriptionTitleOnSlideLargeDefault =
-  false;
+export const sectionControllerUpdateResponseIsDescriptionTitleOnSlideLargeDefault = false;
 export const sectionControllerUpdateResponseWhereIsSlideTitleLocatedDefault = `under`;
 export const sectionControllerUpdateResponseBorderRadiusDefault = false;
 export const sectionControllerUpdateResponsePlaylistsItemSermonsItemChapterTwoMin = 2;
@@ -626,11 +621,9 @@ export const PlaylistControllerCreateBody = zod.strictObject({
   sectionsIds: zod.array(zod.string()).optional(),
 });
 
-export const playlistControllerCreateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault =
-  false;
+export const playlistControllerCreateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
 export const playlistControllerCreateResponseSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const playlistControllerCreateResponseSectionsItemBorderRadiusDefault =
-  false;
+export const playlistControllerCreateResponseSectionsItemBorderRadiusDefault = false;
 export const playlistControllerCreateResponseSectionsItemPlaylistsItemSermonsItemChapterTwoMin = 2;
 export const playlistControllerCreateResponseSectionsItemPlaylistsItemSermonsItemChapterTwoMax = 2;
 
@@ -842,11 +835,9 @@ export const PlaylistControllerFindAllQueryParams = zod.strictObject({
     ),
 });
 
-export const playlistControllerFindAllResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault =
-  false;
+export const playlistControllerFindAllResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
 export const playlistControllerFindAllResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const playlistControllerFindAllResponsePlaylistsItemSectionsItemBorderRadiusDefault =
-  false;
+export const playlistControllerFindAllResponsePlaylistsItemSectionsItemBorderRadiusDefault = false;
 export const playlistControllerFindAllResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemChapterTwoMin = 2;
 export const playlistControllerFindAllResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemChapterTwoMax = 2;
 
@@ -1051,11 +1042,9 @@ export const PlaylistControllerFindOneParams = zod.strictObject({
   id: zod.uuid(),
 });
 
-export const playlistControllerFindOneResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault =
-  false;
+export const playlistControllerFindOneResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
 export const playlistControllerFindOneResponseSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const playlistControllerFindOneResponseSectionsItemBorderRadiusDefault =
-  false;
+export const playlistControllerFindOneResponseSectionsItemBorderRadiusDefault = false;
 export const playlistControllerFindOneResponseSectionsItemPlaylistsItemSermonsItemChapterTwoMin = 2;
 export const playlistControllerFindOneResponseSectionsItemPlaylistsItemSermonsItemChapterTwoMax = 2;
 
@@ -1255,11 +1244,9 @@ export const PlaylistControllerUpdateBody = zod.strictObject({
   sectionsIds: zod.array(zod.string()).optional(),
 });
 
-export const playlistControllerUpdateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault =
-  false;
+export const playlistControllerUpdateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
 export const playlistControllerUpdateResponseSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const playlistControllerUpdateResponseSectionsItemBorderRadiusDefault =
-  false;
+export const playlistControllerUpdateResponseSectionsItemBorderRadiusDefault = false;
 export const playlistControllerUpdateResponseSectionsItemPlaylistsItemSermonsItemChapterTwoMin = 2;
 export const playlistControllerUpdateResponseSectionsItemPlaylistsItemSermonsItemChapterTwoMax = 2;
 
@@ -1538,11 +1525,9 @@ export const sermonControllerCreateResponseVerseTwoMax = 2;
 export const sermonControllerCreateResponseVerseThreeItemTwoMin = 2;
 export const sermonControllerCreateResponseVerseThreeItemTwoMax = 2;
 
-export const sermonControllerCreateResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault =
-  false;
+export const sermonControllerCreateResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
 export const sermonControllerCreateResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const sermonControllerCreateResponsePlaylistsItemSectionsItemBorderRadiusDefault =
-  false;
+export const sermonControllerCreateResponsePlaylistsItemSectionsItemBorderRadiusDefault = false;
 export const sermonControllerCreateResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemChapterTwoMin = 2;
 export const sermonControllerCreateResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemChapterTwoMax = 2;
 
@@ -1820,11 +1805,9 @@ export const sermonControllerFindAllResponseSermonsItemVerseTwoMax = 2;
 export const sermonControllerFindAllResponseSermonsItemVerseThreeItemTwoMin = 2;
 export const sermonControllerFindAllResponseSermonsItemVerseThreeItemTwoMax = 2;
 
-export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault =
-  false;
+export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
 export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemBorderRadiusDefault =
-  false;
+export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemBorderRadiusDefault = false;
 export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemPlaylistsItemSermonsItemChapterTwoMin = 2;
 export const sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemPlaylistsItemSermonsItemChapterTwoMax = 2;
 
@@ -2108,11 +2091,9 @@ export const sermonControllerFindOneResponseVerseTwoMax = 2;
 export const sermonControllerFindOneResponseVerseThreeItemTwoMin = 2;
 export const sermonControllerFindOneResponseVerseThreeItemTwoMax = 2;
 
-export const sermonControllerFindOneResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault =
-  false;
+export const sermonControllerFindOneResponsePlaylistsItemSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
 export const sermonControllerFindOneResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault = `under`;
-export const sermonControllerFindOneResponsePlaylistsItemSectionsItemBorderRadiusDefault =
-  false;
+export const sermonControllerFindOneResponsePlaylistsItemSectionsItemBorderRadiusDefault = false;
 export const sermonControllerFindOneResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemChapterTwoMin = 2;
 export const sermonControllerFindOneResponsePlaylistsItemSectionsItemPlaylistsItemSermonsItemChapterTwoMax = 2;
 

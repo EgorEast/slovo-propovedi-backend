@@ -67,7 +67,7 @@ const bootstrapLogger = new Logger('bootstrap');
 // continue (systemd would restart the app anyway, losing in-flight requests).
 process.on('unhandledRejection', (reason: unknown) => {
   const message =
-    reason instanceof Error ? reason.stack ?? reason.message : String(reason);
+    reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
   bootstrapLogger.warn(`Unhandled promise rejection: ${message}`);
 });
 
@@ -80,7 +80,7 @@ process.on('uncaughtException', (error: Error) => {
 
 bootstrap().catch((error: unknown) => {
   const message =
-    error instanceof Error ? error.stack ?? error.message : String(error);
+    error instanceof Error ? (error.stack ?? error.message) : String(error);
   bootstrapLogger.error(`Bootstrap failed: ${message}`);
   process.exit(1);
 });
