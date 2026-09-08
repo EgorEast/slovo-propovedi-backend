@@ -2,6 +2,11 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.9.4] - 2026-09-08
+
+### Refactors
+- make vps-deploy.sh verify infra instead of provisioning it
+
 ## [0.9.3] - 2026-09-07
 
 ### Maintenance
