@@ -21,9 +21,24 @@
       "groupName": "devDependencies (non-major)"
     },
     {
-      "description": "Keep NestJS packages together. NestJS 12 is held back by nestjs-zod peer deps — a major bump here needs manual review anyway (see docs/architecture.md / the version-ceiling note).",
-      "matchPackageNames": ["@nestjs/**", "nestjs-zod"],
+      "description": "NestJS framework packages move together. NestJS 12 is held back by nestjs-zod peer deps — a major here needs manual review anyway (see docs/architecture.md / the version-ceiling note).",
+      "matchPackageNames": ["@nestjs/**"],
       "groupName": "nestjs"
+    },
+    {
+      "description": "Zod and nestjs-zod version-lock each other (nestjs-zod pins a zod peer range) — always propose them as one change.",
+      "matchPackageNames": ["zod", "nestjs-zod"],
+      "groupName": "zod stack"
+    },
+    {
+      "description": "TypeORM and its Postgres drivers / Nest integration move together.",
+      "matchPackageNames": ["typeorm", "@nestjs/typeorm", "pg", "postgres", "@types/pg"],
+      "groupName": "typeorm stack"
+    },
+    {
+      "description": "class-transformer and class-validator are used as a pair by Nest DTOs.",
+      "matchPackageNames": ["class-transformer", "class-validator"],
+      "groupName": "class-transformer / class-validator"
     }
   ]
 }
