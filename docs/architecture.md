@@ -177,6 +177,8 @@ npm run lint             # eslint --fix
 
 Выкат тег-ориентированный: push тега `v*` запускает Forgejo Actions, который стримит исходники на VPS и выполняет там `scripts/vps-deploy.sh`. Скрипт идемпотентен, собирает Docker-образ через buildx-билдер `slovo-constrained` (docker-container) и рестартует systemd-юнит `slovo-backend.service`.
 
+**Граница ответственности.** `vps-deploy.sh` владеет только контейнером `slovo-backend` и своей Docker-сетью `slovo-backend`. Вся общая инфраструктура — Docker, пользователь/группа `slovo`, buildx-билдер `slovo-constrained`, Traefik (`slovo-traefik.service`), PostgreSQL / PgBouncer / MinIO и их Docker-сети (`traefik`, `slovo-postgres`, `slovo-minio`) — принадлежит внешнему `slovo-propovedi-playbook` (Ansible, отдельный репозиторий) и должна быть развёрнута заранее (`just setup-all`). Скрипт её **не создаёт**: при отсутствии любого из этих компонентов деплой падает с явной ошибкой, а не доводит сервер до полусобранного состояния.
+
 После запуска контейнера и перехода systemd-юнита в active (проверка `systemctl is-active`, а не полноценный healthcheck приложения) скрипт выполняет **пост-деплойную очистку** (строго non-fatal — сбой очистки не валит успешный деплой, ошибки логируются как `WARN`):
 
 - `docker image prune --force` — удаляет только dangling-образы (без `--all`); поскольку каждый релиз перезаписывает тег `slovo-backend:latest`, образ предыдущего релиза становится dangling и удаляется — откат выполняется повторным деплоем старого `v*`-тега;

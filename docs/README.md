@@ -65,7 +65,7 @@
 | `orval.config.mjs` | Конфиг кодогенерации (вход — внешняя OpenAPI-спецификация) |
 | `scripts/gen-schemas.mjs` | Программный запуск Orval + prettier |
 | `scripts/upload-sermons.mjs` | Bulk-загрузка папки mp3-проповедей в API как плейлиста (см. [`scripts.md`](./scripts.md)) |
-| `scripts/vps-deploy.sh` | Деплой на VPS: сборка Docker-образа, рестарт systemd-юнита, пост-деплойная очистка (см. [`architecture.md`](./architecture.md)) |
+| `scripts/vps-deploy.sh` | Деплой на VPS: проверка playbook-инфры, сборка Docker-образа, рестарт systemd-юнита, пост-деплойная очистка (см. [`architecture.md`](./architecture.md)) |
 
 ## Связанные документы
 

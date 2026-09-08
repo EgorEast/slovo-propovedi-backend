@@ -65,7 +65,6 @@ jobs:
         env:
           VPS_SSH_USER: ${{ secrets.VPS_SSH_USER }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
-          ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
           BACKEND_API_HOSTNAME: ${{ vars.BACKEND_API_HOSTNAME }}
           DOCS_HOSTNAME: ${{ vars.DOCS_HOSTNAME }}
           # Secrets for env file generation (NEVER passed to vps-deploy.sh as args)
@@ -113,9 +112,11 @@ jobs:
           } | ssh $SSH_OPTS "$SSH_TARGET" \
             "mkdir -p /slovo/backend && cat > /slovo/backend/env && chmod 0640 /slovo/backend/env && chown slovo:slovo /slovo/backend/env"
 
-          # Step 4: Run deploy script (NO secrets passed — env file already written)
+          # Step 4: Run deploy script (NO secrets passed — env file already written).
+          # Shared infra (Traefik, Docker, slovo user, buildx, postgres/minio) is
+          # owned by the slovo-propovedi playbook; the script only verifies it.
           ssh $SSH_OPTS "$SSH_TARGET" \
-            "DEPLOY_TAG='${{ github.ref_name }}' ACME_EMAIL='$ACME_EMAIL' BACKEND_API_HOSTNAME='$BACKEND_API_HOSTNAME' bash /tmp/vps-deploy.sh"
+            "DEPLOY_TAG='${{ github.ref_name }}' BACKEND_API_HOSTNAME='$BACKEND_API_HOSTNAME' bash /tmp/vps-deploy.sh"
 
       - name: Extract changelog section
         id: changelog
