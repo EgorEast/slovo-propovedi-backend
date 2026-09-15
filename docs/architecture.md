@@ -134,7 +134,12 @@ providers: [
 
 ## Переменные окружения
 
-Backend читает конфигурацию напрямую из env (без `.env.example`; env поставляет инфра-playbook, внешний по отношению к этому репозиторию).
+Backend читает конфигурацию напрямую из env. Для прода её поставляет инфра-playbook /
+`.forgejo/workflows/release.yml` (из Forgejo org-level переменных и секретов); для локальной
+разработки — `.env` в корне репозитория (см. `.env.example`), которую `ConfigModule.forRoot()`
+подхватывает автоматически (dotenv под капотом) при `npm run start:dev`/`start`. Отдельные
+Node-скрипты, которые не проходят через Nest bootstrap (`gen:schemas` → `orval.config.mjs`),
+`.env` не видят сами — `gen:schemas` явно грузит его через `node --env-file-if-exists=.env`.
 
 | Переменная | По умолчанию | Где читается | Назначение |
 |------------|--------------|--------------|------------|
@@ -151,8 +156,16 @@ Backend читает конфигурацию напрямую из env (без 
 | `MINIO_SECRET_KEY` | — | `minio.service.ts` | secret key MinIO |
 | `MINIO_PUBLIC_URI` | — (обязателен для presign) | `minio.service.ts` | browser-facing URI MinIO для presigned-URL |
 | `DOCS_ENABLED` | — | `main.ts` | `'true'` включает Swagger UI |
-| `OPENAPI_SPEC_URL` | `https://docs.slovo-propovedi.ru/openAPI.yaml` | `main.ts` | источник спецификации для Swagger UI |
-| `DOCS_UI_ORIGIN` | — | `main.ts` | дополнительный CORS-origin |
+| `DOCS_HOSTNAME` | `docs.slovo-propovedi.ru` | `main.ts` | хост docs-сайта; строит дефолт для `OPENAPI_SPEC_URL` и (в проде) `DOCS_UI_ORIGIN` |
+| `OPENAPI_SPEC_URL` | `https://$DOCS_HOSTNAME/openAPI.yaml` | `main.ts` | источник спецификации для Swagger UI |
+| `DOCS_UI_ORIGIN` | — | `main.ts` | дополнительный CORS-origin (в проде — `https://$DOCS_HOSTNAME`, см. release.yml) |
+| `LANDING_HOSTNAME` | `slovo-propovedi.ru` | `main.ts` | CORS: сам домен + `www.` |
+| `ADMIN_FRONTEND_HOSTNAME` | `admin-app.slovo-propovedi.ru` | `main.ts` | CORS: админка |
+| `WEB_HOSTNAME` | `app.slovo-propovedi.ru` | `main.ts` | CORS: мобильный PWA/web-клиент |
+
+`DOCS_HOSTNAME`/`LANDING_HOSTNAME`/`ADMIN_FRONTEND_HOSTNAME`/`WEB_HOSTNAME` — org-wide Forgejo
+Actions переменные (см. `slovo-propovedi-admin`/`-landing`/`-mobile`/`-docs`); значения выше —
+дефолты в коде на случай, если переменная не задана.
 
 > ✅ `MINIO_PUBLIC_URI` обязателен для presign-клиента (`buildPresignClient` кидает ошибку, если не задан): host входит в SigV4-подпись, поэтому presigned-URL должен генерироваться с тем же host, что увидит браузер.
 
