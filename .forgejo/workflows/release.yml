@@ -67,6 +67,9 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           BACKEND_API_HOSTNAME: ${{ vars.BACKEND_API_HOSTNAME }}
           DOCS_HOSTNAME: ${{ vars.DOCS_HOSTNAME }}
+          LANDING_HOSTNAME: ${{ vars.LANDING_HOSTNAME }}
+          ADMIN_FRONTEND_HOSTNAME: ${{ vars.ADMIN_FRONTEND_HOSTNAME }}
+          WEB_HOSTNAME: ${{ vars.WEB_HOSTNAME }}
           # Secrets for env file generation (NEVER passed to vps-deploy.sh as args)
           JWT_SECRET: ${{ secrets.BACKEND_JWT_SECRET }}
           JWT_REFRESH_SECRET: ${{ secrets.BACKEND_JWT_REFRESH_SECRET }}
@@ -107,7 +110,11 @@ jobs:
             printf 'MINIO_SECRET_KEY=%s\n' "$MINIO_SECRET_KEY"
             printf 'MINIO_PUBLIC_URI=%s\n' "https://$MINIO_API_HOSTNAME"
             printf 'DOCS_ENABLED=%s\n' "false"
+            printf 'DOCS_HOSTNAME=%s\n' "$DOCS_HOSTNAME"
             printf 'DOCS_UI_ORIGIN=%s\n' "https://$DOCS_HOSTNAME"
+            printf 'LANDING_HOSTNAME=%s\n' "$LANDING_HOSTNAME"
+            printf 'ADMIN_FRONTEND_HOSTNAME=%s\n' "$ADMIN_FRONTEND_HOSTNAME"
+            printf 'WEB_HOSTNAME=%s\n' "$WEB_HOSTNAME"
             printf 'NODE_OPTIONS=%s\n' "--max-old-space-size=256"
           } | ssh $SSH_OPTS "$SSH_TARGET" \
             "mkdir -p /slovo/backend && cat > /slovo/backend/env && chmod 0640 /slovo/backend/env && chown slovo:slovo /slovo/backend/env"

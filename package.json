@@ -18,7 +18,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "gen:schemas": "node scripts/gen-schemas.mjs",
+    "gen:schemas": "node --env-file-if-exists=.env scripts/gen-schemas.mjs",
     "upload-sermons": "node scripts/upload-sermons.mjs",
     "bump-version": "node scripts/bump-version.mjs"
   },

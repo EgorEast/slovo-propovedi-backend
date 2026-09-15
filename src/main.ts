@@ -10,11 +10,12 @@ import type { OpenAPIObject } from '@nestjs/swagger';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  const landingHostname = process.env.LANDING_HOSTNAME ?? 'slovo-propovedi.ru';
   const allowedOrigins = [
-    'https://slovo-propovedi.ru',
-    'https://www.slovo-propovedi.ru',
-    'https://admin-app.slovo-propovedi.ru',
-    'https://app.slovo-propovedi.ru',
+    `https://${landingHostname}`,
+    `https://www.${landingHostname}`,
+    `https://${process.env.ADMIN_FRONTEND_HOSTNAME ?? 'admin-app.slovo-propovedi.ru'}`,
+    `https://${process.env.WEB_HOSTNAME ?? 'app.slovo-propovedi.ru'}`,
     'http://localhost:3000',
     'http://localhost:4321',
     'http://localhost:8081',
@@ -42,7 +43,7 @@ async function bootstrap() {
     try {
       const specUrl =
         process.env.OPENAPI_SPEC_URL ||
-        'https://docs.slovo-propovedi.ru/openAPI.yaml';
+        `https://${process.env.DOCS_HOSTNAME ?? 'docs.slovo-propovedi.ru'}/openAPI.yaml`;
       const response = await fetch(specUrl);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const yamlText = await response.text();
