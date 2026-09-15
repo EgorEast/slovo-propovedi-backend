@@ -2,6 +2,19 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.10.0] - 2026-09-15
+
+### Features
+- source CORS origins and docs spec URL from env vars
+
+### Maintenance
+- update generated schemas and script for generate schemas
+- add .env.example, document DOCS_HOSTNAME and friends
+- update devdependencies (non-major)
+- update dependency zod to v4.6.5
+- group version-locked package stacks
+- add Renovate for dependency updates
+
 ## [0.9.4] - 2026-09-08
 
 ### Refactors
