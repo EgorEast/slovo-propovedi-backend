@@ -58,7 +58,7 @@ describe('PlaylistController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('delegates findAll, forwarding the optional search and pagination query to the service', async () => {
+  it('delegates findAll, forwarding the optional search, pagination and sort queries to the service', async () => {
     const findAllSpy = jest
       .spyOn(service, 'findAll')
       .mockResolvedValue({ playlists: [], count: 0 });
@@ -67,10 +67,18 @@ describe('PlaylistController', () => {
       search: 'благодать',
       page: 2,
       limit: 20,
+      sort: 'title',
+      order: 'asc',
     } as FindAllPlaylistsQueryDto);
     await controller.findAll({} as FindAllPlaylistsQueryDto);
 
-    expect(findAllSpy).toHaveBeenCalledWith('благодать', 2, 20);
-    expect(findAllSpy).toHaveBeenCalledWith(undefined, undefined, undefined);
+    expect(findAllSpy).toHaveBeenCalledWith('благодать', 2, 20, 'title', 'asc');
+    expect(findAllSpy).toHaveBeenCalledWith(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 });

@@ -10,7 +10,7 @@
 | Метод / путь | Guard | Query/Body/Param | DTO ответа | Метод сервиса |
 |---------------|-------|------------------|------------|----------------|
 | `POST /sermons` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | body `CreateSermonDto` | `SermonResponseDto` | `create` |
-| `GET /sermons` | публичный | query `FindAllSermonsQueryDto` | `AllSermonsResponseDto` | `findAll(take, cursor, search, page, limit)` |
+| `GET /sermons` | публичный | query `FindAllSermonsQueryDto` | `AllSermonsResponseDto` | `findAll(take, cursor, search, page, limit, sort, order)` |
 | `GET /sermons/distinct-values` | публичный | — | `DistinctValuesResponseDto` | `getDistinctValues` |
 | `GET /sermons/:id` | публичный | param `IdParamDto` | `SermonResponseDto` | `findOne` |
 | `GET /sermons/:id/stream-url` | публичный | param `IdParamDto` | `StreamUrlResponseDto` | `getStreamUrl` |
@@ -37,7 +37,7 @@
 
 ## `findAll` — полная выборка, keyset- и offset-пагинация (`sermon.service.ts`)
 
-Сигнатура: `findAll(take?, cursor?, search?, page?, limit?)`. Три пути:
+Сигнатура: `findAll(take?, cursor?, search?, page?, limit?, sort?, order?)`. Три пути:
 
 | Условие | Путь | Как фильтрует |
 |---------|------|----------------|
@@ -45,7 +45,28 @@
 | `take` задан (без `page`) | **keyset (cursor)** | QueryBuilder: `take + 1` строк, порядок по релевантности + составной курсор `{ rank, id }` |
 | ни то, ни другое | **полная выборка** | join-свободная страница (`getMany`) + `getCount` (`countSermons`) + `assembleSermonGraph` (линейные запросы); `sermon.search_vector @@ tsquery`, порядок по релевантности |
 
-`page` и `limit` **взаимоисключительны** с `take`/`cursor` (одновременное использование → `400 Bad Request`; правило навешивается в DTO через `superRefine`). `limit` без `page` означает первую страницу (`page = 1`); `page` без `limit` — размер страницы по умолчанию `DEFAULT_PAGE_LIMIT = 100` (максимум схемы).
+`page` и `limit` **взаимоисключительны** с `take`/`cursor` (одновременное использование → `400 Bad Request`; правило навешивается в DTO через `superRefine`). `limit` без `page` означает первую страницу (`page = 1`); `page` без `limit` — размер страницы по умолчанию `DEFAULT_PAGE_LIMIT = 100` (максимум схемы). `sort`/`order` **взаимоисключительны** с `take`/`cursor` (см. ниже).
+
+### Сортировка (`sort`/`order`)
+
+`sort` ∈ {`date`, `title`, `artist`, `playlist`}, `order` ∈ {`asc`, `desc`}. Значения по умолчанию **направленные**: `sort=date` → `order=desc`; для алфавитных сортировок (`title`/`artist`/`playlist`) отсутствующий `order` → `asc`. Направление резолвится в DTO (`.transform`), поэтому сервис всегда получает готовую пару; сигнатура сервиса хранит то же правило (`order ?? (sort === 'date' ? 'desc' : 'asc')`) как fallback для прямых вызовов без DTO.
+
+`sort`/`order` **взаимоисключительны** с `take`/`cursor`: одновременное использование → `400 Bad Request` (`'sort and order are mutually exclusive with take and cursor'` по пути `sort`). Keyset-пагинация опирается на фиксированный порядок (`id DESC` или `rank DESC, id DESC`), произвольная сортировка с ней несовместима. `sort`/`order` работают в offset-режиме и в полной выборке.
+
+`ORDER BY` (tiebreak — всегда `sermon.id DESC`, чтобы равные значения оставались детерминированными):
+
+| `sort` | `ORDER BY` |
+|--------|------------|
+| `date` | `sermon.id <dir>` |
+| `title` | `LOWER(sermon.title) <dir>, sermon.id DESC` |
+| `artist` | `LOWER(sermon.artist) <dir>, sermon.id DESC` |
+| `playlist` | `LOWER(playlist.title) <dir> NULLS LAST, playlistSermonJoin.position <dir>, sermon.id DESC` |
+
+- `LOWER(...)` — регистронезависимая алфавитная сортировка; `NULLS LAST` оставляет проповеди без плейлиста в конце **в обоих направлениях**.
+- `playlist` упорядочивает по названию «первого» плейлиста — с наименьшим `LOWER(title)` (при равенстве — с наименьшей позицией join-а); в offset-режиме это явные `MIN(LOWER(playlist.title))` / `MIN(playlistSermonJoin.position)`.
+- **Поиск игнорирует `sort`/`order`** — ранжированный порядок `(rank DESC, id DESC)` побеждает (спецификация: «при поиске сортировка игнорируется»).
+
+Полная выборка с `sort=playlist` использует обычный (не `leftJoinAndSelect`) `leftJoin` на плейлисты: `getMany` группирует по PK, поэтому проповедь с несколькими плейлистами появляется ровно один раз. Offset-режим с `sort=playlist` пагинирует **родительские id** через `GROUP BY sermon.id` (`findSermonsOffsetPageByPlaylist`) — join размножил бы строки и недозаполнил страницу, — а затем гидратирует страницу по id и восстанавливает порядок в памяти; прочие сортировки в offset-режиме идут через прежний join-свободный page-запрос.
 
 ### Полнотекстовый поиск (FTS)
 
@@ -157,7 +178,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 ## `remove`
 
-Удаляет строку из БД, затем (best-effort) чистит аудио-файл из MinIO через `MinioService.removeObjectByUrl(audioUrl)`. `audioUrl` читается до удаления строки (пока запись ещё существует). Любой сбой очистки — файл не найден, невалидный/чужой URL, MinIO недоступен — логируется как `WARN` и не валит HTTP-запрос: БД остаётся источником истины. Ответ: `{ status: 'success' }`.
+Удаляет строку из БД, затем (best-effort) чистит аудио- и текстовый файлы из MinIO через `MinioService.removeObjectByUrl(audioUrl)` / `removeObjectByUrl(textFileUrl)`. URL читаются до удаления строки (пока запись ещё существует). Любой сбой очистки — файл не найден, невалидный/чужой URL, MinIO недоступен — логируется как `WARN` и не валит HTTP-запрос: БД остаётся источником истины. Ответ: `{ status: 'success' }`.
 
 ## DTO
 
@@ -165,7 +186,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 |------|-------|
 | `src/sermon/dto/create-sermon.dto.ts` | `SermonControllerCreateBody` + `.superRefine(...)` — cross-field правило «глава-диапазон» |
 | `src/sermon/dto/update-sermon.dto.ts` | `SermonControllerUpdateBody` + `.superRefine(...)` — то же правило |
-| `src/sermon/dto/find-all-sermons-query.dto.ts` | extends query + `.extend({ take: z.coerce.number().int().min(1).max(100).optional(), search: z.string().trim().min(1).optional(), cursor: z.string().min(1).optional(), page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional() })` + `.superRefine(...)` — валидный uuid-курсор без search + взаимоисключение `page`/`limit` с `take`/`cursor` |
+| `src/sermon/dto/find-all-sermons-query.dto.ts` | extends query + `.extend({ take: z.coerce.number().int().min(1).max(100).optional(), search: z.string().trim().min(1).optional(), cursor: z.string().min(1).optional(), page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional(), sort: z.enum(['date','title','artist','playlist']).optional(), order: z.enum(['asc','desc']).optional() })` + `.superRefine(...)` — валидный uuid-курсор без search + взаимоисключение `page`/`limit` с `take`/`cursor` + взаимоисключение `sort`/`order` с `take`/`cursor` + `.transform(...)` — резолв направленных дефолтов `sort`/`order` |
 | `src/sermon/dto/sermon-response.dto.ts` | create/findOne |
 | `src/sermon/dto/all-sermons-response.dto.ts` | findAll |
 | `src/sermon/dto/distinct-values-response.dto.ts` | distinct-values |
@@ -174,7 +195,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 > ✅ **Cross-field правило «глава-диапазон»** (OpenAPI 0.13.0): `chapter` — `integer | [integer, integer] | null`; `verse` — `integer | [integer, integer] | (integer | [integer, integer])[] | null` (список разрозненных отрезков, например `[[9,18],20]`). Диапазон глав (`chapter: [3, 4]`) обязан сочетаться с диапазоном стихов (`verse: [16, 2]`) или отсутствием стиха (`verse: null`) — одиночный стих (`verse: 16`) и список отрезков (`verse: [[9,18],20]`) не могут быть привязаны к диапазону глав (отрезки имеют смысл только внутри одной главы). Оба DTO (`create`/`update`) навешивают `.superRefine(...)` на сгенерированную схему: `Array.isArray(chapter) && verse !== undefined && verse !== null && !isVerseRange(verse)` → ошибка `'verse must be a two-integer range or null when chapter is a range'` по пути `verse`. `chapter`/`verse` — **необязательные** ключи (book-only ссылка валидна): отсутствующий ключ в `create` нормализуется в `null` на границе сервиса, в `update` — означает «не менять поле». Правило продублировано в сервисе: `update()` проверяет **эффективные** значения (присутствующий ключ, иначе сохранённое) — дыра «cross-request» (PATCH меняет стих, не трогая главу) закрыта на сервисном уровне. **Неоднозначность на проводе:** массив из ровно двух целых чисел всегда трактуется как диапазон — список отрезков из двух одиночных стихов неотличим от диапазона, поэтому клиенты оборачивают одиночные стихи как `[n,n]` (`[[9,9],[20,20]]`). Сгенерированная схема не переписывается — правило добавляется поверх (см. [`../validation-pipeline.md`](../validation-pipeline.md)).
 
-> ✅ `find-all-sermons-query.dto.ts` — канонический пример **extend/override** DTO: переопределяет `take` (string→number coercion), `search` (trim + reject empty), `cursor` (сгенерированный `zod.uuid()` → непрозрачная строка: search-страницы несут составной курсор, non-search — прежний uuid-id) и добавляет `page`/`limit` (string→number coercion). `superRefine` возвращает прежний fail-fast для мусорного курсора на non-search-странице и отклоняет `page`/`limit` вместе с `take`/`cursor` (`'page and limit are mutually exclusive with take and cursor'`). Подробнее — [`../conventions.md`](../conventions.md).
+> ✅ `find-all-sermons-query.dto.ts` — канонический пример **extend/override** DTO: переопределяет `take` (string→number coercion), `search` (trim + reject empty), `cursor` (сгенерированный `zod.uuid()` → непрозрачная строка: search-страницы несут составной курсор, non-search — прежний uuid-id) и добавляет `page`/`limit` (string→number coercion). `sort`/`order` переопределяются в `.optional()` (сгенерированные схемы несут `zod.default` `date`/`desc`): дефолт делал бы ключ всегда присутствующим — тогда правило конфликта срабатывало бы на каждом `take`/`cursor`-запросе, а направленный дефолт (`asc` для алфавитных сортировок) нельзя было бы отличить от явного `desc`; оба резолвятся в `.transform` (направление читает **резолвленный** `sort`, поэтому отсутствующий `sort` даёт `date`/`desc`). `superRefine` возвращает прежний fail-fast для мусорного курсора на non-search-странице, отклоняет `page`/`limit` вместе с `take`/`cursor` (`'page and limit are mutually exclusive with take and cursor'`) и `sort`/`order` вместе с `take`/`cursor` (`'sort and order are mutually exclusive with take and cursor'`). Подробнее — [`../conventions.md`](../conventions.md).
 
 ## Связанные документы
 

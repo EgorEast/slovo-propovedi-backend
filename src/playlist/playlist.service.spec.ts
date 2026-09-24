@@ -114,8 +114,10 @@ describe('PlaylistService', () => {
   describe('findAll', () => {
     function mockQueryBuilder() {
       const queryBuilder = {
+        leftJoin: jest.fn(),
         leftJoinAndSelect: jest.fn(),
         select: jest.fn(),
+        groupBy: jest.fn(),
         orderBy: jest.fn(),
         addOrderBy: jest.fn(),
         addSelect: jest.fn(),
@@ -128,8 +130,10 @@ describe('PlaylistService', () => {
         getCount: jest.fn(),
       };
       [
+        'leftJoin',
         'leftJoinAndSelect',
         'select',
+        'groupBy',
         'orderBy',
         'addOrderBy',
         'addSelect',
@@ -229,6 +233,108 @@ describe('PlaylistService', () => {
         'tsquery',
         'Благодать:*',
       );
+    });
+
+    describe('sort/order (full-fetch path)', () => {
+      it('routes sort=title through the QueryBuilder (not findAndCount) with LOWER(title) ASC orders', async () => {
+        const queryBuilder = mockQueryBuilder();
+        queryBuilder.getManyAndCount.mockResolvedValue([[], 4]);
+
+        const result = await service.findAll(
+          undefined,
+          undefined,
+          undefined,
+          'title',
+          'asc',
+        );
+
+        expect(playlistRepository.findAndCount).not.toHaveBeenCalled();
+        expect(queryBuilder.getManyAndCount).toHaveBeenCalledTimes(1);
+        expect(queryBuilder.orderBy).toHaveBeenCalledWith(
+          'LOWER(playlist.title)',
+          'ASC',
+        );
+        expect(queryBuilder.addOrderBy).toHaveBeenCalledWith(
+          'playlist.id',
+          'DESC',
+        );
+        expect(queryBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sermonJoins.position',
+          'ASC',
+        );
+        expect(queryBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sectionJoins.position',
+          'ASC',
+        );
+        expect(result).toEqual({ playlists: [], count: 4 });
+      });
+
+      it('orders by LOWER(section title) ASC NULLS LAST, join position, then id DESC for sort=section', async () => {
+        const queryBuilder = mockQueryBuilder();
+
+        await service.findAll(
+          undefined,
+          undefined,
+          undefined,
+          'section',
+          'asc',
+        );
+
+        expect(playlistRepository.findAndCount).not.toHaveBeenCalled();
+        expect(queryBuilder.orderBy).toHaveBeenCalledWith(
+          'LOWER(sections.title)',
+          'ASC',
+          'NULLS LAST',
+        );
+        expect(queryBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sectionJoins.position',
+          'ASC',
+        );
+        expect(queryBuilder.addOrderBy).toHaveBeenCalledWith(
+          'playlist.id',
+          'DESC',
+        );
+        expect(queryBuilder.leftJoinAndSelect).toHaveBeenCalledWith(
+          'sectionJoins.section',
+          'sections',
+        );
+      });
+
+      it('routes an explicit asc direction on the default date sort through the QueryBuilder', async () => {
+        const queryBuilder = mockQueryBuilder();
+
+        await service.findAll(undefined, undefined, undefined, 'date', 'asc');
+
+        expect(playlistRepository.findAndCount).not.toHaveBeenCalled();
+        expect(queryBuilder.orderBy).toHaveBeenCalledWith('playlist.id', 'ASC');
+        expect(queryBuilder.getManyAndCount).toHaveBeenCalledTimes(1);
+      });
+
+      it('ignores sort/order under search: rank DESC then id DESC win', async () => {
+        const queryBuilder = mockQueryBuilder();
+        queryBuilder.getManyAndCount.mockResolvedValue([[], 2]);
+
+        await service.findAll(
+          'благодать',
+          undefined,
+          undefined,
+          'title',
+          'asc',
+        );
+
+        expect(queryBuilder.orderBy).toHaveBeenCalledWith('rank', 'DESC');
+        expect(queryBuilder.addOrderBy).toHaveBeenCalledWith(
+          'playlist.id',
+          'DESC',
+        );
+        expect(queryBuilder.orderBy).not.toHaveBeenCalledWith(
+          'LOWER(playlist.title)',
+          expect.anything(),
+        );
+        expect(queryBuilder.where).toHaveBeenCalledWith(
+          PLAYLIST_SEARCH_CONDITION,
+        );
+      });
     });
 
     it('fails fast on punctuation-only search without touching the repository', async () => {
@@ -358,6 +464,88 @@ describe('PlaylistService', () => {
         await expect(service.findAll(undefined, 1, 10)).rejects.toThrow(
           'Playlist "pl-missing" missing from hydration query',
         );
+      });
+
+      it('orders the id page by LOWER(title) ASC then id DESC for offset sort=title', async () => {
+        const idBuilder = mockQueryBuilder();
+        idBuilder.getRawMany.mockResolvedValue([{ id: 'pl-2' }]);
+        const countBuilder = mockQueryBuilder();
+        countBuilder.getCount.mockResolvedValue(5);
+        playlistRepository.createQueryBuilder
+          .mockReturnValueOnce(idBuilder)
+          .mockReturnValueOnce(countBuilder);
+        playlistRepository.find.mockResolvedValue([playlistEntity('pl-2')]);
+
+        const result = await service.findAll(undefined, 1, 10, 'title', 'asc');
+
+        expect(idBuilder.leftJoin).not.toHaveBeenCalled();
+        expect(idBuilder.groupBy).not.toHaveBeenCalled();
+        expect(idBuilder.orderBy).toHaveBeenCalledWith(
+          'LOWER(playlist.title)',
+          'ASC',
+        );
+        expect(idBuilder.addOrderBy).toHaveBeenCalledWith(
+          'playlist.id',
+          'DESC',
+        );
+        expect(idBuilder.skip).toHaveBeenCalledWith(0);
+        expect(idBuilder.take).toHaveBeenCalledWith(10);
+        expect(idBuilder.getRawMany).toHaveBeenCalledTimes(1);
+        expect(result.playlists.map((p) => p.id)).toEqual(['pl-2']);
+        expect(result.count).toBe(5);
+      });
+
+      it('pages parent ids via GROUP BY for offset sort=section (one row per playlist)', async () => {
+        const idBuilder = mockQueryBuilder();
+        idBuilder.getRawMany.mockResolvedValue([
+          { id: 'pl-3' },
+          { id: 'pl-1' },
+        ]);
+        const countBuilder = mockQueryBuilder();
+        countBuilder.getCount.mockResolvedValue(5);
+        playlistRepository.createQueryBuilder
+          .mockReturnValueOnce(idBuilder)
+          .mockReturnValueOnce(countBuilder);
+        playlistRepository.find.mockResolvedValue([
+          playlistEntity('pl-1'),
+          playlistEntity('pl-3'),
+        ]);
+
+        const result = await service.findAll(undefined, 1, 2, 'section', 'asc');
+
+        expect(idBuilder.leftJoin).toHaveBeenCalledWith(
+          'playlist.sectionJoins',
+          'sectionJoins',
+        );
+        expect(idBuilder.leftJoin).toHaveBeenCalledWith(
+          'sectionJoins.section',
+          'sections',
+        );
+        expect(idBuilder.groupBy).toHaveBeenCalledWith('playlist.id');
+        expect(idBuilder.orderBy).toHaveBeenCalledWith(
+          'MIN(LOWER(sections.title))',
+          'ASC',
+          'NULLS LAST',
+        );
+        expect(idBuilder.addOrderBy).toHaveBeenCalledWith(
+          'MIN(sectionJoins.position)',
+          'ASC',
+        );
+        expect(idBuilder.addOrderBy).toHaveBeenCalledWith(
+          'playlist.id',
+          'DESC',
+        );
+        expect(idBuilder.skip).toHaveBeenCalledWith(0);
+        expect(idBuilder.take).toHaveBeenCalledWith(2);
+        expect(playlistRepository.find).toHaveBeenCalledWith({
+          where: { id: In(['pl-3', 'pl-1']) },
+          relations: PLAYLIST_RELATIONS,
+          order: PLAYLIST_ORDER,
+        });
+        // Hydration returned the rows shuffled — the response must follow the
+        // id-page order.
+        expect(result.playlists.map((p) => p.id)).toEqual(['pl-3', 'pl-1']);
+        expect(result.count).toBe(5);
       });
     });
   });

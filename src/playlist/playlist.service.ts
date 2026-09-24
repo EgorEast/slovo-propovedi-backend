@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
+import { PlaylistSort } from './dto/find-all-playlists-query.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { PlaylistEntity } from './entities/playlist.entity';
@@ -20,6 +21,7 @@ import {
 } from './interfaces/interface';
 import { buildSearchTsQuery, SermonService } from 'src/sermon/sermon.service';
 import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
+import { SortOrder } from 'src/shared/sort';
 
 const PLAYLIST_RELATIONS = [
   'sermonJoins',
@@ -199,6 +201,8 @@ export class PlaylistService {
     search?: string,
     page?: number,
     limit?: number,
+    sort: PlaylistSort = 'date',
+    order?: SortOrder,
   ): Promise<AllPlaylistsResponse> {
     try {
       // Parse the search term at the boundary ONCE: the sanitized tsquery
@@ -211,19 +215,37 @@ export class PlaylistService {
       // exclusivity rule to enforce.
       const offsetMode = page !== undefined || limit !== undefined;
 
+      // The DTO resolves the direction default (desc for date, asc for the
+      // alphabetical sorts); the same rule is the service fallback for direct
+      // callers.
+      const direction: SortOrder = order ?? (sort === 'date' ? 'desc' : 'asc');
+
       if (offsetMode) {
-        return await this.findOffsetPage(tsquery, page, limit);
+        return await this.findOffsetPage(tsquery, page, limit, sort, direction);
       }
 
       if (!tsquery) {
-        // Backward-compatible full fetch — byte-for-byte the pre-search
+        // The default sort (date, desc) keeps the byte-for-byte pre-search
         // implementation (findAndCount with the deep relation graph and the
-        // DB-level join ordering), now with a deterministic id-DESC parent
-        // order.
-        const [playlists, count] = await this.playlistRepository.findAndCount({
-          relations: PLAYLIST_RELATIONS,
-          order: PLAYLIST_ORDER,
-        });
+        // DB-level join ordering); every other sort goes through the same
+        // QueryBuilder the search path uses, with sort-driven parent orders.
+        if (sort === 'date' && direction === 'desc') {
+          const [playlists, count] = await this.playlistRepository.findAndCount(
+            {
+              relations: PLAYLIST_RELATIONS,
+              order: PLAYLIST_ORDER,
+            },
+          );
+          return {
+            playlists: playlists.map((p) => this.normalizePlaylist(p)),
+            count,
+          };
+        }
+
+        const queryBuilder = this.buildPlaylistSearchQueryBuilder(
+          this.buildPlaylistSortOrders(sort, direction),
+        );
+        const [playlists, count] = await queryBuilder.getManyAndCount();
         return {
           playlists: playlists.map((p) => this.normalizePlaylist(p)),
           count,
@@ -232,7 +254,8 @@ export class PlaylistService {
 
       // Relevance-ranked search: (rank DESC, id DESC) followed by the
       // join-position orders, loading the same relation graph findAndCount
-      // would.
+      // would. sort/order are ignored per the spec («при поиске сортировка
+      // игнорируется»).
       const queryBuilder = this.buildPlaylistSearchQueryBuilder([
         ['rank', 'DESC'],
         ['playlist.id', 'DESC'],
@@ -257,6 +280,40 @@ export class PlaylistService {
     }
   }
 
+  // ORDER BY expressions for the non-search sort keys. The direction is the
+  // resolved default from the DTO (asc for title/section, desc for date);
+  // the tiebreak is always id DESC so equal titles stay deterministic.
+  // section bases the order on the LOWEST-position section title with
+  // NULLS LAST (playlists without sections stay at the end in both
+  // directions) and then the join position within that section.
+  private buildPlaylistSortOrders(
+    sort: PlaylistSort,
+    direction: SortOrder,
+  ): Array<
+    [
+      order: string,
+      direction: 'ASC' | 'DESC',
+      nulls?: 'NULLS FIRST' | 'NULLS LAST',
+    ]
+  > {
+    const dir = direction === 'asc' ? 'ASC' : 'DESC';
+    switch (sort) {
+      case 'title':
+        return [
+          ['LOWER(playlist.title)', dir],
+          ['playlist.id', 'DESC'],
+        ];
+      case 'section':
+        return [
+          ['LOWER(sections.title)', dir, 'NULLS LAST'],
+          ['sectionJoins.position', dir],
+          ['playlist.id', 'DESC'],
+        ];
+      case 'date':
+        return [['playlist.id', dir]];
+    }
+  }
+
   // Offset pagination pages the PARENT ids, not the join query: the former
   // findAndCount-over-joins paginated the cartesian product of the deep
   // relation graph, so a page of N playlists could return fewer than N rows
@@ -265,12 +322,18 @@ export class PlaylistService {
     tsquery: string | undefined,
     page: number | undefined,
     limit: number | undefined,
+    sort: PlaylistSort,
+    direction: SortOrder,
   ): Promise<AllPlaylistsResponse> {
     const effectivePage = page ?? 1;
     const effectiveLimit = limit ?? DEFAULT_PAGE_LIMIT;
+    const dir = direction === 'asc' ? 'ASC' : 'DESC';
 
-    // 1. Page the parent ids only — a join-free query ordered by id DESC
-    // (rank DESC, id DESC under search).
+    // 1. Page the parent ids only — a join-free query ordered by the sort
+    // keys (rank DESC, id DESC under search; id DESC for the default date
+    // sort). The section sort joins section joins but groups by playlist id,
+    // so a playlist in several sections still occupies exactly one page row
+    // (the lowest-position section title decides its place).
     const idQueryBuilder =
       this.playlistRepository.createQueryBuilder('playlist');
     idQueryBuilder.select('playlist.id', 'id');
@@ -281,8 +344,20 @@ export class PlaylistService {
         .setParameter('tsquery', tsquery)
         .orderBy('rank', 'DESC')
         .addOrderBy('playlist.id', 'DESC');
+    } else if (sort === 'section') {
+      idQueryBuilder
+        .leftJoin('playlist.sectionJoins', 'sectionJoins')
+        .leftJoin('sectionJoins.section', 'sections')
+        .groupBy('playlist.id')
+        .orderBy('MIN(LOWER(sections.title))', dir, 'NULLS LAST')
+        .addOrderBy('MIN(sectionJoins.position)', dir)
+        .addOrderBy('playlist.id', 'DESC');
+    } else if (sort === 'title') {
+      idQueryBuilder
+        .orderBy('LOWER(playlist.title)', dir)
+        .addOrderBy('playlist.id', 'DESC');
     } else {
-      idQueryBuilder.orderBy('playlist.id', 'DESC');
+      idQueryBuilder.orderBy('playlist.id', dir);
     }
     idQueryBuilder
       .skip((effectivePage - 1) * effectiveLimit)
@@ -334,12 +409,18 @@ export class PlaylistService {
     return await countQueryBuilder.getCount();
   }
 
-  // QueryBuilder for the search path: the deep relation graph (the six
-  // PLAYLIST_RELATIONS paths) plus the primary ordering (rank DESC, id DESC
-  // under search) followed by the join-position orders normalizePlaylist
-  // expects.
+  // QueryBuilder for the deep relation graph path: loads the six
+  // PLAYLIST_RELATIONS paths plus the primary ordering (rank DESC, id DESC
+  // under search, or the sort-driven orders) followed by the join-position
+  // orders normalizePlaylist expects.
   private buildPlaylistSearchQueryBuilder(
-    primaryOrders: Array<[order: string, direction: 'ASC' | 'DESC']>,
+    primaryOrders: Array<
+      [
+        order: string,
+        direction: 'ASC' | 'DESC',
+        nulls?: 'NULLS FIRST' | 'NULLS LAST',
+      ]
+    >,
   ): SelectQueryBuilder<PlaylistEntity> {
     const queryBuilder = this.playlistRepository
       .createQueryBuilder('playlist')
@@ -352,11 +433,17 @@ export class PlaylistService {
 
     // orderBy replaces any previous order, addOrderBy appends — apply the
     // primary orders first, then the relation orders.
-    primaryOrders.forEach(([order, direction], index) => {
+    primaryOrders.forEach(([orderExpr, orderDirection, nulls], index) => {
       if (index === 0) {
-        queryBuilder.orderBy(order, direction);
+        if (nulls) {
+          queryBuilder.orderBy(orderExpr, orderDirection, nulls);
+        } else {
+          queryBuilder.orderBy(orderExpr, orderDirection);
+        }
+      } else if (nulls) {
+        queryBuilder.addOrderBy(orderExpr, orderDirection, nulls);
       } else {
-        queryBuilder.addOrderBy(order, direction);
+        queryBuilder.addOrderBy(orderExpr, orderDirection);
       }
     });
 

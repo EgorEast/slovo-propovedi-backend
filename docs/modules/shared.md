@@ -37,6 +37,16 @@ export class FileNameParamDto extends createZodDto(
 
 Используется в `GET /files/:fileName` и `GET /files/:fileName/stream-url` ([`app.md`](./app.md)).
 
+### `SortOrder` (`src/shared/sort.ts`)
+
+Общий тип направления сортировки списков:
+
+```ts
+export type SortOrder = 'asc' | 'desc';
+```
+
+Направление резолвится на границе DTO (`.transform`) к документированному дефолту: `desc` для сортировки по дате/id, `asc` для алфавитных сортировок (`title`/`artist`/`playlist`/`section`); сервис никогда не видит неразрешённое направление. Используется в `find-all-sermons-query.dto.ts` и `find-all-playlists-query.dto.ts` (см. [`sermon.md`](./sermon.md), [`playlist.md`](./playlist.md)).
+
 ## Сгенерированные схемы: `generated/index.ts`
 
 > ⚠️ **`src/generated/index.ts` — генерируется, не редактируется руками.** Это выход Orval (`npm run gen:schemas`) из внешней OpenAPI-спецификации (`https://docs.slovo-propovedi.ru/openAPI.yaml`).

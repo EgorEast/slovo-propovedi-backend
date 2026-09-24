@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
+import { In } from 'typeorm';
 import {
   buildSearchTsQuery,
   buildSearchVectorExpression,
@@ -344,19 +345,22 @@ describe('SermonService', () => {
   });
 
   // Generic query-builder mock: chainable config methods plus the terminal
-  // methods (getMany / getCount / getRawAndEntities) resolved per test. The
-  // page query and the count query share the same builder instance in the
-  // full-fetch path, so getMany and getCount live on one object.
+  // methods (getMany / getCount / getRawMany / getRawAndEntities) resolved per
+  // test. The page query and the count query share the same builder instance
+  // in the full-fetch path, so getMany and getCount live on one object.
   function mockBuilder(
     overrides: {
       getMany?: unknown[];
       getCount?: number;
+      getRawMany?: unknown[];
       getRawAndEntities?: { entities: unknown[]; raw: unknown[] };
     } = {},
   ) {
     const queryBuilder = {
+      leftJoin: jest.fn(),
       leftJoinAndSelect: jest.fn(),
       select: jest.fn(),
+      groupBy: jest.fn(),
       orderBy: jest.fn(),
       addOrderBy: jest.fn(),
       addSelect: jest.fn(),
@@ -367,12 +371,15 @@ describe('SermonService', () => {
       take: jest.fn(),
       getMany: jest.fn(),
       getManyAndCount: jest.fn(),
+      getRawMany: jest.fn(),
       getRawAndEntities: jest.fn(),
       getCount: jest.fn(),
     };
     [
+      'leftJoin',
       'leftJoinAndSelect',
       'select',
+      'groupBy',
       'orderBy',
       'addOrderBy',
       'addSelect',
@@ -384,6 +391,7 @@ describe('SermonService', () => {
     ].forEach((method) => queryBuilder[method].mockReturnValue(queryBuilder));
     queryBuilder.getMany.mockResolvedValue(overrides.getMany ?? []);
     queryBuilder.getCount.mockResolvedValue(overrides.getCount ?? 0);
+    queryBuilder.getRawMany.mockResolvedValue(overrides.getRawMany ?? []);
     queryBuilder.getRawAndEntities.mockResolvedValue(
       overrides.getRawAndEntities ?? { entities: [], raw: [] },
     );
@@ -703,6 +711,301 @@ describe('SermonService', () => {
         ]);
         expect(result.count).toBe(5);
         expect(result.nextCursor).toBeNull();
+      });
+    });
+
+    describe('sort/order (full-fetch path)', () => {
+      it('orders by LOWER(title) ASC then id DESC for sort=title with an explicit asc order', async () => {
+        const pageBuilder = mockBuilder();
+        pageBuilder.getCount.mockResolvedValue(5);
+        sermonRepository.createQueryBuilder.mockReturnValue(pageBuilder);
+
+        await service.findAll(
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          'title',
+          'asc',
+        );
+
+        expect(pageBuilder.orderBy).toHaveBeenCalledWith(
+          'LOWER(sermon.title)',
+          'ASC',
+        );
+        expect(pageBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sermon.id',
+          'DESC',
+        );
+        expect(pageBuilder.leftJoin).not.toHaveBeenCalled();
+      });
+
+      it('applies the directional fallback (asc for alphabetical sorts) when order is not passed', async () => {
+        // Direct service callers (the DTO always resolves the direction, but
+        // the service keeps the same rule as a fallback).
+        const pageBuilder = mockBuilder();
+        pageBuilder.getCount.mockResolvedValue(5);
+        sermonRepository.createQueryBuilder.mockReturnValue(pageBuilder);
+
+        await service.findAll(
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          'title',
+          undefined as never,
+        );
+
+        expect(pageBuilder.orderBy).toHaveBeenCalledWith(
+          'LOWER(sermon.title)',
+          'ASC',
+        );
+      });
+
+      it('orders by LOWER(artist) DESC then id DESC for an explicit desc direction', async () => {
+        const pageBuilder = mockBuilder();
+        pageBuilder.getCount.mockResolvedValue(5);
+        sermonRepository.createQueryBuilder.mockReturnValue(pageBuilder);
+
+        await service.findAll(
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          'artist',
+          'desc',
+        );
+
+        expect(pageBuilder.orderBy).toHaveBeenCalledWith(
+          'LOWER(sermon.artist)',
+          'DESC',
+        );
+        expect(pageBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sermon.id',
+          'DESC',
+        );
+      });
+
+      it('orders by id ASC for an explicit asc direction on the default date sort', async () => {
+        const pageBuilder = mockBuilder();
+        pageBuilder.getCount.mockResolvedValue(5);
+        sermonRepository.createQueryBuilder.mockReturnValue(pageBuilder);
+
+        await service.findAll(
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          'date',
+          'asc',
+        );
+
+        expect(pageBuilder.orderBy).toHaveBeenCalledWith('sermon.id', 'ASC');
+        expect(pageBuilder.addOrderBy).not.toHaveBeenCalled();
+      });
+
+      it('orders by LOWER(playlist.title) ASC NULLS LAST, join position, then id DESC for sort=playlist (plain joins, no row multiplication)', async () => {
+        const pageBuilder = mockBuilder();
+        pageBuilder.getCount.mockResolvedValue(5);
+        sermonRepository.createQueryBuilder.mockReturnValue(pageBuilder);
+
+        await service.findAll(
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          'playlist',
+          'asc',
+        );
+
+        expect(pageBuilder.leftJoin).toHaveBeenCalledWith(
+          'sermon.playlistJoins',
+          'playlistSermonJoin',
+        );
+        expect(pageBuilder.leftJoin).toHaveBeenCalledWith(
+          'playlistSermonJoin.playlist',
+          'playlist',
+        );
+        expect(pageBuilder.leftJoinAndSelect).not.toHaveBeenCalled();
+        expect(pageBuilder.orderBy).toHaveBeenCalledWith(
+          'LOWER(playlist.title)',
+          'ASC',
+          'NULLS LAST',
+        );
+        expect(pageBuilder.addOrderBy).toHaveBeenCalledWith(
+          'playlistSermonJoin.position',
+          'ASC',
+        );
+        expect(pageBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sermon.id',
+          'DESC',
+        );
+        // Full fetch (no offset params): the plain page query runs, not the
+        // GROUP BY id-page helper.
+        expect(pageBuilder.groupBy).not.toHaveBeenCalled();
+        expect(pageBuilder.getRawMany).not.toHaveBeenCalled();
+      });
+
+      it('ignores sort/order under search: rank DESC then id DESC, no playlist joins', async () => {
+        const pageBuilder = mockBuilder();
+        const countBuilder = mockBuilder();
+        countBuilder.getCount.mockResolvedValue(3);
+        sermonRepository.createQueryBuilder
+          .mockReturnValueOnce(pageBuilder)
+          .mockReturnValueOnce(countBuilder);
+
+        await service.findAll(
+          undefined,
+          undefined,
+          'благодать',
+          undefined,
+          undefined,
+          'title',
+          'asc',
+        );
+
+        expect(pageBuilder.orderBy).toHaveBeenCalledWith('rank', 'DESC');
+        expect(pageBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sermon.id',
+          'DESC',
+        );
+        expect(pageBuilder.orderBy).not.toHaveBeenCalledWith(
+          'LOWER(sermon.title)',
+          expect.anything(),
+        );
+        expect(pageBuilder.leftJoin).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('sort/order (offset path)', () => {
+      it('keeps the join-free page query for an alphabetical sort (sort=title)', async () => {
+        const pageBuilder = mockBuilder();
+        pageBuilder.getCount.mockResolvedValue(42);
+        sermonRepository.createQueryBuilder.mockReturnValue(pageBuilder);
+        mockEmptyGraphQueries();
+
+        await service.findAll(
+          undefined,
+          undefined,
+          undefined,
+          1,
+          20,
+          'title',
+          'asc',
+        );
+
+        expect(pageBuilder.orderBy).toHaveBeenCalledWith(
+          'LOWER(sermon.title)',
+          'ASC',
+        );
+        expect(pageBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sermon.id',
+          'DESC',
+        );
+        expect(pageBuilder.leftJoin).not.toHaveBeenCalled();
+        expect(pageBuilder.skip).toHaveBeenCalledWith(0);
+        expect(pageBuilder.take).toHaveBeenCalledWith(20);
+        expect(pageBuilder.getMany).toHaveBeenCalled();
+      });
+
+      it('pages parent ids via GROUP BY for sort=playlist, hydrates by id and re-orders in memory', async () => {
+        const sermon3 = { id: 'sermon-3', playlistJoins: [] };
+        const sermon2 = { id: 'sermon-2', playlistJoins: [] };
+        const idBuilder = mockBuilder();
+        idBuilder.getRawMany.mockResolvedValue([
+          { id: 'sermon-3' },
+          { id: 'sermon-2' },
+        ]);
+        const countBuilder = mockBuilder();
+        countBuilder.getCount.mockResolvedValue(5);
+        sermonRepository.createQueryBuilder
+          .mockReturnValueOnce(idBuilder)
+          .mockReturnValueOnce(countBuilder);
+        // Hydration returns the rows shuffled — the response must follow the
+        // id-page order.
+        sermonRepository.find.mockResolvedValue([sermon2, sermon3]);
+        mockEmptyGraphQueries();
+
+        const result = await service.findAll(
+          undefined,
+          undefined,
+          undefined,
+          1,
+          20,
+          'playlist',
+          'asc',
+        );
+
+        expect(idBuilder.select).toHaveBeenCalledWith('sermon.id', 'id');
+        expect(idBuilder.leftJoin).toHaveBeenCalledWith(
+          'sermon.playlistJoins',
+          'playlistSermonJoin',
+        );
+        expect(idBuilder.leftJoin).toHaveBeenCalledWith(
+          'playlistSermonJoin.playlist',
+          'playlist',
+        );
+        expect(idBuilder.groupBy).toHaveBeenCalledWith('sermon.id');
+        expect(idBuilder.orderBy).toHaveBeenCalledWith(
+          'MIN(LOWER(playlist.title))',
+          'ASC',
+          'NULLS LAST',
+        );
+        expect(idBuilder.addOrderBy).toHaveBeenCalledWith(
+          'MIN(playlistSermonJoin.position)',
+          'ASC',
+        );
+        expect(idBuilder.addOrderBy).toHaveBeenCalledWith('sermon.id', 'DESC');
+        expect(idBuilder.skip).toHaveBeenCalledWith(0);
+        expect(idBuilder.take).toHaveBeenCalledWith(20);
+        expect(idBuilder.getRawMany).toHaveBeenCalledTimes(1);
+        // The count query runs on its own builder (no joins).
+        expect(countBuilder.getCount).toHaveBeenCalledTimes(1);
+        expect(sermonRepository.find).toHaveBeenCalledWith({
+          where: { id: In(['sermon-3', 'sermon-2']) },
+        });
+        expect(result.sermons.map((s) => s.id)).toEqual([
+          'sermon-3',
+          'sermon-2',
+        ]);
+        expect(result.count).toBe(5);
+        expect(result.nextCursor).toBeNull();
+      });
+
+      it('fails fast when a page id is missing from the hydration query (dangling FK)', async () => {
+        const idBuilder = mockBuilder();
+        idBuilder.getRawMany.mockResolvedValue([
+          { id: 'sermon-1' },
+          { id: 'sermon-missing' },
+        ]);
+        const countBuilder = mockBuilder();
+        countBuilder.getCount.mockResolvedValue(2);
+        sermonRepository.createQueryBuilder
+          .mockReturnValueOnce(idBuilder)
+          .mockReturnValueOnce(countBuilder);
+        sermonRepository.find.mockResolvedValue([
+          { id: 'sermon-1', playlistJoins: [] },
+        ]);
+        mockEmptyGraphQueries();
+
+        await expect(
+          service.findAll(
+            undefined,
+            undefined,
+            undefined,
+            1,
+            20,
+            'playlist',
+            'asc',
+          ),
+        ).rejects.toThrow(
+          'Sermon "sermon-missing" missing from hydration query',
+        );
       });
     });
   });

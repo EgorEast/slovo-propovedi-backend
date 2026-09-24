@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CreateSermonDto } from './dto/create-sermon.dto';
+import { SermonSort } from './dto/find-all-sermons-query.dto';
 import { UpdateSermonDto } from './dto/update-sermon.dto';
 import { CHAPTER_RANGE_VERSE_MESSAGE, isVerseRange } from './dto/verse-range';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -26,6 +27,7 @@ import {
 } from './interfaces/interface';
 import { MinioService } from 'src/minio/minio.service';
 import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
+import { SortOrder } from 'src/shared/sort';
 
 const SERMON_RELATIONS = [
   'playlistJoins',
@@ -210,6 +212,8 @@ export class SermonService {
     search?: string,
     page?: number,
     limit?: number,
+    sort: SermonSort = 'date',
+    order?: SortOrder,
   ): Promise<AllSermonsResponse> {
     try {
       // Parse the search term at the boundary ONCE: the sanitized tsquery
@@ -221,15 +225,39 @@ export class SermonService {
       // so the service never sees an ambiguous combination.
       const offsetMode = page !== undefined || limit !== undefined;
 
-      // Relevance-ranked search orders by (rank DESC, id DESC); without search
-      // the plain id-DESC order is preserved exactly (non-search pagination
-      // must not regress).
-      const primaryOrders: Array<[string, 'ASC' | 'DESC']> = tsquery
+      // The DTO resolves the direction default (desc for date, asc for the
+      // alphabetical sorts); the same rule is the service fallback for direct
+      // callers.
+      const direction: SortOrder = order ?? (sort === 'date' ? 'desc' : 'asc');
+
+      // Relevance-ranked search orders by (rank DESC, id DESC) and IGNORES
+      // sort/order — the spec: «при поиске сортировка игнорируется». Without
+      // search the plain sort orders apply (id DESC for the default date
+      // sort, so non-search pagination does not regress).
+      const primaryOrders: Array<
+        [
+          order: string,
+          direction: 'ASC' | 'DESC',
+          nulls?: 'NULLS FIRST' | 'NULLS LAST',
+        ]
+      > = tsquery
         ? [
             ['rank', 'DESC'],
             ['sermon.id', 'DESC'],
           ]
-        : [['sermon.id', 'DESC']];
+        : this.buildSortOrders(sort, direction);
+
+      // sort=playlist pages the PARENT ids first: a sermon can belong to
+      // several playlists, so a join in the page query would multiply rows
+      // and under-fill pages. The ids are ordered by the first-position
+      // playlist title and the page is hydrated afterwards.
+      if (offsetMode && !tsquery && sort === 'playlist') {
+        return await this.findSermonsOffsetPageByPlaylist(
+          page,
+          limit,
+          direction,
+        );
+      }
 
       // Page query: sermons only, no relation joins. The relation graph is
       // assembled afterwards from linear queries (assembleSermonGraph) — the
@@ -245,14 +273,32 @@ export class SermonService {
           .setParameter('tsquery', tsquery);
       }
 
+      // sort=playlist orders by the top-level playlist title via a plain
+      // (non-select) join. Only the full-fetch id-page paths can reach this
+      // state — the DTO rejects sort/order combined with take/cursor, and the
+      // offset id-page path above returns early — so the join never multiplies
+      // entity rows. getMany groups by primary key anyway, so each sermon
+      // appears exactly once even when it belongs to several playlists.
+      if (!tsquery && sort === 'playlist') {
+        pageQueryBuilder
+          .leftJoin('sermon.playlistJoins', 'playlistSermonJoin')
+          .leftJoin('playlistSermonJoin.playlist', 'playlist');
+      }
+
       // orderBy replaces any previous order, addOrderBy appends — apply the
       // primary orders first (relation orders are irrelevant now: each sermon
       // row appears exactly once).
-      primaryOrders.forEach(([order, direction], index) => {
+      primaryOrders.forEach(([orderExpr, orderDirection, nulls], index) => {
         if (index === 0) {
-          pageQueryBuilder.orderBy(order, direction);
+          if (nulls) {
+            pageQueryBuilder.orderBy(orderExpr, orderDirection, nulls);
+          } else {
+            pageQueryBuilder.orderBy(orderExpr, orderDirection);
+          }
+        } else if (nulls) {
+          pageQueryBuilder.addOrderBy(orderExpr, orderDirection, nulls);
         } else {
-          pageQueryBuilder.addOrderBy(order, direction);
+          pageQueryBuilder.addOrderBy(orderExpr, orderDirection);
         }
       });
 
@@ -360,6 +406,95 @@ export class SermonService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  // ORDER BY expressions for the non-search sort keys. The direction is the
+  // resolved default from the DTO (asc for the alphabetical sorts, desc for
+  // date); the tiebreak is always id DESC so equal titles stay deterministic.
+  // playlist bases the order on the LOWEST-position playlist title with
+  // NULLS LAST (sermons without playlists stay at the end in both directions)
+  // and then the join position within that playlist.
+  private buildSortOrders(
+    sort: SermonSort,
+    direction: SortOrder,
+  ): Array<
+    [
+      order: string,
+      direction: 'ASC' | 'DESC',
+      nulls?: 'NULLS FIRST' | 'NULLS LAST',
+    ]
+  > {
+    const dir = direction === 'asc' ? 'ASC' : 'DESC';
+    switch (sort) {
+      case 'title':
+        return [
+          ['LOWER(sermon.title)', dir],
+          ['sermon.id', 'DESC'],
+        ];
+      case 'artist':
+        return [
+          ['LOWER(sermon.artist)', dir],
+          ['sermon.id', 'DESC'],
+        ];
+      case 'playlist':
+        return [
+          ['LOWER(playlist.title)', dir, 'NULLS LAST'],
+          ['playlistSermonJoin.position', dir],
+          ['sermon.id', 'DESC'],
+        ];
+      case 'date':
+        return [['sermon.id', dir]];
+    }
+  }
+
+  // Offset page for sort=playlist: pages the PARENT ids (GROUP BY sermon.id —
+  // one row per sermon even when a sermon belongs to several playlists),
+  // orders by the lowest-position playlist title (NULLS LAST) and then by the
+  // minimum join position, and hydrates the page by ids. A missing row means
+  // a dangling FK — fail fast instead of silently dropping it.
+  private async findSermonsOffsetPageByPlaylist(
+    page: number | undefined,
+    limit: number | undefined,
+    direction: SortOrder,
+  ): Promise<AllSermonsResponse> {
+    const effectivePage = page ?? 1;
+    const effectiveLimit = limit ?? DEFAULT_PAGE_LIMIT;
+    const dir = direction === 'asc' ? 'ASC' : 'DESC';
+
+    const idQueryBuilder = this.sermonRepository
+      .createQueryBuilder('sermon')
+      .select('sermon.id', 'id')
+      .leftJoin('sermon.playlistJoins', 'playlistSermonJoin')
+      .leftJoin('playlistSermonJoin.playlist', 'playlist')
+      .groupBy('sermon.id')
+      .orderBy('MIN(LOWER(playlist.title))', dir, 'NULLS LAST')
+      .addOrderBy('MIN(playlistSermonJoin.position)', dir)
+      .addOrderBy('sermon.id', 'DESC')
+      .skip((effectivePage - 1) * effectiveLimit)
+      .take(effectiveLimit);
+    const idRows = await idQueryBuilder.getRawMany<{ id: string }>();
+    const pageIds = idRows.map((row) => row.id);
+
+    const count = await this.countSermons(undefined);
+
+    const sermons = pageIds.length
+      ? await this.sermonRepository.find({ where: { id: In(pageIds) } })
+      : [];
+    const sermonsById = new Map(sermons.map((sermon) => [sermon.id, sermon]));
+    const orderedSermons = pageIds.map((id) => {
+      const sermon = sermonsById.get(id);
+      if (!sermon) {
+        throw new Error(`Sermon "${id}" missing from hydration query`);
+      }
+      return sermon;
+    });
+
+    const graph = await this.assembleSermonGraph(orderedSermons);
+    return {
+      sermons: graph.map((s) => this.normalizeSermonRelations(s)),
+      count,
+      nextCursor: null,
+    };
   }
 
   // Cheap total for the full-fetch response: COUNT over the sermon table
@@ -772,12 +907,15 @@ export class SermonService {
 
   async remove(id: string): Promise<StatusSermonResponse> {
     try {
-      // Read the audio URL before the row is gone: the DB deletion stays the
-      // source of truth and always succeeds; file cleanup is best-effort.
+      // Read the stored file URLs before the row is gone: the DB deletion stays
+      // the source of truth and always succeeds; file cleanup is best-effort.
       const sermon = await this.sermonRepository.findOne({ where: { id } });
       await this.sermonRepository.delete(id);
       if (sermon?.audioUrl) {
-        await this.removeAudioFileBestEffort(sermon.audioUrl);
+        await this.removeFileBestEffort(sermon.audioUrl);
+      }
+      if (sermon?.textFileUrl) {
+        await this.removeFileBestEffort(sermon.textFileUrl);
       }
       return { status: 'success' };
     } catch (error) {
@@ -791,16 +929,16 @@ export class SermonService {
     }
   }
 
-  // Best-effort cleanup of the stored audio file after the DB row is gone. Any
-  // failure (missing file, MinIO down, malformed URL) is logged and swallowed —
-  // the HTTP request must never fail because of file cleanup.
-  private async removeAudioFileBestEffort(audioUrl: string): Promise<void> {
+  // Best-effort cleanup of a stored file (audio or text) after the DB row is
+  // gone. Any failure (missing file, MinIO down, malformed URL) is logged and
+  // swallowed — the HTTP request must never fail because of file cleanup.
+  private async removeFileBestEffort(fileUrl: string): Promise<void> {
     try {
-      await this.minioService.removeObjectByUrl(audioUrl);
+      await this.minioService.removeObjectByUrl(fileUrl);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `Failed to remove audio file "${audioUrl}" after sermon deletion: ${message}`,
+        `Failed to remove file "${fileUrl}" after sermon deletion: ${message}`,
       );
     }
   }

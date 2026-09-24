@@ -10,7 +10,7 @@
 | Метод / путь | Guard | Body/Param | DTO ответа | Метод сервиса |
 |---------------|-------|------------|------------|----------------|
 | `POST /playlists` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `CreatePlaylistDto` | `PlaylistResponseDto` | `create` |
-| `GET /playlists` | публичный | query `FindAllPlaylistsQueryDto` (`search?`, `page?`, `limit?`) | `AllPlaylistsResponseDto` | `findAll(search, page, limit)` |
+| `GET /playlists` | публичный | query `FindAllPlaylistsQueryDto` (`search?`, `page?`, `limit?`, `sort?`, `order?`) | `AllPlaylistsResponseDto` | `findAll(search, page, limit, sort, order)` |
 | `GET /playlists/:id` | публичный | `IdParamDto` | `PlaylistResponseDto` | `findOne` |
 | `PATCH /playlists/:id/sermons/reorder` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` + `ReorderSermonsInPlaylistDto` | `StatusPlaylistResponseDto` | `reorderSermonsInPlaylist(id, sermonIds)` |
 | `PATCH /playlists/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `IdParamDto` + `UpdatePlaylistDto` | `PlaylistResponseDto` | `update` |
@@ -46,13 +46,13 @@
 
 ## `findAll` — полная выборка, offset-пагинация и полнотекстовый поиск (`playlist.service.ts`)
 
-Сигнатура: `findAll(search?, page?, limit?)`. Три пути:
+Сигнатура: `findAll(search?, page?, limit?, sort?, order?)`. Три пути:
 
 | Условие | Путь | Как фильтрует |
 |---------|------|----------------|
 | `page`/`limit` задан | **offset** | пагинация **родительских id** (join-свободный запрос) + отдельный дешёвый `getCount` + гидрация страницы через `WHERE id IN (...)` + восстановление порядка в памяти |
 | `search` задан (без `page`/`limit`) | **поиск** | QueryBuilder (`getManyAndCount`): `playlist.search_vector @@ tsquery`, порядок по релевантности |
-| ни то, ни другое | **полная выборка** | `findAndCount` (как до поиска — поведение без изменений, кроме детерминированного порядка родителя `id DESC`) |
+| ни то, ни другое | **полная выборка** | `findAndCount` для дефолта `date`/`desc` (поведение без изменений, кроме детерминированного порядка родителя `id DESC`); иначе — тот же QueryBuilder с сортировкой вместо `rank`-порядка |
 
 `limit` без `page` означает первую страницу (`page = 1`); `page` без `limit` — размер страницы по умолчанию `DEFAULT_PAGE_LIMIT = 100` (максимум схемы). У плейлистов нет keyset-режима, поэтому правило взаимоисключения (как у sermons) не нужно.
 
@@ -66,6 +66,25 @@
 4. **Восстановление порядка в памяти** — `WHERE IN` теряет порядок id-страницы, поэтому гидратированные строки переупорядочиваются по порядку id-страницы. Отсутствующая строка (нарушенный FK: id-страница видела плейлист, гидрация — нет) — fail-fast с `Error`, а не молчаливое выпадение из ответа.
 
 Без `page`/`limit` поведение прежнее, но порядок родителя в полной выборке теперь **детерминированный `id DESC`**. Это видимое изменение зафиксировано в спецификации 0.15.0.
+
+### Сортировка (`sort`/`order`)
+
+`sort` ∈ {`date`, `title`, `section`}, `order` ∈ {`asc`, `desc`}. Значения по умолчанию **направленные**: `sort=date` → `order=desc`; для алфавитных сортировок (`title`/`section`) отсутствующий `order` → `asc`. Направление резолвится в DTO (`.transform`, читает **резолвленный** `sort`, поэтому отсутствующий `sort` даёт `date`/`desc`); сервис хранит то же правило (`order ?? (sort === 'date' ? 'desc' : 'asc')`) как fallback для прямых вызовов. Keyset-режима у плейлистов нет, поэтому правила взаимоисключения (как у sermons) не требуется.
+
+`ORDER BY` (tiebreak — `playlist.id DESC`):
+
+| `sort` | `ORDER BY` |
+|--------|------------|
+| `date` | `playlist.id <dir>` |
+| `title` | `LOWER(playlist.title) <dir>, playlist.id DESC` |
+| `section` | `LOWER(sections.title) <dir> NULLS LAST, sectionJoins.position <dir>, playlist.id DESC` |
+
+- `LOWER(...)` — регистронезависимая алфавитная сортировка; `NULLS LAST` оставляет плейлисты без разделов в конце **в обоих направлениях**.
+- `section` упорядочивает по названию «первого» раздела — с наименьшим `LOWER(title)` (при равенстве — с наименьшей позицией join-а); в offset-режиме это явные `MIN(LOWER(sections.title))` / `MIN(sectionJoins.position)`.
+- **Поиск игнорирует `sort`/`order`** — ранжированный порядок `(rank DESC, id DESC)` побеждает (спецификация: «при поиске сортировка игнорируется»).
+- В полной выборке к сортировке добавляются позиции join-ов (`sermonJoins.position ASC`, `sectionJoins.position ASC`) — как в поисковом пути.
+
+В полной выборке пара `date`/`desc` (дефолт) сохраняет прежний `findAndCount`-путь байт-в-байт; любая другая уходит в тот же QueryBuilder, что и поиск (`buildPlaylistSearchQueryBuilder`). В offset-режиме `sort=section` пагинирует родительские id через `GROUP BY playlist.id` с `MIN(LOWER(sections.title))` — join по разделам не размножает страницу (плейлист в нескольких разделах занимает ровно одну строку), — а `sort=title` использует `LOWER(playlist.title)` в join-свободном id-запросе.
 
 ### Полнотекстовый поиск (FTS)
 
@@ -163,7 +182,7 @@ await joinRepository.createQueryBuilder()
 |------|-------|
 | `src/playlist/dto/create-playlist.dto.ts` | `{ title, description, artwork, sermonsIds?, sectionsIds? }` |
 | `src/playlist/dto/update-playlist.dto.ts` | `{ title, description, artwork, sermonsIds, sectionsIds? }` |
-| `src/playlist/dto/find-all-playlists-query.dto.ts` | extends query + `.extend({ search: z.string().trim().min(1).optional(), page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional() })` |
+| `src/playlist/dto/find-all-playlists-query.dto.ts` | extends query + `.extend({ search: z.string().trim().min(1).optional(), page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional(), sort: z.enum(['date','title','section']).optional(), order: z.enum(['asc','desc']).optional() })` + `.transform(...)` — резолв направленных дефолтов `sort`/`order` |
 | `src/playlist/dto/reorder-sermons-in-playlist.dto.ts` | `{ sermonIds: uuid[] }` |
 | `src/playlist/dto/playlist-response.dto.ts` | create/findOne |
 | `src/playlist/dto/all-playlists-response.dto.ts` | findAll |

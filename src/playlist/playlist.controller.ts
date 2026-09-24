@@ -43,6 +43,8 @@ export class PlaylistController {
       query.search,
       query.page,
       query.limit,
+      query.sort,
+      query.order,
     );
   }
 

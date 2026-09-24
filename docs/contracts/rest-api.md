@@ -57,7 +57,7 @@
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
-| `GET /sermons` | публичный | `SermonController.findAll` | `SermonService.findAll(take, cursor, search, page, limit)` |
+| `GET /sermons` | публичный | `SermonController.findAll` | `SermonService.findAll(take, cursor, search, page, limit, sort, order)` |
 | `GET /sermons/distinct-values` | публичный | `SermonController.getDistinctValues` | `SermonService.getDistinctValues` |
 | `GET /sermons/:id` | публичный | `SermonController.findOne` | `SermonService.findOne` |
 | `GET /sermons/:id/stream-url` | публичный | `SermonController.getStreamUrl` | `SermonService.getStreamUrl` |
@@ -65,14 +65,14 @@
 | `PATCH /sermons/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.update` | `SermonService.update` |
 | `DELETE /sermons/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.remove` | `SermonService.remove` |
 
-> ✅ `GET /sermons` принимает query `take`, `cursor` (keyset-пагинация), `search` (опциональный, min 1 символ, полнотекстовый поиск по `title`/`artist`/`book`/`description` через tsvector FTS с `ts_rank`-ранжированием) и `page`/`limit` (offset-пагинация, `limit` max 100). `page`/`limit` **взаимоисключительны** с `take`/`cursor` (одновременное использование → `400`); в offset-режиме `count` — общее число совпадений, `nextCursor: null`. Поиск применён во всех путях `findAll`; без `take`/`search`/`page`/`limit` отвечает полной выборкой. Подробности поиска — [`../modules/sermon.md`](../modules/sermon.md).
+> ✅ `GET /sermons` принимает query `take`, `cursor` (keyset-пагинация), `search` (опциональный, min 1 символ, полнотекстовый поиск по `title`/`artist`/`book`/`description` через tsvector FTS с `ts_rank`-ранжированием), `page`/`limit` (offset-пагинация, `limit` max 100) и `sort`/`order` (сортировка; `sort` ∈ {`date`,`title`,`artist`,`playlist`}, направленные дефолты `date`→`desc` и алфавитные→`asc`). `page`/`limit` **взаимоисключительны** с `take`/`cursor` (одновременное использование → `400`); `sort`/`order` **взаимоисключительны** с `take`/`cursor` (→ `400`); в offset-режиме `count` — общее число совпадений, `nextCursor: null`. Поиск применён во всех путях `findAll` и игнорирует `sort`/`order` (порядок по релевантности); без `take`/`search`/`page`/`limit` отвечает полной выборкой. Подробности поиска и сортировки — [`../modules/sermon.md`](../modules/sermon.md).
 
 ### Playlists
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
 | `POST /playlists` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.create` | `PlaylistService.create` |
-| `GET /playlists` | публичный | `PlaylistController.findAll` | `PlaylistService.findAll(search, page, limit)` |
+| `GET /playlists` | публичный | `PlaylistController.findAll` | `PlaylistService.findAll(search, page, limit, sort, order)` |
 | `GET /playlists/:id` | публичный | `PlaylistController.findOne` | `PlaylistService.findOne` |
 | `PATCH /playlists/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.update` | `PlaylistService.update` (bulk-replace состава) |
 | `PATCH /playlists/:id/sermons/reorder` | `AuthGuard` + `RolesGuard` (admin, moderator) | `PlaylistController.reorderSermons` | `PlaylistService.reorderSermonsInPlaylist(id, sermonIds)` |
@@ -80,7 +80,7 @@
 
 > ✅ `POST /playlists` body: `{ title, description, artwork, sermonsIds?, sectionsIds? }`. `sectionsIds?` (добавлен в v0.8.0) прикрепляет плейлист к разделам — позиция в каждом разделе = `max(position) + 1`; отсутствующий/пустой массив — no-op. Ошибки: дубликаты в `sectionsIds` → `400 Bad Request` (`Duplicate section IDs detected`); несуществующий id раздела → `404 Not Found` (`Some sections not found`). Валидация выполняется в транзакции create — при ошибке плейлист не создаётся.
 
-> ✅ `GET /playlists` принимает query `search` (опциональный, min 1 символ, полнотекстовый поиск по `title`/`description`: PostgreSQL FTS `russian` + `ts_rank`-ранжирование, порядок `rank DESC` → `id DESC`) и `page`/`limit` (offset-пагинация, `limit` max 100; keyset-режима нет). Offset-путь пагинирует **родительские id** (`ORDER BY id DESC`, при поиске — `rank DESC, id DESC`), считает общее число отдельным лёгким запросом и гидратирует страницу через `WHERE id IN (...)` с восстановлением порядка в памяти. Без `search`/`page`/`limit` отвечает полной выборкой, форма `{ playlists, count }` не меняется; порядок родителя в полной выборке теперь детерминированный `id DESC`. Подробности — [`../modules/playlist.md`](../modules/playlist.md).
+> ✅ `GET /playlists` принимает query `search` (опциональный, min 1 символ, полнотекстовый поиск по `title`/`description`: PostgreSQL FTS `russian` + `ts_rank`-ранжирование, порядок `rank DESC` → `id DESC`), `page`/`limit` (offset-пагинация, `limit` max 100; keyset-режима нет) и `sort`/`order` (`sort` ∈ {`date`,`title`,`section`}, направленные дефолты `date`→`desc` и алфавитные→`asc`; поиск игнорирует `sort`/`order`). Offset-путь пагинирует **родительские id** (`ORDER BY id DESC`, при поиске — `rank DESC, id DESC`, при `sort=section` — `GROUP BY playlist.id` с `MIN(LOWER(sections.title))`), считает общее число отдельным лёгким запросом и гидратирует страницу через `WHERE id IN (...)` с восстановлением порядка в памяти. Без `search`/`page`/`limit` отвечает полной выборкой, форма `{ playlists, count }` не меняется; порядок родителя в полной выборке теперь детерминированный `id DESC` (дефолт `date`/`desc` сохраняет прежний `findAndCount`-путь). Подробности — [`../modules/playlist.md`](../modules/playlist.md).
 
 ### Sections
 
