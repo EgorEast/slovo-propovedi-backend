@@ -2,6 +2,26 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.11.0] - 2026-09-24
+
+### Features
+- add sort and order params to sermons and playlists lists
+- add orphan file management endpoints with scan limit
+- notify session when model failover activates
+- profile plugin with adaptive model failover
+- profile plugin with adaptive model failover
+
+### Bug Fixes
+- change reviewer model in opencode profile configs
+- bound failover error-body read to 2KB
+- pin markdown-defined subagents via frontmatter, not registry
+
+### Maintenance
+- update reivewer agent model in opencode
+- update nestjs to v11.2.5
+- update devdependencies (non-major)
+- add project-local model profiles and agent config
+
 ## [0.10.0] - 2026-09-15
 
 ### Features
