@@ -29,6 +29,9 @@ the exceptions — they are in English).
   decide. Never trust a doc field list over the schema. OpenAPI version is not pinned in docs — see
   `info.version` in the external `openAPI.yaml`.
 - **Update docs in the same PR as the code change.** A code change without a docs update is incomplete.
+- **Tech debt: fix new debt immediately instead of recording it.** When a debt item is resolved,
+  **delete** its entry from `docs/debt.md` — the file lists **open** debts only; resolved entries are
+  removed, not archived.
 
 ## Stack & conventions
 

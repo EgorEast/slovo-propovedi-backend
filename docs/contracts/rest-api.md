@@ -40,7 +40,7 @@
 
 ## Карта реализации эндпоинтов (sermons + playlists + users + files)
 
-Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловые GET-выдачи по имени (`GET /files/:fileName*`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента) и `GET /files` (инвентарь хранилища) используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
+Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловые GET-выдачи по имени (`GET /files/:fileName*`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента), `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`) и `DELETE /files/:fileName` используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
 
 ### Матрица доступа по ролям
 
@@ -99,9 +99,14 @@
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
 | `POST /files` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.uploadFile` | `MinioService.uploadFile` |
-| `GET /files` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.listFiles` | `MinioService.listImages` (cover-reuse) |
+| `GET /files` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.listFiles` | `MinioService.listImages` (cover-reuse, элементы с `used`) |
+| `GET /files/orphans` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.getOrphanedFiles` | `MinioService.listOrphans` (ограниченный скан `limit`, классификация против referenced-имён из БД) |
+| `POST /files/orphans/cleanup` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.cleanupOrphanedFiles` | `MinioService.listFilesWithUsage` + `removeObjectByName` (только аудио/текст, best-effort) |
+| `DELETE /files/:fileName` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.removeFile` | `MinioService.removeObjectByName` (только изображения; `409` при использовании как обложка) |
 | `GET /files/:fileName` | публичный | `AppController.getFile` | `MinioService.getFileUrl` (deprecated) |
 | `GET /files/:fileName/stream-url` | публичный | `AppController.getStreamUrl` | `MinioService.getPresignedFileUrl` |
+
+> ✅ Orphans-эндпоинты: `GET /files/orphans` возвращает `{ orphaned: FileMetadataDto[], count }` — медиа-объекты bucket (изображения + `.mp3/.pdf/.fb2`), не привязанные к `sermon.audioUrl/textFileUrl/artwork` или `playlist.artwork`; у каждого элемента `used: false`. Принимает query `limit` (`1..5000`, default `500`): скан стримится и останавливается, как только собрано `limit` осиротевших файлов, поэтому ответ ограничен `limit` (`count === orphaned.length`), а память не растёт с размером bucket. `POST /files/orphans/cleanup` удаляет **только** осиротевшие аудио/текстовые объекты (изображения не трогает — обложки управляются вручную из каталога), ответ `{ deleted: string[], failed: { fileName, reason }[] }`, идемпотентно и best-effort; сканирует весь bucket без капа (нужно удалить все осиротевшие). `DELETE /files/{fileName}` удаляет изображение; `409` при использовании как обложка; не-image расширение → `400`.
 
 ### Auth
 

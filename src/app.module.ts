@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { TypeOrmModule as NestTypeOrmModule } from '@nestjs/typeorm';
 import { ZodSerializerInterceptor } from 'nestjs-zod';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -12,6 +13,8 @@ import { MinioModule } from './minio/minio.module';
 import { ConfigModule } from '@nestjs/config';
 import { SermonModule } from './sermon/sermon.module';
 import { HealthModule } from './health/health.module';
+import { SermonEntity } from './sermon/entities/sermon.entity';
+import { PlaylistEntity } from './playlist/entities/playlist.entity';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -25,6 +28,9 @@ import { HealthModule } from './health/health.module';
     TypeOrmModule,
     SermonModule,
     MinioModule,
+    // AppController needs the sermon/playlist repositories to build the
+    // referenced-file sets for the orphans endpoints.
+    NestTypeOrmModule.forFeature([SermonEntity, PlaylistEntity]),
   ],
   controllers: [AppController],
   providers: [

@@ -9,7 +9,7 @@
 
 | Модуль | Эндпоинты | Сущность | Документ |
 |--------|-----------|----------|----------|
-| `app` (файлы) | `POST /files`, `GET /files`, `GET /files/:fileName`, `GET /files/:fileName/stream-url` | — (MinIO) | [`app.md`](./app.md) |
+| `app` (файлы) | `POST /files`, `GET /files`, `GET /files/orphans`, `POST /files/orphans/cleanup`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `DELETE /files/:fileName` | — (MinIO) | [`app.md`](./app.md) |
 | `health` | `GET /health` | — | [`health.md`](./health.md) |
 | `auth` | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/profile` | `RevokedRefreshToken` (`revoked_refresh_token`, denylist) | [`auth.md`](./auth.md) |
 | `users` | `POST /users`, `GET /users`, `GET /users/:id`, `PATCH /users/:id`, `PATCH /users/:id/password`, `DELETE /users/:id` | `User` (`user`) | [`users.md`](./users.md) |
@@ -29,7 +29,7 @@
 - **Guarded (`AuthGuard`):** `GET /auth/profile` (любой аутентифицированный, включая `user`), `POST /auth/logout` (любой аутентифицированный; отзывает refresh-токен через denylist).
 - **Guarded (`AuthGuard` + `RolesGuard`):**
   - **admin-only:** все `/users*`;
-  - **admin/moderator:** все write-эндпоинты (`POST/PATCH/DELETE` sermons/sections/playlists), `POST /files`, `GET /files` (инвентарь хранилища).
+  - **admin/moderator:** все write-эндпоинты (`POST/PATCH/DELETE` sermons/sections/playlists), `POST /files`, `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`), `DELETE /files/:fileName`.
 
 Полная карта — в [`auth.md`](./auth.md), [`users.md`](./users.md) и [`../contracts/rest-api.md`](../contracts/rest-api.md).
 

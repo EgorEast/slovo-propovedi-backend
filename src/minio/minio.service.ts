@@ -4,16 +4,80 @@ import { randomUUID } from 'crypto';
 import * as Minio from 'minio';
 import * as path from 'path';
 
-export interface StoredImage {
+export interface StoredFile {
   fileName: string;
   fileUrl: string;
   size: number | null;
   lastModified: Date | null;
 }
 
+/** Storage scan result enriched with DB reference info. */
+export interface StoredFileUsage extends StoredFile {
+  used: boolean;
+}
+
+/**
+ * File names extracted from the stored URL columns (sermon + playlist) so a
+ * bucket scan can tell referenced objects from orphans. Sets are used because
+ * lookup must be O(1) for every object in the scan.
+ */
+export interface ReferencedFileNames {
+  audio: Set<string>;
+  text: Set<string>;
+  artwork: Set<string>;
+}
+
+/** Backward-compatible alias for `listImages` consumers (cover-reuse). */
+export type StoredImage = StoredFile;
+
 @Injectable()
 export class MinioService {
   static readonly BUCKET_NAME = 'files';
+
+  // Upload allow-list / media classification taxonomy. Single source of truth —
+  // uploads reject anything outside it and the orphans scan classifies by it.
+  static readonly IMAGE_EXTENSIONS: readonly string[] = [
+    '.jpeg',
+    '.jpg',
+    '.png',
+    '.webp',
+  ];
+  static readonly AUDIO_TEXT_EXTENSIONS: readonly string[] = [
+    '.mp3',
+    '.pdf',
+    '.fb2',
+  ];
+  static readonly MEDIA_EXTENSIONS: readonly string[] = [
+    ...MinioService.IMAGE_EXTENSIONS,
+    ...MinioService.AUDIO_TEXT_EXTENSIONS,
+  ];
+
+  /**
+   * Lowercased extension (with the leading dot) of a file name; names without
+   * a dot have no extension and yield an empty string.
+   */
+  static getFileExtension(fileName: string): string {
+    const dotIndex = fileName.lastIndexOf('.');
+    return dotIndex === -1 ? '' : fileName.slice(dotIndex).toLowerCase();
+  }
+
+  static isImageFile(fileName: string): boolean {
+    return MinioService.IMAGE_EXTENSIONS.includes(
+      MinioService.getFileExtension(fileName),
+    );
+  }
+
+  static isAudioOrTextFile(fileName: string): boolean {
+    return MinioService.AUDIO_TEXT_EXTENSIONS.includes(
+      MinioService.getFileExtension(fileName),
+    );
+  }
+
+  static isMediaFile(fileName: string): boolean {
+    return MinioService.MEDIA_EXTENSIONS.includes(
+      MinioService.getFileExtension(fileName),
+    );
+  }
 
   /**
    * Data-plane client: talks to MinIO over the internal Docker network.
@@ -107,37 +171,146 @@ export class MinioService {
     // Generous for a small admin app: enough for the cover-reuse gallery while
     // bounding memory usage.
     const IMAGE_LIMIT = 500;
-    const imageExtensions = ['.jpeg', '.jpg', '.png', '.webp'];
 
-    const imageObjects = await new Promise<Minio.BucketItem[]>(
-      (resolve, reject) => {
-        const stream = this.minioClient.listObjectsV2(
-          MinioService.BUCKET_NAME,
-          '',
-          true,
-        );
-        const matches: Minio.BucketItem[] = [];
-        stream.on('data', (obj) => {
-          const fileName = obj.name ?? '';
-          const extension = fileName
-            .slice(fileName.lastIndexOf('.'))
-            .toLowerCase();
-          if (imageExtensions.includes(extension)) {
-            matches.push(obj);
-            if (matches.length >= IMAGE_LIMIT) {
-              // Stop the stream early once the limit is reached. The promise
-              // is already resolved, so any later end/error event is ignored.
-              stream.destroy();
-              resolve(matches);
-            }
-          }
-        });
-        stream.on('error', reject);
-        stream.on('end', () => resolve(matches));
-      },
-    );
+    const imageObjects = await this.scanBucket({
+      extensions: MinioService.IMAGE_EXTENSIONS,
+      limit: IMAGE_LIMIT,
+    });
 
-    const newestFirst = imageObjects.sort(
+    return this.toStoredFiles(imageObjects);
+  }
+
+  /**
+   * Lists EVERY object in the default bucket, newest first. Unbounded by
+   * design — the orphans CLEANUP pass must see the whole bucket to delete
+   * every orphan; it streams from MinIO (never materializes the listing in
+   * memory at once) and a small admin catalog keeps the collected list cheap.
+   * The read-only orphans endpoint uses the bounded `listOrphans` instead.
+   */
+  async listAllFiles(): Promise<StoredFile[]> {
+    const objects = await this.scanBucket();
+    return this.toStoredFiles(objects);
+  }
+
+  /**
+   * Full bucket scan annotated with `used` — whether the object is referenced
+   * by any sermon/playlist URL column. Each object is classified by extension
+   * and compared against the matching reference set: images against artwork,
+   * audio/text against audioUrl/textFileUrl. Objects outside the media
+   * taxonomy are never marked used.
+   */
+  async listFilesWithUsage(
+    referenced: ReferencedFileNames,
+  ): Promise<StoredFileUsage[]> {
+    const files = await this.listAllFiles();
+    return files.map((file) => ({
+      ...file,
+      used: this.isReferenced(file.fileName, referenced),
+    }));
+  }
+
+  /**
+   * Lists at most `limit` orphaned MEDIA objects, newest first. Unlike
+   * `listFilesWithUsage` (which materializes the whole bucket for the cleanup
+   * pass), this scan classifies each object as it streams — media extension
+   * AND unreferenced — and stops as soon as `limit` orphans are collected.
+   * Neither referenced objects nor objects beyond the cap are ever
+   * accumulated, so memory is bounded by `limit`, not by the bucket size.
+   */
+  async listOrphans(
+    referenced: ReferencedFileNames,
+    limit: number,
+  ): Promise<StoredFile[]> {
+    const objects = await this.scanBucket({
+      match: (fileName) =>
+        MinioService.isMediaFile(fileName) &&
+        !this.isReferenced(fileName, referenced),
+      limit,
+    });
+    return this.toStoredFiles(objects);
+  }
+
+  private isReferenced(
+    fileName: string,
+    referenced: ReferencedFileNames,
+  ): boolean {
+    if (MinioService.isImageFile(fileName)) {
+      return referenced.artwork.has(fileName);
+    }
+    if (MinioService.isAudioOrTextFile(fileName)) {
+      return referenced.audio.has(fileName) || referenced.text.has(fileName);
+    }
+    return false;
+  }
+
+  /**
+   * Streams bucket objects through listObjectsV2, optionally filtered by
+   * extension or an arbitrary `match` predicate, and capped at `limit`
+   * (counted over the matched objects). When the cap is hit the stream is
+   * destroyed early — the promise is already resolved, so any later end/error
+   * event is ignored.
+   */
+  private scanBucket(
+    options: {
+      extensions?: readonly string[];
+      match?: (fileName: string) => boolean;
+      limit?: number;
+    } = {},
+  ): Promise<Minio.BucketItem[]> {
+    const { extensions, match, limit } = options;
+    return new Promise<Minio.BucketItem[]>((resolve, reject) => {
+      const stream = this.minioClient.listObjectsV2(
+        MinioService.BUCKET_NAME,
+        '',
+        true,
+      );
+      const matches: Minio.BucketItem[] = [];
+      // Once the cap is hit (or the stream ends/errors) the promise settles and
+      // any in-flight `data` event must be ignored — `destroy()` stops the
+      // stream, but a buffered event can still arrive afterwards.
+      let settled = false;
+      stream.on('data', (obj) => {
+        if (settled) {
+          return;
+        }
+        const fileName = obj.name ?? '';
+        if (
+          extensions &&
+          !extensions.includes(MinioService.getFileExtension(fileName))
+        ) {
+          return;
+        }
+        if (match && !match(fileName)) {
+          return;
+        }
+        matches.push(obj);
+        if (limit !== undefined && matches.length >= limit) {
+          settled = true;
+          stream.destroy();
+          resolve(matches);
+        }
+      });
+      stream.on('error', (error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(error);
+      });
+      stream.on('end', () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(matches);
+      });
+    });
+  }
+
+  private async toStoredFiles(
+    objects: Minio.BucketItem[],
+  ): Promise<StoredFile[]> {
+    const newestFirst = objects.sort(
       (a, b) =>
         (b.lastModified?.getTime() ?? 0) - (a.lastModified?.getTime() ?? 0),
     );
@@ -220,6 +393,14 @@ export class MinioService {
    */
   async removeObjectByUrl(fileUrl: string): Promise<void> {
     const fileName = MinioService.extractFileNameFromUrl(fileUrl);
+    await this.minioClient.removeObject(MinioService.BUCKET_NAME, fileName);
+  }
+
+  /**
+   * Removes an object from the default bucket by its file name. Deleting a
+   * non-existent object is a no-op in MinIO (S3 DeleteObject is idempotent).
+   */
+  async removeObjectByName(fileName: string): Promise<void> {
     await this.minioClient.removeObject(MinioService.BUCKET_NAME, fileName);
   }
 

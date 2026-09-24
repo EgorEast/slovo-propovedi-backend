@@ -16,7 +16,7 @@
 | [`debt.md`](./debt.md) | Реестр технического долга и инцидентов (срезанные углы, known-issues) |
 | [`scripts.md`](./scripts.md) | CLI-скрипты: bulk-загрузка mp3-проповедей в API (`npm run upload-sermons`), кодогенерация |
 | [`modules/README.md`](./modules/README.md) | Индекс модулей: module → endpoints → entity → doc |
-| [`modules/app.md`](./modules/app.md) | Файловое хранилище: `POST/GET /files`, stream-url |
+| [`modules/app.md`](./modules/app.md) | Файловое хранилище: `POST/GET /files`, orphans, `DELETE /files/:fileName`, stream-url |
 | [`modules/health.md`](./modules/health.md) | `GET /health` → `{ status: 'ok' }` |
 | [`modules/auth.md`](./modules/auth.md) | login/refresh/logout/profile, JWT-токены, denylist, bcrypt, `AuthGuard` |
 | [`modules/users.md`](./modules/users.md) | Сущность `user`, `UsersService`, `UsersController` (CRUD + смена пароля) |
@@ -48,7 +48,7 @@
 |----------------------|------------|
 | `src/main.ts` | Bootstrap: CORS, `createZodValidationPipe(strict)`, MinIO bucket, Swagger UI, порт 3000 |
 | `src/app.module.ts` | Корневой модуль: регистрирует все модули + глобальный `ZodSerializerInterceptor` |
-| `src/app.controller.ts` | `POST/GET /files`, `GET /files/:fileName`, `GET /files/:fileName/stream-url` |
+| `src/app.controller.ts` | `POST/GET /files`, `GET /files/orphans`, `POST /files/orphans/cleanup`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `DELETE /files/:fileName` |
 | `src/db/typeorm.module.ts` | Подключение к PostgreSQL (конфиг, `synchronize: false`, PgBouncer) |
 | `src/auth/` | `AuthGuard`, auth-контроллер, DTO |
 | `src/users/` | Сущность `user`, `UsersService`, `UsersController` (CRUD + смена пароля) |

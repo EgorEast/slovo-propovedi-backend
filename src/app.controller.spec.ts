@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { MinioService } from './minio/minio.service';
+import { SermonEntity } from './sermon/entities/sermon.entity';
+import { PlaylistEntity } from './playlist/entities/playlist.entity';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -12,6 +15,8 @@ describe('AppController', () => {
       providers: [
         { provide: MinioService, useValue: {} },
         { provide: JwtService, useValue: {} },
+        { provide: getRepositoryToken(SermonEntity), useValue: {} },
+        { provide: getRepositoryToken(PlaylistEntity), useValue: {} },
       ],
     }).compile();
 

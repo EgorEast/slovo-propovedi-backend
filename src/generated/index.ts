@@ -5,7 +5,7 @@
  * REST API сервиса «Слово.Проповеди».
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.17.0
+ * OpenAPI spec version: 0.18.1
  */
 import * as zod from 'zod';
 
@@ -21,12 +21,7 @@ export const HealthControllerCheckResponse = zod.strictObject({
  * @summary Загрузить файл (изображение, аудио MP3, PDF, FB2)
  */
 export const AppControllerUploadFileBody = zod.strictObject({
-  file: zod
-    .instanceof(Blob)
-    .optional()
-    .describe(
-      'Допустимые форматы — JPEG, PNG, WebP, MP3, PDF, FB2. Другие форматы будут отклонены.',
-    ),
+  file: zod.instanceof(Blob).optional(),
 });
 
 export const AppControllerUploadFileResponse = zod.strictObject({
@@ -45,9 +40,63 @@ export const GetFilesResponse = zod.strictObject({
       fileUrl: zod.string(),
       size: zod.int().nullable(),
       lastModified: zod.iso.datetime({ offset: true }).nullable(),
+      used: zod
+        .boolean()
+        .describe(
+          'true, если объект используется как обложка (artwork) какой-либо проповеди или плейлиста',
+        ),
     }),
   ),
   count: zod.int(),
+});
+
+/**
+ * Возвращает объекты bucket (изображения и аудио/текст), не привязанные ни к одной проповеди (audioUrl/textFileUrl) и не используемые как обложки (artwork проповедей и плейлистов). Скан bucket стримится и останавливается, как только собрано `limit` осиротевших файлов, поэтому ответ ограничен `limit`, а память не растёт с размером bucket.
+ * @summary Получить список осиротевших файлов
+ */
+export const appControllerGetOrphanedFilesQueryLimitDefault = 500;
+export const appControllerGetOrphanedFilesQueryLimitMax = 5000;
+
+export const AppControllerGetOrphanedFilesQueryParams = zod.strictObject({
+  limit: zod
+    .int()
+    .min(1)
+    .max(appControllerGetOrphanedFilesQueryLimitMax)
+    .default(appControllerGetOrphanedFilesQueryLimitDefault)
+    .describe(
+      'Максимальное число возвращаемых осиротевших файлов; скан bucket останавливается при достижении лимита. По умолчанию 500, максимум 5000.',
+    ),
+});
+
+export const AppControllerGetOrphanedFilesResponse = zod.strictObject({
+  orphaned: zod.array(
+    zod.strictObject({
+      fileName: zod.string(),
+      fileUrl: zod.string(),
+      size: zod.int().nullable(),
+      lastModified: zod.iso.datetime({ offset: true }).nullable(),
+      used: zod
+        .boolean()
+        .describe(
+          'true, если объект используется как обложка (artwork) какой-либо проповеди или плейлиста',
+        ),
+    }),
+  ),
+  count: zod.int(),
+});
+
+/**
+ * Идемпотентно удаляет ТОЛЬКО осиротевшие аудио/текстовые объекты (.mp3, .pdf, .fb2). Изображения не удаляются никогда — обложками управляют вручную из каталога. Ошибка удаления отдельного объекта не роняет запрос (best-effort).
+ * @summary Удалить осиротевшие аудио и текстовые файлы
+ */
+export const AppControllerCleanupOrphanedFilesResponse = zod.strictObject({
+  deleted: zod.array(zod.string()).describe('Имена удалённых объектов'),
+  failed: zod.array(
+    zod.strictObject({
+      fileName: zod.string(),
+      reason: zod.string(),
+    }),
+  ),
 });
 
 /**
@@ -71,6 +120,18 @@ export const AppControllerGetFileParams = zod.strictObject({
 export const AppControllerGetFileResponse = zod.strictObject({
   fileName: zod.string(),
   fileUrl: zod.string(),
+});
+
+/**
+ * Удаляет объект-изображение (JPEG/PNG/WebP) из bucket. Если изображение используется как обложка (artwork) проповеди или плейлиста — 409 Conflict.
+ * @summary Удалить файл-изображение
+ */
+export const AppControllerRemoveFileParams = zod.strictObject({
+  fileName: zod.string(),
+});
+
+export const AppControllerRemoveFileResponse = zod.strictObject({
+  status: zod.string(),
 });
 
 /**
@@ -814,6 +875,9 @@ export const PlaylistControllerCreateResponse = zod.strictObject({
 
 export const playlistControllerFindAllQueryLimitMax = 100;
 
+export const playlistControllerFindAllQuerySortDefault = `date`;
+export const playlistControllerFindAllQueryOrderDefault = `desc`;
+
 export const PlaylistControllerFindAllQueryParams = zod.strictObject({
   search: zod
     .string()
@@ -832,6 +896,18 @@ export const PlaylistControllerFindAllQueryParams = zod.strictObject({
     .optional()
     .describe(
       'Размер страницы; если указан без page, используется первая страница',
+    ),
+  sort: zod
+    .enum(['date', 'title', 'section'])
+    .default(playlistControllerFindAllQuerySortDefault)
+    .describe(
+      'Вариант сортировки. `date` — по убыванию id (порядок загрузки), `title` — по названию, `section` — по названию раздела (плейлисты без раздела — в конце). Игнорируется при поиске (сортировка по релевантности). Применяется только к страничной выдаче (page/limit) и полной выдаче; несовместимо с take/cursor.',
+    ),
+  order: zod
+    .enum(['asc', 'desc'])
+    .default(playlistControllerFindAllQueryOrderDefault)
+    .describe(
+      'Направление сортировки. Для `sort=date` по умолчанию `desc`, для остальных — `asc`.',
     ),
 });
 
@@ -1771,6 +1847,9 @@ export const sermonControllerFindAllQueryTakeMax = 100;
 
 export const sermonControllerFindAllQueryLimitMax = 100;
 
+export const sermonControllerFindAllQuerySortDefault = `date`;
+export const sermonControllerFindAllQueryOrderDefault = `desc`;
+
 export const SermonControllerFindAllQueryParams = zod.strictObject({
   take: zod.int().min(1).max(sermonControllerFindAllQueryTakeMax).optional(),
   cursor: zod.uuid().optional(),
@@ -1793,6 +1872,18 @@ export const SermonControllerFindAllQueryParams = zod.strictObject({
     .optional()
     .describe(
       'Размер страницы; если указан без page, используется первая страница; взаимоисключителен с take и cursor (одновременное использование → 400)',
+    ),
+  sort: zod
+    .enum(['date', 'title', 'artist', 'playlist'])
+    .default(sermonControllerFindAllQuerySortDefault)
+    .describe(
+      'Вариант сортировки. `date` — по убыванию id (порядок загрузки), `title` — по названию, `artist` — по автору, `playlist` — по названию плейлиста (проповеди без плейлиста — в конце). Игнорируется при поиске (сортировка по релевантности). Применяется только к страничной выдаче (page/limit) и полной выдаче; несовместимо с take/cursor.',
+    ),
+  order: zod
+    .enum(['asc', 'desc'])
+    .default(sermonControllerFindAllQueryOrderDefault)
+    .describe(
+      'Направление сортировки. Для `sort=date` по умолчанию `desc`, для остальных — `asc`.',
     ),
 });
 
