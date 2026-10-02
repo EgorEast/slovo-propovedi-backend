@@ -31,7 +31,7 @@
 |-----|----------|
 | `ItemsSize` | `'small' | 'middle' | 'large' | 'xLarge'` |
 | `Transform` | `'high' | 'short' | 'middle'` |
-| `WhereIsSlideTitleLocated` | `'on' | 'under' | 'bothOnAndUnder'` |
+| `WhereIsSlideTitleLocated` | `'on' | 'under' | 'bothOnAndUnder'` (deprecated — не использовать, читается как 'under') |
 
 Колонки:
 

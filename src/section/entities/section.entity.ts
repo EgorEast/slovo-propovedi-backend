@@ -3,6 +3,12 @@ import { SectionPlaylistJoinEntity } from './section-playlist-join.entity';
 
 export type ItemsSize = 'small' | 'middle' | 'large' | 'xLarge';
 export type Transform = 'high' | 'short' | 'middle';
+/**
+ * Where the section slide title is rendered.
+ *
+ * @deprecated The `'bothOnAndUnder'` value is deprecated: do not use it in new
+ * sections. It is read as `'under'`. The `'on'` and `'under'` values remain valid.
+ */
 export type WhereIsSlideTitleLocated = 'on' | 'under' | 'bothOnAndUnder';
 
 @Entity('section')
