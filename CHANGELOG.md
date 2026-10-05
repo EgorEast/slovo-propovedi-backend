@@ -2,6 +2,11 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.13.0] - 2026-10-05
+
+### Features
+- allow deleting unreferenced audio and text files
+
 ## [0.12.0] - 2026-10-05
 
 ### Features
