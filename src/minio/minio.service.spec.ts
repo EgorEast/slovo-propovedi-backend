@@ -180,6 +180,38 @@ describe('MinioService', () => {
     });
   });
 
+  describe('isReferencedAudioOrText', () => {
+    it('returns true when the file name is referenced as audio or text', () => {
+      const referenced: ReferencedFileNames = {
+        audio: new Set(['sermon.mp3']),
+        text: new Set(['notes.pdf']),
+        artwork: new Set<string>(),
+      };
+
+      expect(service.isReferencedAudioOrText('sermon.mp3', referenced)).toBe(
+        true,
+      );
+      expect(service.isReferencedAudioOrText('notes.pdf', referenced)).toBe(
+        true,
+      );
+    });
+
+    it('returns false for unreferenced and image file names', () => {
+      const referenced: ReferencedFileNames = {
+        audio: new Set(['sermon.mp3']),
+        text: new Set<string>(),
+        artwork: new Set(['cover.png']),
+      };
+
+      expect(service.isReferencedAudioOrText('free.mp3', referenced)).toBe(
+        false,
+      );
+      expect(service.isReferencedAudioOrText('cover.png', referenced)).toBe(
+        false,
+      );
+    });
+  });
+
   describe('getContentType', () => {
     it('maps image and audio extensions to correct MIME types', () => {
       expect(service.getContentType('.jpeg')).toBe('image/jpeg');

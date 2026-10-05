@@ -186,10 +186,12 @@ export class AppController {
   }
 
   /**
-   * Deletes an image object. Refuses non-image extensions (audio/text cleanup
-   * belongs to `POST /files/orphans/cleanup`) and returns 409 when the image
-   * is referenced as artwork by a sermon or playlist — covers are managed
-   * manually and must not disappear under an admin's feet.
+   * Deletes a stored object. Images (.jpeg/.jpg/.png/.webp) are deletable as
+   * before, but 409 when referenced as artwork by a sermon or playlist.
+   * Audio/text objects (.mp3/.m4a/.pdf/.fb2) are deletable only while
+   * unreferenced by any sermon (audioUrl/textFileUrl); a referenced one is 409
+   * because deleting it would break playback/reading. Extensions outside the
+   * media taxonomy are rejected with 400.
    */
   @Delete('files/:fileName')
   @Roles(UserRole.Admin, UserRole.Moderator)
@@ -198,18 +200,31 @@ export class AppController {
   async removeFile(
     @Param() params: FileNameParamDto,
   ): Promise<StatusFileResponseDto> {
-    if (!MinioService.isImageFile(params.fileName)) {
+    const { fileName } = params;
+
+    // Guard clause: unknown extensions are rejected before any DB work.
+    if (!MinioService.isMediaFile(fileName)) {
       throw new BadRequestException(
         'Удалять можно только изображения (JPEG, PNG, WebP). Аудио и текстовые файлы удаляются через очистку осиротевших файлов.',
       );
     }
+
     const referenced = await this.loadReferencedFileNames();
-    if (referenced.artwork.has(params.fileName)) {
+    if (MinioService.isImageFile(fileName)) {
+      if (referenced.artwork.has(fileName)) {
+        throw new ConflictException(
+          `Изображение "${fileName}" используется как обложка проповеди или плейлиста и не может быть удалено`,
+        );
+      }
+    } else if (
+      this.minioService.isReferencedAudioOrText(fileName, referenced)
+    ) {
       throw new ConflictException(
-        `Изображение "${params.fileName}" используется как обложка проповеди или плейлиста и не может быть удалено`,
+        `Файл "${fileName}" используется в проповеди — сначала удалите его из проповеди`,
       );
     }
-    await this.minioService.removeObjectByName(params.fileName);
+
+    await this.minioService.removeObjectByName(fileName);
     return { status: 'success' } as StatusFileResponseDto;
   }
 
