@@ -44,6 +44,7 @@ export class MinioService {
   ];
   static readonly AUDIO_TEXT_EXTENSIONS: readonly string[] = [
     '.mp3',
+    '.m4a',
     '.pdf',
     '.fb2',
   ];
@@ -420,6 +421,9 @@ export class MinioService {
       }
       case '.mp3': {
         return 'audio/mp3';
+      }
+      case '.m4a': {
+        return 'audio/mp4';
       }
       default: {
         return 'application/octet-stream';

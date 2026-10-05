@@ -62,7 +62,7 @@ export class AppController {
     const extension = MinioService.getFileExtension(multerFile.originalname);
     if (!MinioService.MEDIA_EXTENSIONS.includes(extension)) {
       throw new BadRequestException(
-        'Недопустимый тип файла. Разрешены только: JPEG, PNG, WebP, MP3, PDF, FB2.',
+        'Недопустимый тип файла. Разрешены только: JPEG, PNG, WebP, MP3, M4A, PDF, FB2.',
       );
     }
 
@@ -135,7 +135,7 @@ export class AppController {
 
   /**
    * Idempotent, best-effort cleanup of orphaned AUDIO/TEXT objects only
-   * (.mp3/.pdf/.fb2) — images are never deleted here because covers are
+   * (.mp3/.m4a/.pdf/.fb2) — images are never deleted here because covers are
    * managed manually from the catalog UI. Per-object failures are collected
    * and reported; one failure never fails the request.
    */
