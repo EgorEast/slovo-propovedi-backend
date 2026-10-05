@@ -2,6 +2,16 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.12.0] - 2026-10-05
+
+### Features
+- accept m4a audio uploads
+
+### Maintenance
+- regenerate zod schemas from openAPI 0.18.2
+- update opencode agents models
+- deprecate bothOnAndUnder slide title location value
+
 ## [0.11.0] - 2026-09-24
 
 ### Features
