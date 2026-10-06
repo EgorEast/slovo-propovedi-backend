@@ -142,6 +142,14 @@ describe('MinioService', () => {
       expect(destroy).toHaveBeenCalled();
     });
 
+    it('classifies m4a objects as orphan media and skips other audio formats', async () => {
+      mockListObjects([bucketItem('sermon.m4a'), bucketItem('raw.wav')]);
+
+      const orphans = await service.listOrphans(unreferenced, 500);
+
+      expect(orphans.map((file) => file.fileName)).toEqual(['sermon.m4a']);
+    });
+
     it('excludes objects referenced as audio or text', async () => {
       mockListObjects([bucketItem('used.mp3'), bucketItem('free.mp3')]);
 
@@ -169,6 +177,54 @@ describe('MinioService', () => {
         'new.mp3',
         'old.mp3',
       ]);
+    });
+  });
+
+  describe('isReferencedAudioOrText', () => {
+    it('returns true when the file name is referenced as audio or text', () => {
+      const referenced: ReferencedFileNames = {
+        audio: new Set(['sermon.mp3']),
+        text: new Set(['notes.pdf']),
+        artwork: new Set<string>(),
+      };
+
+      expect(service.isReferencedAudioOrText('sermon.mp3', referenced)).toBe(
+        true,
+      );
+      expect(service.isReferencedAudioOrText('notes.pdf', referenced)).toBe(
+        true,
+      );
+    });
+
+    it('returns false for unreferenced and image file names', () => {
+      const referenced: ReferencedFileNames = {
+        audio: new Set(['sermon.mp3']),
+        text: new Set<string>(),
+        artwork: new Set(['cover.png']),
+      };
+
+      expect(service.isReferencedAudioOrText('free.mp3', referenced)).toBe(
+        false,
+      );
+      expect(service.isReferencedAudioOrText('cover.png', referenced)).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('getContentType', () => {
+    it('maps image and audio extensions to correct MIME types', () => {
+      expect(service.getContentType('.jpeg')).toBe('image/jpeg');
+      expect(service.getContentType('.jpg')).toBe('image/jpeg');
+      expect(service.getContentType('.png')).toBe('image/png');
+      expect(service.getContentType('.webp')).toBe('image/webp');
+      expect(service.getContentType('.mp3')).toBe('audio/mp3');
+      expect(service.getContentType('.m4a')).toBe('audio/mp4');
+    });
+
+    it('falls back to application/octet-stream for unknown extensions', () => {
+      expect(service.getContentType('.wav')).toBe('application/octet-stream');
+      expect(service.getContentType('')).toBe('application/octet-stream');
     });
   });
 });

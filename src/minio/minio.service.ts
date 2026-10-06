@@ -44,6 +44,7 @@ export class MinioService {
   ];
   static readonly AUDIO_TEXT_EXTENSIONS: readonly string[] = [
     '.mp3',
+    '.m4a',
     '.pdf',
     '.fb2',
   ];
@@ -238,9 +239,22 @@ export class MinioService {
       return referenced.artwork.has(fileName);
     }
     if (MinioService.isAudioOrTextFile(fileName)) {
-      return referenced.audio.has(fileName) || referenced.text.has(fileName);
+      return this.isReferencedAudioOrText(fileName, referenced);
     }
     return false;
+  }
+
+  /**
+   * Whether an audio/text object is referenced by any sermon — as its
+   * `audioUrl` or `textFileUrl`. Shared by the orphans scan (`listOrphans`,
+   * `listFilesWithUsage`) and the single-file delete endpoint so both agree on
+   * what "unreferenced" means.
+   */
+  isReferencedAudioOrText(
+    fileName: string,
+    referenced: ReferencedFileNames,
+  ): boolean {
+    return referenced.audio.has(fileName) || referenced.text.has(fileName);
   }
 
   /**
@@ -420,6 +434,9 @@ export class MinioService {
       }
       case '.mp3': {
         return 'audio/mp3';
+      }
+      case '.m4a': {
+        return 'audio/mp4';
       }
       default: {
         return 'application/octet-stream';

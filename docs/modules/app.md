@@ -12,10 +12,10 @@
 | `POST /files` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `FileResponseDto` | `uploadFile` → MinIO | загрузка файла (multipart, поле `file`) |
 | `GET /files` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `GetFilesResponseDto` | `listImages` → MinIO | список изображений для обложек (cover-reuse), каждый с флагом `used` |
 | `GET /files/orphans` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `OrphanedFilesResponseDto` | `listOrphans` → MinIO | список осиротевших медиа-объектов (не привязаны к проповедям/плейлистам); query `limit?` (default 500, max 5000) |
-| `POST /files/orphans/cleanup` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `CleanupOrphansResponseDto` | `listFilesWithUsage` + `removeObjectByName` → MinIO | идемпотентная очистка **только** осиротевших аудио/текстовых объектов (`.mp3/.pdf/.fb2`) |
+| `POST /files/orphans/cleanup` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `CleanupOrphansResponseDto` | `listFilesWithUsage` + `removeObjectByName` → MinIO | идемпотентная очистка **только** осиротевших аудио/текстовых объектов (`.mp3/.m4a/.pdf/.fb2`) |
 | `GET /files/:fileName` | публичный | `FileResponseDto` | `getFileUrl` | статический (non-expiring) URL **deprecated** |
 | `GET /files/:fileName/stream-url` | публичный | `StreamUrlResponseDto` | `getPresignedFileUrl` | time-limited presigned URL |
-| `DELETE /files/:fileName` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `StatusFileResponseDto` | `removeObjectByName` → MinIO | удаление объекта-изображения; `409`, если изображение используется как обложка |
+| `DELETE /files/:fileName` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `StatusFileResponseDto` | `removeObjectByName` → MinIO | удаление изображения или **неиспользуемого** аудио/текста; `409`, если объект используется (обложка / проповедь) |
 
 > ⚠️ **Порядок маршрутов важен.** Статические сегменты объявлены **до** параметрических: `GET /files`/`GET /files/orphans` — до `GET /files/:fileName`, иначе `files`/`orphans` были бы проглочены как `:fileName` (Express матчит роуты по порядку).
 
@@ -62,7 +62,7 @@ async getOrphanedFiles(@Query() query: FindOrphansQueryDto): Promise<OrphanedFil
 
 - Ограниченный скан bucket через `minioService.listOrphans(referenced, query.limit)`: стрим `listObjectsV2` классифицирует объекты **на лету** и останавливается, как только собрано `limit` осиротевших файлов. Ни referenced-объекты, ни объекты за капом не накапливаются — память ограничена `limit`, а не размером bucket.
 - Query `limit` — необязательный, `1..5000`, по умолчанию `500` (`FindOrphansQueryDto`: coerce string→number + резолв дефолта из сгенерированных констант). Ответ `{ orphaned: FileMetadataDto[], count }`, `count === orphaned.length`; у каждого элемента `used: false` по определению.
-- Осиротевшими считаются медиа-объекты, не привязанные к БД: аудио/текст (`.mp3/.pdf/.fb2`), не привязанные к `sermon.audioUrl/textFileUrl`, плюс изображения (`.jpeg/.jpg/.png/.webp`), не привязанные к artwork. Набор referenced-имён строит `loadReferencedFileNames()` из БД.
+- Осиротевшими считаются медиа-объекты, не привязанные к БД: аудио/текст (`.mp3/.m4a/.pdf/.fb2`), не привязанные к `sermon.audioUrl/textFileUrl`, плюс изображения (`.jpeg/.jpg/.png/.webp`), не привязанные к artwork. Набор referenced-имён строит `loadReferencedFileNames()` из БД.
 - Порядок — newest-first (как у `listImages`), поэтому при усечении до `limit` в ответе остаются самые свежие осиротевшие объекты из просмотренной части bucket.
 
 ## `POST /files/orphans/cleanup` — очистка осиротевших аудио/текста
@@ -79,7 +79,7 @@ async cleanupOrphanedFiles(): Promise<CleanupOrphansResponseDto>
 - Очистка намеренно сканирует **весь** bucket через `listFilesWithUsage(referenced)` (без капа): чтобы удалить *все* осиротевшие аудио/текст, нужно перечислить весь bucket. Это редкая admin-операция, а не read-путь, поэтому ограничение `limit` к ней не применяется (read-эндпоинт выше ограничен).
 - Ошибка удаления отдельного объекта не роняет запрос: объект попадает в `failed` с `reason`, остальные продолжают удаляться. Ответ `{ deleted: string[], failed: { fileName, reason }[] }`. Идемпотентен: повторный вызов не найдёт уже удалённых объектов (S3 DeleteObject идемпотентен).
 
-## `DELETE /files/:fileName` — удаление изображения
+## `DELETE /files/:fileName` — удаление файла
 
 ```ts
 @Delete('files/:fileName')
@@ -89,8 +89,9 @@ async cleanupOrphanedFiles(): Promise<CleanupOrphansResponseDto>
 async removeFile(@Param() params: FileNameParamDto)
 ```
 
-- Только изображения: не-image расширение → `400 Bad Request` (аудио/текст удаляются через orphans/cleanup).
-- Если имя совпадает с artwork какой-либо проповеди или плейлиста (сравнение извлечённых имён объектов) → `409 Conflict` с понятным сообщением. Обложки управляются вручную и не должны исчезать под админом.
+- Расширение вне медиа-таксономии (не изображение и не аудио/текст) → `400 Bad Request`.
+- **Изображения** (`.jpeg/.jpg/.png/.webp`): если имя совпадает с artwork какой-либо проповеди или плейлиста (сравнение извлечённых имён объектов) → `409 Conflict` с понятным сообщением. Обложки управляются вручную и не должны исчезать под админом.
+- **Аудио/текст** (`.mp3/.m4a/.pdf/.fb2`): удаляются, только если объект **не** привязан ни к одной проповеди (ни `audioUrl`, ни `textFileUrl`). Используется тот же расчёт referenced-имён, что и в orphans-скане (`MinioService.isReferencedAudioOrText`), поэтому «неиспользуемость» на удалении и в `GET /files/orphans` совпадает. Привязанный файл → `409 Conflict` («Файл … используется в проповеди — сначала удалите его из проповеди»).
 - Иначе `removeObjectByName(fileName)` → `{ status: 'success' }`. Существование объекта не проверяется — S3 DeleteObject идемпотентен.
 
 ## `GET /files/:fileName` — статический URL

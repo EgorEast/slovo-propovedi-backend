@@ -55,6 +55,7 @@
 | `extractFileNameFromUrl(fileUrl)` (static) | вытащить имя объекта из сохранённого URL |
 | `getFileExtension(fileName)` (static) | нижний регистр расширения (с точкой); без точки — `''` |
 | `isImageFile` / `isAudioOrTextFile` / `isMediaFile` (static) | классификация объекта по расширению |
+| `isReferencedAudioOrText(fileName, referenced)` | аудио/текст привязан к проповеди (`referenced.audio`/`referenced.text`); общий расчёт «неиспользуемости» для orphans-скана и `DELETE /files/:fileName` |
 | `removeObjectByUrl(fileUrl)` | удалить объект из default bucket `files` по сохранённому URL |
 | `removeObjectByName(fileName)` | удалить объект из default bucket `files` по имени |
 | `getContentType(fileType)` | ext → MIME (`image/*`, `audio/mp3`, иначе `application/octet-stream`) |
@@ -138,6 +139,16 @@ async removeObjectByName(fileName: string): Promise<void> {
 ```
 
 Удаляет объект по имени (без разбора URL). Удаление несуществующего объекта — no-op (S3 DeleteObject идемпотентен). Используется `DELETE /files/:fileName` и `POST /files/orphans/cleanup`.
+
+### `isReferencedAudioOrText`
+
+```ts
+isReferencedAudioOrText(fileName: string, referenced: ReferencedFileNames): boolean {
+  return referenced.audio.has(fileName) || referenced.text.has(fileName);
+}
+```
+
+Единая точка проверки «аудио/текст привязан к проповеди»: используется внутри приватного `isReferenced` (классификация orphans-скана `listOrphans`/`listFilesWithUsage`) и в `AppController.removeFile` для `DELETE /files/:fileName`, чтобы удаление и orphans-скан трактовали «неиспользуемость» одинаково.
 
 ## Связанные документы
 
