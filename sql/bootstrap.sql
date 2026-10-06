@@ -54,6 +54,17 @@ CREATE TABLE revoked_refresh_token (
 );
 
 -- ---------------------------------------------------------------------------
+-- invidious_instance (admin-managed Invidious instances for sermon import)
+-- ---------------------------------------------------------------------------
+-- `serial` matches TypeORM `@PrimaryGeneratedColumn()`: an integer column with
+-- a `nextval('invidious_instance_id_seq')` default. The ascending id doubles as
+-- the display order; PUT rewrites every row so ids mirror the requested order.
+CREATE TABLE invidious_instance (
+    id serial NOT NULL,
+    url character varying NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
 -- sermon
 -- ---------------------------------------------------------------------------
 CREATE TABLE sermon (
@@ -160,6 +171,8 @@ ALTER TABLE ONLY section_playlists_playlist
     ADD CONSTRAINT "PK_section_playlists_playlist_id" PRIMARY KEY (id);
 ALTER TABLE ONLY revoked_refresh_token
     ADD CONSTRAINT "PK_revoked_refresh_token" PRIMARY KEY (id);
+ALTER TABLE ONLY invidious_instance
+    ADD CONSTRAINT "PK_invidious_instance_id" PRIMARY KEY (id);
 
 -- ---------------------------------------------------------------------------
 -- Unique constraints
@@ -174,6 +187,8 @@ ALTER TABLE ONLY section_playlists_playlist
     ADD CONSTRAINT "UQ_section_playlists_playlist_pair" UNIQUE ("sectionId", "playlistId");
 ALTER TABLE ONLY revoked_refresh_token
     ADD CONSTRAINT "UQ_revoked_refresh_token_token_hash" UNIQUE (token_hash);
+ALTER TABLE ONLY invidious_instance
+    ADD CONSTRAINT "UQ_invidious_instance_url" UNIQUE (url);
 
 -- ---------------------------------------------------------------------------
 -- Indexes (join-table FK lookups)
