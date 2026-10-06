@@ -40,16 +40,16 @@
 
 ## Карта реализации эндпоинтов (sermons + playlists + users + files)
 
-Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловые GET-выдачи по имени (`GET /files/:fileName*`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента), `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`) и `DELETE /files/:fileName` используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
+Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловые GET-выдачи по имени (`GET /files/:fileName*`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента), `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`) и `DELETE /files/:fileName` используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/invidious-instances/invidious-instances.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
 
 ### Матрица доступа по ролям
 
-| Роль | Публичные чтения | Контент (sermons/sections/playlists + `POST|PATCH|DELETE`) | Файлы (`POST /files`, `GET /files`) | Users (`/users*`) |
-|------|------------------|--------------------------------------------------------------|--------------------------------------|-------------------|
-| `admin` | ✅ | ✅ | ✅ | ✅ |
-| `moderator` | ✅ | ✅ | ✅ | ❌ `403` |
-| `user` | ✅ | ❌ `403` | ❌ `403` | ❌ `403` |
-| аноним | ✅ | ❌ `401` (guarded) | ❌ `401` | ❌ `401` |
+| Роль | Публичные чтения | Контент (sermons/sections/playlists + `POST|PATCH|DELETE`) | Файлы (`POST /files`, `GET /files`) | Users (`/users*`) | Invidious (`/invidious-instances*`) |
+|------|------------------|--------------------------------------------------------------|--------------------------------------|-------------------|-------------------------------------|
+| `admin` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `moderator` | ✅ | ✅ | ✅ | ❌ `403` | ❌ `403` |
+| `user` | ✅ | ❌ `403` | ❌ `403` | ❌ `403` | ❌ `403` |
+| аноним | ✅ | ❌ `401` (guarded) | ❌ `401` | ❌ `401` | ❌ `401` |
 
 **Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/distinct-values`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /auth/profile` и `POST /auth/logout` — `AuthGuard` без `@Roles` (любой аутентифицированный).
 
@@ -133,6 +133,15 @@
 > ✅ В отличие от sermons/playlists, **все** users-эндпоинты защищены `AuthGuard` + `RolesGuard` с `@Roles(UserRole.Admin)` — включая `GET /users` и `GET /users/:id` (нет публичных чтений). Схемы: `UserResponse` `{ id, name, username, email, role }` (**без `password`**), `CreateUserRequest` `{ name, email, username, password, role? }`, `UpdateUserRequest` `{ name?, email?, username?, role? }`, `ChangePasswordRequest` `{ password }`. Роль: `zod.enum(['admin','moderator','user'])` — обязательна в ответах, опциональна в create/update (дефолт `'user'`). `PATCH /users/:id/password` и `DELETE /users/:id` возвращают **`204 No Content`** (не `StatusResponseDto`). Защита self-delete/last-admin/self-role-change (403) — [`../modules/users.md`](../modules/users.md).
 
 > ⚠️ **Breaking change (спецификация 0.15.0):** `GET /users` больше не возвращает голый массив — ответ обёрнут в `{ users, count }` (`AllUsersResponse`), где `count` — общее число пользователей. Добавлены опциональные query `page`/`limit` (offset-пагинация, `limit` max 100, порядок `id DESC`; `limit` без `page` — первая страница). Старые admin-клиенты, ожидающие массив, должны быть обновлены.
+
+### Invidious instances
+
+| Эндпоинт | Guard | Метод контроллера | Метод сервиса |
+|----------|-------|-------------------|----------------|
+| `GET /invidious-instances` | `AuthGuard` + `RolesGuard` (admin) | `InvidiousInstancesController.findAll` | `InvidiousInstancesService.findAll()` |
+| `PUT /invidious-instances` | `AuthGuard` + `RolesGuard` (admin) | `InvidiousInstancesController.replace` | `InvidiousInstancesService.replace(urls)` |
+
+> ✅ Хранит админ-управляемый список Invidious-инстансов для формы импорта проповедей. Оба эндпоинта **admin-only** (moderator без доступа) и отвечают **голым JSON-массивом** `InvidiousInstance[]` (`{ id: integer, url: string }`, без обёртки `{ items, count }`). `PUT` body — `{ urls: string[] }`: полная замена, каждый адрес обязан начинаться с `https://`, дубликаты → `400`; порядок массива = порядок в UI. Сервис сидирует два проверенных инстанса при пустой таблице. Детали — [`../modules/invidious-instances.md`](../modules/invidious-instances.md).
 
 ## База URL и аутентификация
 

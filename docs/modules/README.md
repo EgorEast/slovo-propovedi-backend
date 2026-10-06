@@ -13,6 +13,7 @@
 | `health` | `GET /health` | — | [`health.md`](./health.md) |
 | `auth` | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/profile` | `RevokedRefreshToken` (`revoked_refresh_token`, denylist) | [`auth.md`](./auth.md) |
 | `users` | `POST /users`, `GET /users`, `GET /users/:id`, `PATCH /users/:id`, `PATCH /users/:id/password`, `DELETE /users/:id` | `User` (`user`) | [`users.md`](./users.md) |
+| `invidious-instances` | `GET /invidious-instances`, `PUT /invidious-instances` | `InvidiousInstanceEntity` (`invidious_instance`) | [`invidious-instances.md`](./invidious-instances.md) |
 | `sermon` | `POST /sermons`, `GET /sermons`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `PATCH /sermons/:id`, `DELETE /sermons/:id` | `SermonEntity` (`sermon`) | [`sermon.md`](./sermon.md) |
 | `playlist` | `POST /playlists`, `GET /playlists`, `GET /playlists/:id`, `PATCH /playlists/:id`, `PATCH /playlists/:id/sermons/reorder`, `DELETE /playlists/:id` | `PlaylistEntity` (`playlist`) + `PlaylistSermonJoinEntity` | [`playlist.md`](./playlist.md) |
 | `section` | `POST /section`, `GET /section`, `GET /section/:id`, `PATCH /section/reorder`, `PATCH /section/:id/playlists/reorder`, `PATCH /section/:id`, `DELETE /section/:id` | `SectionEntity` (`section`) + `SectionPlaylistJoinEntity` | [`section.md`](./section.md) |
@@ -28,7 +29,7 @@
 - **Публичные чтения** (без аутентификации, любая роль): `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`.
 - **Guarded (`AuthGuard`):** `GET /auth/profile` (любой аутентифицированный, включая `user`), `POST /auth/logout` (любой аутентифицированный; отзывает refresh-токен через denylist).
 - **Guarded (`AuthGuard` + `RolesGuard`):**
-  - **admin-only:** все `/users*`;
+  - **admin-only:** все `/users*`, оба `/invidious-instances*`;
   - **admin/moderator:** все write-эндпоинты (`POST/PATCH/DELETE` sermons/sections/playlists), `POST /files`, `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`), `DELETE /files/:fileName`.
 
 Полная карта — в [`auth.md`](./auth.md), [`users.md`](./users.md) и [`../contracts/rest-api.md`](../contracts/rest-api.md).
