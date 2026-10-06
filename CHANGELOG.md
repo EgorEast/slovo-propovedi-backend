@@ -2,6 +2,11 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.14.0] - 2026-10-06
+
+### Features
+- manage invidious instances for sermon import
+
 ## [0.13.0] - 2026-10-05
 
 ### Features
