@@ -24,7 +24,7 @@
 
 ## Сущности и связи
 
-Семь сущностей загружаются по glob-шаблону. Все — с uuid-PK (`@PrimaryGeneratedColumn('uuid')`).
+Восемь сущностей загружаются по glob-шаблону. Все, кроме `InvidiousInstanceEntity`, — с uuid-PK (`@PrimaryGeneratedColumn('uuid')`); у `InvidiousInstanceEntity` PK — автоинкрементный integer.
 
 ### `User` — таблица `user`
 
@@ -126,6 +126,17 @@
 | `playlistId` | uuid | FK → playlist, CASCADE |
 | `position` | int | NOT NULL default 0 |
 
+### `InvidiousInstanceEntity` — таблица `invidious_instance`
+
+`src/invidious-instances/entities/invidious-instance.entity.ts`. Админ-управляемый список Invidious-инстансов для формы импорта проповедей (см. [`modules/invidious-instances.md`](./modules/invidious-instances.md)).
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| `id` | integer | PK, автоинкремент (`serial`; `@PrimaryGeneratedColumn()`) |
+| `url` | varchar | NOT NULL, **UNIQUE** (`UQ_invidious_instance_url`) |
+
+> ✅ Единственная сущность с **integer-PK**: `id` не используется как доменный идентификатор (только React-ключ), а возрастающий порядок id служит порядком отображения — `PUT` переписывает все строки, поэтому id повторяют порядок массива.
+
 ## Карта отношений (ASCII ER)
 
 ```
@@ -202,7 +213,7 @@
 
 | Файл | Что делает |
 |------|------------|
-| `sql/bootstrap.sql` | **свежая БД**: `CREATE EXTENSION "uuid-ossp"`, таблицы `user`, `revoked_refresh_token`, `sermon`, `section`, `playlist`, join-таблицы `playlist_sermons_sermon` + `section_playlists_playlist` (суррогатный `id` PK + UNIQUE FK-пара + `position`), PK, UNIQUE (`user.email`, `user.username`, `revoked_refresh_token.token_hash`, join-пары), 4 btree-индекса на FK-колонках, FK с `ON DELETE/UPDATE CASCADE` (включая `revoked_refresh_token.user_id → user(id)`). Идентичен выходу TypeORM `synchronize` для 0.3.17 (плюс hand-maintained имена констрейнтов). |
+| `sql/bootstrap.sql` | **свежая БД**: `CREATE EXTENSION "uuid-ossp"`, таблицы `user`, `revoked_refresh_token`, `invidious_instance`, `sermon`, `section`, `playlist`, join-таблицы `playlist_sermons_sermon` + `section_playlists_playlist` (суррогатный `id` PK + UNIQUE FK-пара + `position`), PK, UNIQUE (`user.email`, `user.username`, `revoked_refresh_token.token_hash`, `invidious_instance.url`, join-пары), 4 btree-индекса на FK-колонках, FK с `ON DELETE/UPDATE CASCADE` (включая `revoked_refresh_token.user_id → user(id)`). Идентичен выходу TypeORM `synchronize` для 0.3.17 (плюс hand-maintained имена констрейнтов). |
 | `sql/migrate-add-username.sql` | **существующие БД** (2026-08-06): `ADD COLUMN IF NOT EXISTS username`, backfill NULL→`'admin'` (совпадает с playbook-var `slovo_admin_user_username`), `SET NOT NULL`, пересоздание UNIQUE `UQ_78a916df40e02a9deb1c4b75edb`. Идемпотентен. |
 | `sql/migrations/001_add_positions.sql` | **существующие БД** (2026-08-07): `ADD COLUMN IF NOT EXISTS position` на `section`, `playlist_sermons_sermon`, `section_playlists_playlist`; конвертация join-таблиц с составного PK на суррогатный `id` (DO-блоки, идемпотентно); backfill позиций через `ROW_NUMBER()` (guard `WHERE position = 0`); индекс `idx_section_position`. Идемпотентен. |
 | `sql/migrations/002_add_user_roles.sql` | **существующие БД** (2026-08-14): `ADD COLUMN IF NOT EXISTS role` на `user`; backfill `NULL → 'admin'` (все прежние аккаунты были неявными админами); `SET DEFAULT 'user'` (least privilege для новых); `SET NOT NULL`; CHECK `user_role_check` (DO-блок, идемпотентно). Идемпотентен. |
@@ -211,6 +222,7 @@
 | `sql/migrations/005_sermon_search_tsvector.sql` | **существующие БД** (2026-08-14): генерируемая колонка `sermon.search_vector` (`GENERATED ALWAYS AS ... STORED`, выражение — взвешенный `to_tsvector('russian', ...)` по title/artist/book/description) + GIN-индекс `IDX_sermon_search_vector`. Требует **PostgreSQL >= 12** (generated columns). Идемпотентен (`ADD COLUMN IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`). |
 | `sql/migrations/006_playlist_search_tsvector.sql` | **существующие БД** (2026-08-16): генерируемая колонка `playlist.search_vector` (`GENERATED ALWAYS AS ... STORED`, выражение — взвешенный `to_tsvector('russian', ...)` по title (A) / description (D)) + GIN-индекс `IDX_playlist_search_vector`. Требует **PostgreSQL >= 12** (generated columns). Идемпотентен (`ADD COLUMN IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`). |
 | `sql/migrations/007_chapter_range.sql` | **существующие БД** (2026-08-17): `sermon.chapter` `integer → json` (поддержка диапазона глав, OpenAPI 0.12.0): `ALTER TABLE ... TYPE json USING to_json(chapter)` — одиночное значение остаётся JSON-числом (`3`), диапазон становится JSON-массивом (`[10, 11]`), как у соседней колонки `verse`. DO-блок с guard по `information_schema` (`data_type = 'integer'`) — идемпотентен; на fresh-bootstrap БД (уже `json`) — no-op. Revert: `ALTER TABLE sermon ALTER COLUMN chapter TYPE integer USING (chapter::text)::integer` (падает на строках с массивом — их нужно отредактировать). |
+| `sql/migrations/008_add_invidious_instances.sql` | **существующие БД** (2026-10-06): `CREATE TABLE IF NOT EXISTS invidious_instance` (integer-PK `serial` + UNIQUE `url`) для админ-списка Invidious-инстансов импорта. PK `PK_invidious_instance_id` и UNIQUE `UQ_invidious_instance_url` — каждый в DO-блоке с guard по `pg_constraint` (идемпотентно; на fresh-bootstrap БД — no-op). Revert: `DROP TABLE IF EXISTS invidious_instance`. |
 
 Команды применения (как DB-owner):
 
@@ -226,6 +238,7 @@ psql -h <host> -U <user> -d <db> -f sql/migrations/003_revoked_refresh_tokens.sq
 psql -h <host> -U <user> -d <db> -f sql/migrations/005_sermon_search_tsvector.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/006_playlist_search_tsvector.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/007_chapter_range.sql
+psql -h <host> -U <user> -d <db> -f sql/migrations/008_add_invidious_instances.sql
 ```
 
 > ⚠️ **Нет TypeORM migration runner и нет npm-скрипта миграций.** Применение — строго ручное через `psql`. Новые изменения схемы оформлять идемпотентным SQL-файлом и синхронно отражать в `bootstrap.sql`.

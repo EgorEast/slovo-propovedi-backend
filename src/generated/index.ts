@@ -5,7 +5,7 @@
  * REST API сервиса «Слово.Проповеди».
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.18.2
+ * OpenAPI spec version: 0.19.0
  */
 import * as zod from 'zod';
 
@@ -17,8 +17,8 @@ export const HealthControllerCheckResponse = zod.strictObject({
 });
 
 /**
- * Файл сохраняется в MinIO. Допустимые форматы: JPEG, PNG, WebP (изображения), MP3 (аудио), PDF, FB2 (документы).
- * @summary Загрузить файл (изображение, аудио MP3, PDF, FB2)
+ * Файл сохраняется в MinIO. Допустимые форматы: JPEG, PNG, WebP (изображения), MP3/M4A (аудио), PDF, FB2 (документы).
+ * @summary Загрузить файл (изображение, аудио MP3/M4A, PDF, FB2)
  */
 export const AppControllerUploadFileBody = zod.strictObject({
   file: zod.instanceof(Blob).optional(),
@@ -86,7 +86,7 @@ export const AppControllerGetOrphanedFilesResponse = zod.strictObject({
 });
 
 /**
- * Идемпотентно удаляет ТОЛЬКО осиротевшие аудио/текстовые объекты (.mp3, .pdf, .fb2). Изображения не удаляются никогда — обложками управляют вручную из каталога. Ошибка удаления отдельного объекта не роняет запрос (best-effort).
+ * Идемпотентно удаляет ТОЛЬКО осиротевшие аудио/текстовые объекты (.mp3, .m4a, .pdf, .fb2). Изображения не удаляются никогда — обложками управляют вручную из каталога. Ошибка удаления отдельного объекта не роняет запрос (best-effort).
  * @summary Удалить осиротевшие аудио и текстовые файлы
  */
 export const AppControllerCleanupOrphanedFilesResponse = zod.strictObject({
@@ -2704,3 +2704,39 @@ export const UsersControllerChangePasswordBody = zod.strictObject({
 });
 
 export const UsersControllerChangePasswordResponse = zod.void();
+
+/**
+ * Возвращает сохранённый список Invidious-инстансов в порядке отображения в UI. Доступно только администраторам.
+ * @summary Список Invidious-инстансов для импорта проповедей
+ */
+export const InvidiousInstancesControllerFindAllResponseItem = zod.strictObject(
+  {
+    id: zod.int().describe('Идентификатор записи'),
+    url: zod.string().describe('Полный https-адрес Invidious-инстанса'),
+  },
+);
+export const InvidiousInstancesControllerFindAllResponse = zod.array(
+  InvidiousInstancesControllerFindAllResponseItem,
+);
+
+/**
+ * Полностью заменяет сохранённый список: отсутствующие в запросе адреса удаляются, новые добавляются в порядке массива. Дубликаты запрещены, каждый адрес должен начинаться с https://. Доступно только администраторам.
+ * @summary Заменить список Invidious-инстансов (полная замена)
+ */
+export const InvidiousInstancesControllerReplaceBody = zod.strictObject({
+  urls: zod
+    .array(zod.string())
+    .describe(
+      'Полные https-адреса инстансов; порядок соответствует порядку в UI, дубликаты запрещены',
+    ),
+});
+
+export const InvidiousInstancesControllerReplaceResponseItem = zod.strictObject(
+  {
+    id: zod.int().describe('Идентификатор записи'),
+    url: zod.string().describe('Полный https-адрес Invidious-инстанса'),
+  },
+);
+export const InvidiousInstancesControllerReplaceResponse = zod.array(
+  InvidiousInstancesControllerReplaceResponseItem,
+);
