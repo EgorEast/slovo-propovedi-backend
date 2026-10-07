@@ -14,7 +14,6 @@ async function bootstrap() {
   const allowedOrigins = [
     `https://${landingHostname}`,
     `https://www.${landingHostname}`,
-    `https://${process.env.ADMIN_FRONTEND_HOSTNAME ?? 'admin-app.slovo-propovedi.ru'}`,
     `https://${process.env.WEB_HOSTNAME ?? 'app.slovo-propovedi.ru'}`,
     'http://localhost:3000',
     'http://localhost:4321',

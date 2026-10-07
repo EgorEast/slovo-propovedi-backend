@@ -68,7 +68,6 @@ jobs:
           BACKEND_API_HOSTNAME: ${{ vars.BACKEND_API_HOSTNAME }}
           DOCS_HOSTNAME: ${{ vars.DOCS_HOSTNAME }}
           LANDING_HOSTNAME: ${{ vars.LANDING_HOSTNAME }}
-          ADMIN_FRONTEND_HOSTNAME: ${{ vars.ADMIN_FRONTEND_HOSTNAME }}
           WEB_HOSTNAME: ${{ vars.WEB_HOSTNAME }}
           # Secrets for env file generation (NEVER passed to vps-deploy.sh as args)
           JWT_SECRET: ${{ secrets.BACKEND_JWT_SECRET }}
@@ -113,7 +112,6 @@ jobs:
             printf 'DOCS_HOSTNAME=%s\n' "$DOCS_HOSTNAME"
             printf 'DOCS_UI_ORIGIN=%s\n' "https://$DOCS_HOSTNAME"
             printf 'LANDING_HOSTNAME=%s\n' "$LANDING_HOSTNAME"
-            printf 'ADMIN_FRONTEND_HOSTNAME=%s\n' "$ADMIN_FRONTEND_HOSTNAME"
             printf 'WEB_HOSTNAME=%s\n' "$WEB_HOSTNAME"
             printf 'NODE_OPTIONS=%s\n' "--max-old-space-size=256"
           } | ssh $SSH_OPTS "$SSH_TARGET" \

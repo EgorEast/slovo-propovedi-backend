@@ -21,7 +21,6 @@ const app = await NestFactory.create(AppModule);
 |--------|------------|
 | `https://slovo-propovedi.ru` | основной сайт |
 | `https://www.slovo-propovedi.ru` | www-сайт |
-| `https://admin-app.slovo-propovedi.ru` | админ-панель |
 | `http://localhost:3000` | локальный Vite-прокси (backend-порт) |
 | `http://localhost:4321` | локальный фронтенд (Svelte dev) |
 | `http://localhost:8081` | резервный локальный порт |
@@ -161,10 +160,9 @@ Node-скрипты, которые не проходят через Nest bootst
 | `OPENAPI_SPEC_URL` | `https://$DOCS_HOSTNAME/openAPI.yaml` | `main.ts` | источник спецификации для Swagger UI |
 | `DOCS_UI_ORIGIN` | — | `main.ts` | дополнительный CORS-origin (в проде — `https://$DOCS_HOSTNAME`, см. release.yml) |
 | `LANDING_HOSTNAME` | `slovo-propovedi.ru` | `main.ts` | CORS: сам домен + `www.` |
-| `ADMIN_FRONTEND_HOSTNAME` | `admin-app.slovo-propovedi.ru` | `main.ts` | CORS: админка |
 | `WEB_HOSTNAME` | `app.slovo-propovedi.ru` | `main.ts` | CORS: мобильный PWA/web-клиент |
 
-`DOCS_HOSTNAME`/`LANDING_HOSTNAME`/`ADMIN_FRONTEND_HOSTNAME`/`WEB_HOSTNAME` — org-wide Forgejo
+`DOCS_HOSTNAME`/`LANDING_HOSTNAME`/`WEB_HOSTNAME` — org-wide Forgejo
 Actions переменные (см. `slovo-propovedi-admin`/`-landing`/`-mobile`/`-docs`); значения выше —
 дефолты в коде на случай, если переменная не задана.
 
