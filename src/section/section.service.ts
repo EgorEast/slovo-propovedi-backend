@@ -18,16 +18,20 @@ import {
 } from './interfacies/interface';
 import { PlaylistService } from 'src/playlist/playlist.service';
 
-const SECTION_RELATIONS = [
-  'playlistJoins',
-  'playlistJoins.playlist',
-  'playlistJoins.playlist.sectionJoins',
-  'playlistJoins.playlist.sectionJoins.section',
-  'playlistJoins.playlist.sermonJoins',
-  'playlistJoins.playlist.sermonJoins.sermon',
-  'playlistJoins.playlist.sermonJoins.sermon.playlistJoins',
-  'playlistJoins.playlist.sermonJoins.sermon.playlistJoins.playlist',
-];
+// TypeORM 1.0 dropped the string-array form of `relations`; the object form
+// below encodes the same nested relation graph.
+const SECTION_RELATIONS = {
+  playlistJoins: {
+    playlist: {
+      sectionJoins: { section: true },
+      sermonJoins: {
+        sermon: {
+          playlistJoins: { playlist: true },
+        },
+      },
+    },
+  },
+};
 
 // DB-level ordering for every relation path the normalize functions expose.
 // Sections by global position, then their playlist joins, then each nested
@@ -86,7 +90,8 @@ export class SectionService {
         throw error;
       }
       throw new HttpException(
-        'from:createSectionItem ' + error.message,
+        'from:createSectionItem ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -103,7 +108,8 @@ export class SectionService {
         throw error;
       }
       throw new HttpException(
-        'from:findByIds section ' + error.message,
+        'from:findByIds section ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -124,7 +130,8 @@ export class SectionService {
         throw error;
       }
       throw new HttpException(
-        'from:findAllSectionItems ' + error.message,
+        'from:findAllSectionItems ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -146,7 +153,8 @@ export class SectionService {
         throw error;
       }
       throw new HttpException(
-        'from:findOneSectionItem ' + error.message,
+        'from:findOneSectionItem ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -214,7 +222,8 @@ export class SectionService {
         throw error;
       }
       throw new HttpException(
-        'from:update ' + error.message,
+        'from:update ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -229,7 +238,8 @@ export class SectionService {
         throw error;
       }
       throw new HttpException(
-        'from:remove ' + error.message,
+        'from:remove ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

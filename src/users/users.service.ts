@@ -63,7 +63,8 @@ export class UsersService {
         throw error;
       }
       throw new HttpException(
-        'from:findOneByUsername ' + error.message,
+        'from:findOneByUsername ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -77,7 +78,8 @@ export class UsersService {
         throw error;
       }
       throw new HttpException(
-        'from:findOneById ' + error.message,
+        'from:findOneById ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -110,7 +112,8 @@ export class UsersService {
         throw error;
       }
       throw new HttpException(
-        'from:findAll ' + error.message,
+        'from:findAll ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -128,7 +131,8 @@ export class UsersService {
         throw error;
       }
       throw new HttpException(
-        'from:findOne ' + error.message,
+        'from:findOne ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -156,7 +160,8 @@ export class UsersService {
         );
       }
       throw new HttpException(
-        'from:create ' + error.message,
+        'from:create ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -226,7 +231,8 @@ export class UsersService {
         );
       }
       throw new HttpException(
-        'from:update ' + error.message,
+        'from:update ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -245,7 +251,8 @@ export class UsersService {
         throw error;
       }
       throw new HttpException(
-        'from:changePassword ' + error.message,
+        'from:changePassword ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -286,7 +293,8 @@ export class UsersService {
         throw error;
       }
       throw new HttpException(
-        'from:remove ' + error.message,
+        'from:remove ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

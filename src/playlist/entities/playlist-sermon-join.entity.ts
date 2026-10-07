@@ -4,6 +4,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Relation,
 } from 'typeorm';
 import { PlaylistEntity } from './playlist.entity';
 import { SermonEntity } from '../../sermon/entities/sermon.entity';
@@ -26,11 +27,11 @@ export class PlaylistSermonJoinEntity {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'playlistId' })
-  playlist: PlaylistEntity;
+  playlist: Relation<PlaylistEntity>;
 
   @ManyToOne(() => SermonEntity, (sermon) => sermon.playlistJoins, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'sermonId' })
-  sermon: SermonEntity;
+  sermon: Relation<SermonEntity>;
 }

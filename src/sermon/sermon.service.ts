@@ -29,16 +29,20 @@ import { MinioService } from 'src/minio/minio.service';
 import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
 import { SortOrder } from 'src/shared/sort';
 
-const SERMON_RELATIONS = [
-  'playlistJoins',
-  'playlistJoins.playlist',
-  'playlistJoins.playlist.sectionJoins',
-  'playlistJoins.playlist.sectionJoins.section',
-  'playlistJoins.playlist.sermonJoins',
-  'playlistJoins.playlist.sermonJoins.sermon',
-  'playlistJoins.playlist.sermonJoins.sermon.playlistJoins',
-  'playlistJoins.playlist.sermonJoins.sermon.playlistJoins.playlist',
-];
+// TypeORM 1.0 dropped the string-array form of `relations`; the object form
+// below encodes the same nested relation graph.
+const SERMON_RELATIONS = {
+  playlistJoins: {
+    playlist: {
+      sectionJoins: { section: true },
+      sermonJoins: {
+        sermon: {
+          playlistJoins: { playlist: true },
+        },
+      },
+    },
+  },
+};
 
 // DB-level ordering for the relation paths normalizePlaylistRelations exposes
 // — each playlist's section and sermon joins ordered by position, so no
@@ -200,7 +204,8 @@ export class SermonService {
         throw error;
       }
       throw new HttpException(
-        'from:createSermon ' + error.message,
+        'from:createSermon ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -402,7 +407,8 @@ export class SermonService {
         throw error;
       }
       throw new HttpException(
-        'from:findAllSermonItems ' + error.message,
+        'from:findAllSermonItems ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -601,7 +607,7 @@ export class SermonService {
     );
     const nestedPlaylists = nestedPlaylistIds.length
       ? await this.playlistRepository.find({
-          select: ['id', 'title'],
+          select: { id: true, title: true },
           where: { id: In(nestedPlaylistIds) },
         })
       : [];
@@ -774,7 +780,8 @@ export class SermonService {
         throw error;
       }
       throw new HttpException(
-        'from:getDistinctValues ' + error.message,
+        'from:getDistinctValues ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -793,7 +800,8 @@ export class SermonService {
         throw error;
       }
       throw new HttpException(
-        'from:findOneSermonItem ' + error.message,
+        'from:findOneSermonItem ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -810,7 +818,8 @@ export class SermonService {
         throw error;
       }
       throw new HttpException(
-        'from:findByIds sermon ' + error.message,
+        'from:findByIds sermon ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -899,7 +908,8 @@ export class SermonService {
         throw error;
       }
       throw new HttpException(
-        'from:update ' + error.message,
+        'from:update ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -923,7 +933,8 @@ export class SermonService {
         throw error;
       }
       throw new HttpException(
-        'from:remove ' + error.message,
+        'from:remove ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

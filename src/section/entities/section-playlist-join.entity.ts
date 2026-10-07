@@ -4,6 +4,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Relation,
 } from 'typeorm';
 import { SectionEntity } from './section.entity';
 import { PlaylistEntity } from '../../playlist/entities/playlist.entity';
@@ -26,11 +27,11 @@ export class SectionPlaylistJoinEntity {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'sectionId' })
-  section: SectionEntity;
+  section: Relation<SectionEntity>;
 
   @ManyToOne(() => PlaylistEntity, (playlist) => playlist.sectionJoins, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'playlistId' })
-  playlist: PlaylistEntity;
+  playlist: Relation<PlaylistEntity>;
 }

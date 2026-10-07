@@ -28,14 +28,14 @@ const PLAYLIST_SEARCH_CONDITION =
 
 // Mirrors of the service's relation graph constants — asserting the exact
 // findAndCount arguments guards the no-search path against regressions.
-const PLAYLIST_RELATIONS = [
-  'sermonJoins',
-  'sermonJoins.sermon',
-  'sermonJoins.sermon.playlistJoins',
-  'sermonJoins.sermon.playlistJoins.playlist',
-  'sectionJoins',
-  'sectionJoins.section',
-];
+const PLAYLIST_RELATIONS = {
+  sermonJoins: {
+    sermon: {
+      playlistJoins: { playlist: true },
+    },
+  },
+  sectionJoins: { section: true },
+};
 
 const PLAYLIST_ORDER = {
   id: 'DESC',

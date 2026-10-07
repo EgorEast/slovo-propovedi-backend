@@ -23,14 +23,16 @@ import { buildSearchTsQuery, SermonService } from 'src/sermon/sermon.service';
 import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
 import { SortOrder } from 'src/shared/sort';
 
-const PLAYLIST_RELATIONS = [
-  'sermonJoins',
-  'sermonJoins.sermon',
-  'sermonJoins.sermon.playlistJoins',
-  'sermonJoins.sermon.playlistJoins.playlist',
-  'sectionJoins',
-  'sectionJoins.section',
-];
+// TypeORM 1.0 dropped the string-array form of `relations`; the object form
+// below encodes the same nested relation graph.
+const PLAYLIST_RELATIONS = {
+  sermonJoins: {
+    sermon: {
+      playlistJoins: { playlist: true },
+    },
+  },
+  sectionJoins: { section: true },
+};
 
 // DB-level ordering for every relation path the normalize function exposes —
 // sermon and section joins are both ordered by position, so no in-memory
@@ -191,7 +193,8 @@ export class PlaylistService {
         throw error;
       }
       throw new HttpException(
-        'from:createPlaylist ' + error.message,
+        'from:createPlaylist ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -274,7 +277,8 @@ export class PlaylistService {
         throw error;
       }
       throw new HttpException(
-        'from:findAllPlaylistItems ' + error.message,
+        'from:findAllPlaylistItems ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -463,7 +467,8 @@ export class PlaylistService {
         throw error;
       }
       throw new HttpException(
-        'from:findByIds playlist ' + error.message,
+        'from:findByIds playlist ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -482,7 +487,8 @@ export class PlaylistService {
         throw error;
       }
       throw new HttpException(
-        'from:findOnePlaylistItem ' + error.message,
+        'from:findOnePlaylistItem ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -539,7 +545,8 @@ export class PlaylistService {
         throw error;
       }
       throw new HttpException(
-        'from:update ' + error.message,
+        'from:update ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -554,7 +561,8 @@ export class PlaylistService {
         throw error;
       }
       throw new HttpException(
-        'from:remove ' + error.message,
+        'from:remove ' +
+          (error instanceof Error ? error.message : String(error)),
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
