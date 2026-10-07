@@ -1,6 +1,6 @@
 # docs — Документация backend-репозитория (NestJS API)
 
-Здесь — документация backend-репозитория «Слово.Проповеди» (`slovo-propovedi-backend`): **NestJS 10 + TypeORM + PostgreSQL + MinIO**. Она живёт co-located с кодом (в `docs/`). Здесь фиксируется «почему» и «где что живёт»: bootstrap, валидация, схемы БД, соглашения и каждый модуль. Машино-проверяемые правила (eslint, prettier, Jest, строгий TypeScript) не дублируются — они настроены и обоснованы в [`architecture.md`](./architecture.md).
+Здесь — документация backend-репозитория «Слово.Проповеди» (`slovo-propovedi-backend`): **NestJS 12 + TypeORM + PostgreSQL + MinIO**. Она живёт co-located с кодом (в `docs/`). Здесь фиксируется «почему» и «где что живёт»: bootstrap, валидация, схемы БД, соглашения и каждый модуль. Машино-проверяемые правила (eslint, prettier, Jest, строгий TypeScript) не дублируются — они настроены и обоснованы в [`architecture.md`](./architecture.md).
 
 **Слой:** backend (NestJS API)
 **Статус:** актуально

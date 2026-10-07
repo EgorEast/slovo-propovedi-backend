@@ -14,6 +14,10 @@
 
 `SermonService.assembleSermonGraph` собирает граф из нескольких последовательных SELECT-запросов без единого снимка (snapshot): конкурентный DELETE с FK-CASCADE между запросом 1 (join-ы страницы) и запросом 2 (плейлисты) даст висячий join и fail-fast 500 вместо устаревших данных. Окно — миллисекунды, трафик админ-масштаба, поэтому решение принято осознанно (fail-fast на пропавшем родителе вместо REPEATABLE READ-транзакции). Будущее средство — обернуть чтение графа в транзакцию с уровнем изоляции REPEATABLE READ.
 
+## 4. `nestjs-zod@5.5.0` не заявляет peer-диапазон под NestJS 12 — scoped `overrides`
+
+`nestjs-zod@5.5.0` в `peerDependencies` ограничивает `@nestjs/common`/`@nestjs/swagger` диапазоном `^11`, тогда как проект уже на NestJS 12. Чтобы `npm install` не падал по peer-конфликту, в `package.json` добавлены **scoped `overrides`** (`"nestjs-zod": { "@nestjs/common": "$@nestjs/common", "@nestjs/swagger": "$@nestjs/swagger" }`) — точечный pin на уже установленные версии. Это **временный** workaround; выбран именно scoped `overrides`, а не `legacy-peer-deps` (последний ослабляет проверку peer-зависимостей глобально и маскирует реальные несовместимости). Удалить `overrides` (и эту запись), когда `nestjs-zod` выпустит peer-диапазон под `@nestjs/*` 12.
+
 ## Инцидент 2026-08-16: OOM на `GET /sermons`
 
 При ~420 проповедях `GET /sermons` без `take` через прежний 8-уровневый `leftJoinAndSelect` давал декартово размножение строк и OOM-убивал контейнер (256 МБ). Исправлено в `SermonService.findAll` переходом на join-свободную страницу + `assembleSermonGraph` (см. [`modules/sermon.md`](./modules/sermon.md)). `GET /playlists` (долг №1) остаётся уязвим по той же причине.

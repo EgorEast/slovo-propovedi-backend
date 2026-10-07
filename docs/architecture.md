@@ -175,15 +175,27 @@ Actions переменные (см. `slovo-propovedi-admin`/`-landing`/`-mobile`
 Все команды — из корня репозитория:
 
 ```bash
-npm run start:dev        # nest start --watch — hot-reload для разработки
-npm run build            # nest build
+npm run start:dev        # nest start --watch — hot-reload для разработки (typescript@6)
+npm run build            # tsgo -p tsconfig.build.json && tsc-alias -p tsconfig.build.json
 npm run start:prod       # node dist/main
-npm test                 # unit (jest, src/.*\.spec\.ts$)
+npm test                 # unit (jest 30 + @swc/jest, src/.*\.spec\.ts$)
 npm run test:e2e         # jest --config ./test/jest-e2e.json
 npm run test:cov         # jest --coverage
 npm run gen:schemas      # регенерация src/generated/index.ts (Orval + prettier)
 npm run lint             # eslint --fix
 ```
+
+### Сборочный конвейер: `tsgo` + `tsc-alias`
+
+Сборка идёт **не** через `nest build`, а нативным компилятором TypeScript 7 (`tsgo`, dev-пакет `@typescript/native-preview`) с последующим `tsc-alias`:
+
+- `npm run build` = `rimraf dist && tsgo -p tsconfig.build.json && tsc-alias -p tsconfig.build.json`; компиляция — по `tsconfig.build.json` (`rootDir: ./src`, `incremental: false`, исключены `test`/`dist`/`**/*spec.ts`).
+- Правки `tsconfig` под `tsgo`: **`baseUrl` удалён** (TS 7 его не поддерживает), `paths` (`src/*` → `./src/*`) сохранены, `types` сужены до `["node", "jest", "multer"]`. `tsgo` не переписывает path-alias'ы в JS-выводе — это делает `tsc-alias`.
+- **`typescript@6` оставлен рядом** (`^6.0.3` в devDependencies): ESLint (`typescript-eslint`) и `nest start`/`start:dev` (`@nestjs/cli`) пока работают через legacy compiler API, которого у `tsgo` нет. Это осознанная временная конфигурация до TypeScript 7.1, где native-компилятор вернёт compiler API.
+
+### Тесты: Jest 30 на `@swc/jest`
+
+Unit-тесты (`npm test`) гоняет Jest 30 через трансформ **`@swc/jest`** (декораторы и `emitDecoratorMetadata` включены в конфиге Jest в `package.json`); `ts-jest` из цепочки убран. `testRegex` — `src/.*\.spec\.ts$`; e2e — по отдельному конфигу `test/jest-e2e.json`.
 
 Нагрузочный локальный запуск: `make up` из корня репозитория поднимает postgres + backend + minio-server (см. [`conventions.md`](./conventions.md)).
 

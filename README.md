@@ -1,6 +1,6 @@
 # Слово.Проповеди — Backend API
 
-NestJS 10 + TypeORM + PostgreSQL + MinIO backend for **«Слово.Проповеди»** — the API powering the
+NestJS 12 + TypeORM + PostgreSQL + MinIO backend for **«Слово.Проповеди»** — the API powering the
 public site, the admin SPA and the mobile client. Repository root is the former `backend/` of the
 `slovo-propovedi-admin` monorepo, now a standalone repository.
 
