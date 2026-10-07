@@ -2,6 +2,19 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.14.1] - 2026-10-07
+
+### ⚠ BREAKING CHANGES
+- upgrade deps to NestJS 12, TypeORM 1.1, TS7 build toolchain
+
+### Maintenance
+- drop docker-dependent smoke step (no docker daemon on runner)
+- update docs for NestJS 12 + tsgo toolchain, record nestjs-zod overrides debt
+- add /health smoke tests to ci.yml and release.yml
+- update nestjs to v11.2.7
+- update dependency zod to v4.6.5
+- lock file maintenance
+
 ## [0.14.0] - 2026-10-06
 
 ### Features
