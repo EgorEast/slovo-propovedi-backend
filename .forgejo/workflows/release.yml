@@ -125,6 +125,25 @@ jobs:
           ssh $SSH_OPTS "$SSH_TARGET" \
             "DEPLOY_TAG='${{ github.ref_name }}' BACKEND_API_HOSTNAME='$BACKEND_API_HOSTNAME' bash /tmp/vps-deploy.sh"
 
+      - name: Smoke test — GET /health
+        # After the image is built and the service restarted on the VPS, confirm
+        # the running container serves GET /health. Retries cover a cold start and
+        # Traefik certificate warm-up.
+        env:
+          HEALTH_URL: https://${{ vars.BACKEND_API_HOSTNAME }}/health
+        run: |
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || true)
+            if [ "$CODE" = "200" ]; then
+              echo "Smoke OK: $HEALTH_URL -> 200"
+              exit 0
+            fi
+            echo "attempt $i/30: HTTP $CODE"
+            sleep 5
+          done
+          echo "::error::Smoke test failed: $HEALTH_URL did not return 200"
+          exit 1
+
       - name: Extract changelog section
         id: changelog
         run: |

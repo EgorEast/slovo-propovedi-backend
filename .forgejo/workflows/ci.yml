@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         env:
           HUSKY: 0
-        run: npm ci --legacy-peer-deps
+        run: npm ci
 
       - name: Lint
         run: npm run lint
@@ -38,6 +38,70 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Smoke test (boot built app, GET /health -> 200)
+        # Verifies the tsgo/native-TS7 production build (dist/) actually boots and
+        # serves GET /health, proving the emitted decorator metadata wires Nest DI.
+        # The app needs PostgreSQL and an S3-compatible endpoint at bootstrap:
+        # TypeORM opens its pool eagerly and main.ts calls
+        # MinioService.createBucketIfNotExists(). Throwaway containers are started
+        # for both. Requires Docker on the runner; if the runner cannot run
+        # containers, remove this step and rely on the post-deploy /health smoke
+        # in release.yml.
+        run: |
+          set -euo pipefail
+
+          APP_PID=""
+          cleanup() {
+            if [ -n "$APP_PID" ]; then kill "$APP_PID" 2>/dev/null || true; fi
+            docker rm -f smoke-pg smoke-minio >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          # Leftovers from a previous aborted run would clash on container names.
+          docker rm -f smoke-pg smoke-minio >/dev/null 2>&1 || true
+
+          docker run -d --name smoke-pg \
+            -e POSTGRES_USER=slovo -e POSTGRES_PASSWORD=slovo -e POSTGRES_DB=slovo \
+            -p 5432:5432 postgres:16-alpine
+          docker run -d --name smoke-minio \
+            -e MINIO_ROOT_USER=admin -e MINIO_ROOT_PASSWORD=adminadmin \
+            -p 9000:9000 minio/minio server /data
+
+          echo "Waiting for PostgreSQL..."
+          for _ in $(seq 1 30); do
+            if docker exec smoke-pg pg_isready -U slovo >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+
+          echo "Waiting for MinIO..."
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9000/minio/health/live >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+
+          env JWT_SECRET=ci-smoke-secret JWT_REFRESH_SECRET=ci-smoke-refresh-secret \
+              POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5432 POSTGRES_USER=slovo \
+              POSTGRES_PASSWORD=slovo POSTGRES_DB=slovo \
+              MINIO_ENDPOINT=127.0.0.1 MINIO_MAIN_PORT_IN=9000 \
+              MINIO_ACCESS_KEY=admin MINIO_SECRET_KEY=adminadmin \
+              MINIO_PUBLIC_URI=http://127.0.0.1:9000 DOCS_ENABLED=false \
+              node dist/main.js > /tmp/smoke-app.log 2>&1 &
+          APP_PID=$!
+
+          for _ in $(seq 1 40); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/health || true)
+            if [ "$CODE" = "200" ]; then
+              echo "Smoke OK: GET /health -> 200"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "::error::Smoke test failed: GET /health did not return 200"
+          echo "----- app log -----"
+          cat /tmp/smoke-app.log
+          exit 1
 
       - name: Cleanup workspace
         if: always()
