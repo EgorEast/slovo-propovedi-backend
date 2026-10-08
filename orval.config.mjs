@@ -1,8 +1,15 @@
 import { defineConfig } from 'orval';
 
+const docsHostname = process.env.DOCS_HOSTNAME;
+if (!docsHostname) {
+  throw new Error(
+    'Environment variable DOCS_HOSTNAME is required for codegen (set it in .env — see .env.example).',
+  );
+}
+
 export default defineConfig({
   'backend-schemas': {
-    input: `https://${process.env.DOCS_HOSTNAME ?? 'docs.slovo-propovedi.ru'}/openAPI.yaml`,
+    input: `https://${docsHostname}/openAPI.yaml`,
     output: {
       mode: 'single',
       target: 'src/generated/index.ts',

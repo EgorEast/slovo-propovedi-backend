@@ -7,7 +7,10 @@ set -euo pipefail
 # Runs ON the VPS as root. Triggered by the Forgejo release workflow via SSH.
 # Replaces the former Ansible role `roles/custom/slovo-backend/`.
 #
-# Usage:   DEPLOY_TAG=abc1234 bash vps-deploy.sh
+# Usage:   DEPLOY_TAG=abc1234 BACKEND_API_HOSTNAME=api.example.com \
+#          INTERNAL_PORT=3000 TRAEFIK_NETWORK=traefik \
+#          POSTGRES_NETWORK=slovo-postgres MINIO_NETWORK=slovo-minio \
+#          TRAEFIK_SERVICE=slovo-traefik.service bash vps-deploy.sh
 #
 # Scope: this script owns ONLY the slovo-backend container and its own
 # `slovo-backend` Docker network. All shared infrastructure — Docker, the
@@ -22,7 +25,18 @@ set -euo pipefail
 # --- Configuration (override via env) ---
 # DEPLOY_TAG is informational only (shown in the banner and verify output).
 DEPLOY_TAG="${DEPLOY_TAG:-unknown}"
-BACKEND_API_HOSTNAME="${BACKEND_API_HOSTNAME:-api.slovo-propovedi.ru}"
+
+# Required env — no defaults. The release workflow passes these from Forgejo
+# org variables; a missing value is a hard error (fail fast before any change).
+for required in BACKEND_API_HOSTNAME INTERNAL_PORT TRAEFIK_NETWORK \
+                POSTGRES_NETWORK MINIO_NETWORK TRAEFIK_SERVICE; do
+  if [ -z "${!required:-}" ]; then
+    echo "ERROR: ${required} is not set — required env variable (passed by the release workflow)." >&2
+    exit 1
+  fi
+done
+# Variables are validated above; from here on they are trusted (parse-don't-validate).
+# shellcheck disable=SC2269 # self-assignments document the required-variable contract
 
 SERVICE=slovo-backend
 IMAGE=slovo-backend:latest
@@ -32,16 +46,13 @@ BASE_PATH=/slovo/backend
 SRC_DIR=/slovo/backend/container-src
 ENV_FILE="$BASE_PATH/env"
 LABELS_FILE="$BASE_PATH/labels"
-INTERNAL_PORT=3000
-TRAEFIK_NETWORK=traefik
 BUILDER=slovo-constrained
 MEMORY=1g
 STOP_GRACE=30
-TRAEFIK_SERVICE="${TRAEFIK_SERVICE:-slovo-traefik.service}"
 
 # Shared infrastructure this deploy depends on but does NOT own (playbook-managed).
 REQUIRED_SERVICES="slovo-postgres slovo-pgbouncer slovo-minio $TRAEFIK_SERVICE"
-REQUIRED_NETWORKS="$TRAEFIK_NETWORK slovo-postgres slovo-minio"
+REQUIRED_NETWORKS="$TRAEFIK_NETWORK $POSTGRES_NETWORK $MINIO_NETWORK"
 
 # --- Banner ---
 echo "==============================================================="
@@ -198,8 +209,8 @@ ExecStartPre=/usr/bin/env docker create \\
     --memory=$MEMORY \\
     $IMAGE
 ExecStartPre=-/usr/bin/env sh -c '/usr/bin/env docker network connect $TRAEFIK_NETWORK $CONTAINER 2>/dev/null || true'
-ExecStartPre=-/usr/bin/env sh -c '/usr/bin/env docker network connect slovo-postgres $CONTAINER 2>/dev/null || true'
-ExecStartPre=-/usr/bin/env sh -c '/usr/bin/env docker network connect slovo-minio $CONTAINER 2>/dev/null || true'
+ExecStartPre=-/usr/bin/env sh -c '/usr/bin/env docker network connect $POSTGRES_NETWORK $CONTAINER 2>/dev/null || true'
+ExecStartPre=-/usr/bin/env sh -c '/usr/bin/env docker network connect $MINIO_NETWORK $CONTAINER 2>/dev/null || true'
 ExecStart=/usr/bin/env docker start --attach $CONTAINER
 ExecStop=-/usr/bin/env sh -c '/usr/bin/env docker stop -t $STOP_GRACE $CONTAINER 2>/dev/null || true'
 ExecStop=-/usr/bin/env sh -c '/usr/bin/env docker rm $CONTAINER 2>/dev/null || true'

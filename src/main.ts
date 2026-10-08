@@ -10,11 +10,23 @@ import type { OpenAPIObject } from '@nestjs/swagger';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  const landingHostname = process.env.LANDING_HOSTNAME ?? 'slovo-propovedi.ru';
+  // Hostnames are deployment-specific — no prod defaults. Fail fast on boot.
+  const requiredHostname = (envVar: string): string => {
+    const value = process.env[envVar];
+    if (!value) {
+      throw new Error(
+        `Environment variable ${envVar} is required but not set (e.g. from Forgejo org vars in production, or .env locally).`,
+      );
+    }
+    return value;
+  };
+  const landingHostname = requiredHostname('LANDING_HOSTNAME');
+  const webHostname = requiredHostname('WEB_HOSTNAME');
+
   const allowedOrigins = [
     `https://${landingHostname}`,
     `https://www.${landingHostname}`,
-    `https://${process.env.WEB_HOSTNAME ?? 'app.slovo-propovedi.ru'}`,
+    `https://${webHostname}`,
     'http://localhost:3000',
     'http://localhost:4321',
     'http://localhost:8081',
@@ -42,7 +54,7 @@ async function bootstrap() {
     try {
       const specUrl =
         process.env.OPENAPI_SPEC_URL ||
-        `https://${process.env.DOCS_HOSTNAME ?? 'docs.slovo-propovedi.ru'}/openAPI.yaml`;
+        `https://${requiredHostname('DOCS_HOSTNAME')}/openAPI.yaml`;
       const response = await fetch(specUrl);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const yamlText = await response.text();

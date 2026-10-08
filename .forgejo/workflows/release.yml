@@ -51,6 +51,56 @@ jobs:
           echo "::error::Timed out waiting for CI status on ${{ github.sha }}"
           exit 1
 
+      - name: Validate required vars/secrets
+        # Fail fast BEFORE any deploy work: these org-level vars/secrets must
+        # be configured (Forgejo → Organization → Actions → Variables/Secrets).
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_USER: ${{ secrets.VPS_SSH_USER }}
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          BACKEND_JWT_SECRET: ${{ secrets.BACKEND_JWT_SECRET }}
+          BACKEND_JWT_REFRESH_SECRET: ${{ secrets.BACKEND_JWT_REFRESH_SECRET }}
+          BACKEND_POSTGRES_PASSWORD: ${{ secrets.BACKEND_POSTGRES_PASSWORD }}
+          BACKEND_MINIO_SECRET_KEY: ${{ secrets.BACKEND_MINIO_SECRET_KEY }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          BACKEND_API_HOSTNAME: ${{ vars.BACKEND_API_HOSTNAME }}
+          DOCS_HOSTNAME: ${{ vars.DOCS_HOSTNAME }}
+          LANDING_HOSTNAME: ${{ vars.LANDING_HOSTNAME }}
+          WEB_HOSTNAME: ${{ vars.WEB_HOSTNAME }}
+          MINIO_API_HOSTNAME: ${{ vars.MINIO_API_HOSTNAME }}
+          POSTGRES_HOST: ${{ vars.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ vars.POSTGRES_PORT }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          MINIO_MAIN_PORT_IN: ${{ vars.MINIO_MAIN_PORT_IN }}
+          INTERNAL_PORT: ${{ vars.INTERNAL_PORT }}
+          TRAEFIK_NETWORK: ${{ vars.TRAEFIK_NETWORK }}
+          POSTGRES_NETWORK: ${{ vars.POSTGRES_NETWORK }}
+          MINIO_NETWORK: ${{ vars.MINIO_NETWORK }}
+          TRAEFIK_SERVICE: ${{ vars.TRAEFIK_SERVICE }}
+        run: |
+          missing=0
+          for var in VPS_HOST VPS_SSH_USER VPS_SSH_PRIVATE_KEY \
+                     BACKEND_JWT_SECRET BACKEND_JWT_REFRESH_SECRET \
+                     BACKEND_POSTGRES_PASSWORD BACKEND_MINIO_SECRET_KEY \
+                     MINIO_ACCESS_KEY \
+                     BACKEND_API_HOSTNAME DOCS_HOSTNAME LANDING_HOSTNAME \
+                     WEB_HOSTNAME MINIO_API_HOSTNAME \
+                     POSTGRES_HOST POSTGRES_PORT POSTGRES_USER POSTGRES_DB \
+                     MINIO_ENDPOINT MINIO_MAIN_PORT_IN \
+                     INTERNAL_PORT TRAEFIK_NETWORK POSTGRES_NETWORK \
+                     MINIO_NETWORK TRAEFIK_SERVICE; do
+            if [ -z "${!var:-}" ]; then
+              echo "::error::$var is not set — configure it as a Forgejo org/repo variable or secret."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Aborting release: one or more required vars/secrets are missing."
+            exit 1
+          fi
+
       - name: Setup SSH
         env:
           VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
@@ -75,6 +125,18 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.BACKEND_POSTGRES_PASSWORD }}
           MINIO_SECRET_KEY: ${{ secrets.BACKEND_MINIO_SECRET_KEY }}
           MINIO_API_HOSTNAME: ${{ vars.MINIO_API_HOSTNAME }}
+          INTERNAL_PORT: ${{ vars.INTERNAL_PORT }}
+          TRAEFIK_NETWORK: ${{ vars.TRAEFIK_NETWORK }}
+          POSTGRES_NETWORK: ${{ vars.POSTGRES_NETWORK }}
+          MINIO_NETWORK: ${{ vars.MINIO_NETWORK }}
+          TRAEFIK_SERVICE: ${{ vars.TRAEFIK_SERVICE }}
+          POSTGRES_HOST: ${{ vars.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ vars.POSTGRES_PORT }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          MINIO_MAIN_PORT_IN: ${{ vars.MINIO_MAIN_PORT_IN }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no"
           SSH_TARGET="$VPS_SSH_USER@$VPS_HOST"
@@ -98,14 +160,14 @@ jobs:
           {
             printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
             printf 'JWT_REFRESH_SECRET=%s\n' "$JWT_REFRESH_SECRET"
-            printf 'POSTGRES_HOST=%s\n' "slovo-pgbouncer"
-            printf 'POSTGRES_PORT=%s\n' "5432"
-            printf 'POSTGRES_USER=%s\n' "slovo"
+            printf 'POSTGRES_HOST=%s\n' "$POSTGRES_HOST"
+            printf 'POSTGRES_PORT=%s\n' "$POSTGRES_PORT"
+            printf 'POSTGRES_USER=%s\n' "$POSTGRES_USER"
             printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD"
-            printf 'POSTGRES_DB=%s\n' "slovo"
-            printf 'MINIO_ENDPOINT=%s\n' "slovo-minio"
-            printf 'MINIO_MAIN_PORT_IN=%s\n' "9000"
-            printf 'MINIO_ACCESS_KEY=%s\n' "slovo_minio"
+            printf 'POSTGRES_DB=%s\n' "$POSTGRES_DB"
+            printf 'MINIO_ENDPOINT=%s\n' "$MINIO_ENDPOINT"
+            printf 'MINIO_MAIN_PORT_IN=%s\n' "$MINIO_MAIN_PORT_IN"
+            printf 'MINIO_ACCESS_KEY=%s\n' "$MINIO_ACCESS_KEY"
             printf 'MINIO_SECRET_KEY=%s\n' "$MINIO_SECRET_KEY"
             printf 'MINIO_PUBLIC_URI=%s\n' "https://$MINIO_API_HOSTNAME"
             printf 'DOCS_ENABLED=%s\n' "false"
@@ -121,7 +183,14 @@ jobs:
           # Shared infra (Traefik, Docker, slovo user, buildx, postgres/minio) is
           # owned by the slovo-propovedi playbook; the script only verifies it.
           ssh $SSH_OPTS "$SSH_TARGET" \
-            "DEPLOY_TAG='${{ github.ref_name }}' BACKEND_API_HOSTNAME='$BACKEND_API_HOSTNAME' bash /tmp/vps-deploy.sh"
+            "DEPLOY_TAG='${{ github.ref_name }}' \
+             BACKEND_API_HOSTNAME='$BACKEND_API_HOSTNAME' \
+             INTERNAL_PORT='$INTERNAL_PORT' \
+             TRAEFIK_NETWORK='$TRAEFIK_NETWORK' \
+             POSTGRES_NETWORK='$POSTGRES_NETWORK' \
+             MINIO_NETWORK='$MINIO_NETWORK' \
+             TRAEFIK_SERVICE='$TRAEFIK_SERVICE' \
+             bash /tmp/vps-deploy.sh"
 
       - name: Smoke test — GET /health
         # After the image is built and the service restarted on the VPS, confirm

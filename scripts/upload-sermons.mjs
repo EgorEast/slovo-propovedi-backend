@@ -13,8 +13,19 @@ import { basename, join } from 'node:path';
 import readline from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
 
-const DEFAULT_API = 'https://api.slovo-propovedi.ru';
 const DEFAULT_ARTIST = 'Андрей Вовк';
+
+// Base API URL comes from BACKEND_API_HOSTNAME (bare hostname); the --api flag
+// overrides it. No prod default — fail fast with a clear message.
+const resolveDefaultApi = () => {
+  if (process.env.BACKEND_API_HOSTNAME) {
+    return `https://${process.env.BACKEND_API_HOSTNAME}`;
+  }
+  console.error(
+    'Ошибка: переменная окружения BACKEND_API_HOSTNAME не задана (или укажите --api <url>).',
+  );
+  process.exit(1);
+};
 const DEFAULT_ARTWORK = '';
 
 const USAGE = `
@@ -28,7 +39,7 @@ const USAGE = `
   <путь-к-папке>      папка с mp3-файлами
 
 Флаги:
-  --api <url>          базовый URL API (по умолчанию ${DEFAULT_API})
+  --api <url>          базовый URL API (по умолчанию https://$BACKEND_API_HOSTNAME, обязательно)
   --username <str>     имя пользователя (приоритет: флаг > SP_USERNAME > интерактивный ввод)
   --artist <str>       исполнитель проповедей (по умолчанию «${DEFAULT_ARTIST}»)
   --artwork <str>      URL обложки (по умолчанию пусто)
@@ -416,7 +427,7 @@ const VALUE_FLAGS = {
 function parseArgs(argv) {
   const args = {
     folder: null,
-    api: DEFAULT_API,
+    api: resolveDefaultApi(),
     username: null,
     artist: DEFAULT_ARTIST,
     artwork: DEFAULT_ARTWORK,
