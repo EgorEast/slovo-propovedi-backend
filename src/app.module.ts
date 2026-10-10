@@ -13,6 +13,7 @@ import { MinioModule } from './minio/minio.module';
 import { ConfigModule } from '@nestjs/config';
 import { SermonModule } from './sermon/sermon.module';
 import { InvidiousInstancesModule } from './invidious-instances/invidious-instances.module';
+import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { HealthModule } from './health/health.module';
 import { SermonEntity } from './sermon/entities/sermon.entity';
 import { PlaylistEntity } from './playlist/entities/playlist.entity';
@@ -29,6 +30,7 @@ import { PlaylistEntity } from './playlist/entities/playlist.entity';
     TypeOrmModule,
     SermonModule,
     InvidiousInstancesModule,
+    FeatureFlagsModule,
     MinioModule,
     // AppController needs the sermon/playlist repositories to build the
     // referenced-file sets for the orphans endpoints.

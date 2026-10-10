@@ -65,6 +65,29 @@ CREATE TABLE invidious_instance (
 );
 
 -- ---------------------------------------------------------------------------
+-- feature_flag / feature_flag_override (remote feature toggles)
+-- ---------------------------------------------------------------------------
+-- feature_flag holds the global default per feature key; feature_flag_override
+-- holds per-user exceptions ("grant" | "deny"), at most one row per pair.
+-- Mirrors sql/migrations/009_feature_flags.sql.
+CREATE TABLE feature_flag (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    key character varying NOT NULL,
+    title character varying NOT NULL,
+    enabled boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE TABLE feature_flag_override (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    flag_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    -- "grant" | "deny"
+    value character varying NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
 -- sermon
 -- ---------------------------------------------------------------------------
 CREATE TABLE sermon (
@@ -173,6 +196,10 @@ ALTER TABLE ONLY revoked_refresh_token
     ADD CONSTRAINT "PK_revoked_refresh_token" PRIMARY KEY (id);
 ALTER TABLE ONLY invidious_instance
     ADD CONSTRAINT "PK_invidious_instance_id" PRIMARY KEY (id);
+ALTER TABLE ONLY feature_flag
+    ADD CONSTRAINT "PK_feature_flag_id" PRIMARY KEY (id);
+ALTER TABLE ONLY feature_flag_override
+    ADD CONSTRAINT "PK_feature_flag_override_id" PRIMARY KEY (id);
 
 -- ---------------------------------------------------------------------------
 -- Unique constraints
@@ -189,6 +216,10 @@ ALTER TABLE ONLY revoked_refresh_token
     ADD CONSTRAINT "UQ_revoked_refresh_token_token_hash" UNIQUE (token_hash);
 ALTER TABLE ONLY invidious_instance
     ADD CONSTRAINT "UQ_invidious_instance_url" UNIQUE (url);
+ALTER TABLE ONLY feature_flag
+    ADD CONSTRAINT "UQ_feature_flag_key" UNIQUE (key);
+ALTER TABLE ONLY feature_flag_override
+    ADD CONSTRAINT "UQ_feature_flag_override_pair" UNIQUE (flag_id, user_id);
 
 -- ---------------------------------------------------------------------------
 -- Indexes (join-table FK lookups)
@@ -215,3 +246,18 @@ ALTER TABLE ONLY section_playlists_playlist
     ADD CONSTRAINT "FK_7e60b48429a43494fcd98f0a70a" FOREIGN KEY ("sectionId") REFERENCES section(id) ON UPDATE CASCADE ON DELETE CASCADE;
 ALTER TABLE ONLY revoked_refresh_token
     ADD CONSTRAINT "FK_revoked_refresh_token_user" FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE;
+ALTER TABLE ONLY feature_flag_override
+    ADD CONSTRAINT "FK_feature_flag_override_flag" FOREIGN KEY (flag_id) REFERENCES feature_flag(id) ON DELETE CASCADE;
+ALTER TABLE ONLY feature_flag_override
+    ADD CONSTRAINT "FK_feature_flag_override_user" FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE;
+
+-- ---------------------------------------------------------------------------
+-- Seed data
+-- ---------------------------------------------------------------------------
+-- The features the mobile app already gates on, disabled by default. Mirrors
+-- the seed in sql/migrations/009_feature_flags.sql (idempotent).
+INSERT INTO feature_flag (key, title, enabled)
+VALUES
+    ('read', 'Читать', false),
+    ('study', 'Учиться', false)
+ON CONFLICT (key) DO NOTHING;

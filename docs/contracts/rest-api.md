@@ -38,20 +38,20 @@
 
 При изменении спецификации схемы регенерируются в этом репозитории (`npm run gen:schemas`); фронтенд-SDK регенерируется отдельно в своём репозитории (`slovo-propovedi-admin`). Сгенерированные файлы коммитятся вместе с кодом.
 
-## Карта реализации эндпоинтов (sermons + playlists + users + files)
+## Карта реализации эндпоинтов (sermons + playlists + users + files + feature-flags)
 
-Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловые GET-выдачи по имени (`GET /files/:fileName*`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента), `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`) и `DELETE /files/:fileName` используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/invidious-instances/invidious-instances.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
+Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловые GET-выдачи по имени (`GET /files/:fileName*`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента), `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`) и `DELETE /files/:fileName` используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** **У feature-flags управление — admin-only, а `GET /feature-flags/me` — под `AuthGuard` без `@Roles`** (эффективные флаги нужны любой роли). Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/invidious-instances/invidious-instances.controller.ts`, `src/feature-flags/feature-flags.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
 
 ### Матрица доступа по ролям
 
-| Роль | Публичные чтения | Контент (sermons/sections/playlists + `POST|PATCH|DELETE`) | Файлы (`POST /files`, `GET /files`) | Users (`/users*`) | Invidious (`/invidious-instances*`) |
-|------|------------------|--------------------------------------------------------------|--------------------------------------|-------------------|-------------------------------------|
-| `admin` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `moderator` | ✅ | ✅ | ✅ | ❌ `403` | ❌ `403` |
-| `user` | ✅ | ❌ `403` | ❌ `403` | ❌ `403` | ❌ `403` |
-| аноним | ✅ | ❌ `401` (guarded) | ❌ `401` | ❌ `401` | ❌ `401` |
+| Роль | Публичные чтения | Контент (sermons/sections/playlists + `POST|PATCH|DELETE`) | Файлы (`POST /files`, `GET /files`) | Users (`/users*`) | Invidious (`/invidious-instances*`) | Feature flags (`/feature-flags*`) |
+|------|------------------|--------------------------------------------------------------|--------------------------------------|-------------------|-------------------------------------|------------------------------------|
+| `admin` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `moderator` | ✅ | ✅ | ✅ | ❌ `403` | ❌ `403` | ✅ `/me`, ❌ `403` (управление) |
+| `user` | ✅ | ❌ `403` | ❌ `403` | ❌ `403` | ❌ `403` | ✅ `/me`, ❌ `403` (управление) |
+| аноним | ✅ | ❌ `401` (guarded) | ❌ `401` | ❌ `401` | ❌ `401` | ❌ `401` |
 
-**Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/distinct-values`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /auth/profile` и `POST /auth/logout` — `AuthGuard` без `@Roles` (любой аутентифицированный).
+**Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/distinct-values`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /auth/profile`, `POST /auth/logout` и `GET /feature-flags/me` — `AuthGuard` без `@Roles` (любой аутентифицированный).
 
 ### Sermons
 
@@ -142,6 +142,20 @@
 | `PUT /invidious-instances` | `AuthGuard` + `RolesGuard` (admin) | `InvidiousInstancesController.replace` | `InvidiousInstancesService.replace(urls)` |
 
 > ✅ Хранит админ-управляемый список Invidious-инстансов для формы импорта проповедей. Оба эндпоинта **admin-only** (moderator без доступа) и отвечают **голым JSON-массивом** `InvidiousInstance[]` (`{ id: integer, url: string }`, без обёртки `{ items, count }`). `PUT` body — `{ urls: string[] }`: полная замена, каждый адрес обязан начинаться с `https://`, дубликаты → `400`; порядок массива = порядок в UI. Сервис сидирует два проверенных инстанса при пустой таблице. Детали — [`../modules/invidious-instances.md`](../modules/invidious-instances.md).
+
+### Feature flags
+
+| Эндпоинт | Guard | Метод контроллера | Метод сервиса |
+|----------|-------|-------------------|----------------|
+| `GET /feature-flags/me` | `AuthGuard` (любой аутентифицированный) | `FeatureFlagsController.getEffectiveForMe` | `FeatureFlagsService.getEffectiveForUser(userId, userRole)` |
+| `GET /feature-flags` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.findAll` | `FeatureFlagsService.findAll()` |
+| `POST /feature-flags` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.create` | `FeatureFlagsService.create(dto)` |
+| `PATCH /feature-flags/:id` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.update` | `FeatureFlagsService.update(id, dto)` |
+| `DELETE /feature-flags/:id` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.remove` | `FeatureFlagsService.remove(id)` |
+| `PUT /feature-flags/:id/overrides/:userId` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.setOverride` | `FeatureFlagsService.setOverride(id, userId, value)` |
+| `DELETE /feature-flags/:id/overrides/:userId` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.deleteOverride` | `FeatureFlagsService.deleteOverride(id, userId)` |
+
+> ✅ Удалённые фича-флаги: глобальный дефолт (`feature_flag.enabled`) + пер-пользовательские исключения `grant`/`deny` (`feature_flag_override`). `GET /feature-flags/me` — единственный роут под `AuthGuard` без `@Roles` (нужен любой роли) и отвечает `{ flags: [{ key, enabled }] }`; управление флагами — **admin-only**. Эффективное значение: `(enabled AND нет deny) OR grant`; **`admin`/`moderator` всегда видят все флаги включёнными**. `POST` body `{ key (^[a-z][a-z0-9-]*$), title }`, `PATCH` body `{ key?, title?, enabled? }`, override body `{ value: 'grant' | 'deny' }`; дубликат `key` → `409`, отсутствующий флаг/пользователь → `404`. Флаги `read`/`study` сидируются миграцией. Детали — [`../modules/feature-flags.md`](../modules/feature-flags.md).
 
 ## База URL и аутентификация
 

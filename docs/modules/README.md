@@ -14,6 +14,7 @@
 | `auth` | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/profile` | `RevokedRefreshToken` (`revoked_refresh_token`, denylist) | [`auth.md`](./auth.md) |
 | `users` | `POST /users`, `GET /users`, `GET /users/:id`, `PATCH /users/:id`, `PATCH /users/:id/password`, `DELETE /users/:id` | `User` (`user`) | [`users.md`](./users.md) |
 | `invidious-instances` | `GET /invidious-instances`, `PUT /invidious-instances` | `InvidiousInstanceEntity` (`invidious_instance`) | [`invidious-instances.md`](./invidious-instances.md) |
+| `feature-flags` | `GET /feature-flags/me`, `GET /feature-flags`, `POST /feature-flags`, `PATCH /feature-flags/:id`, `DELETE /feature-flags/:id`, `PUT/DELETE /feature-flags/:id/overrides/:userId` | `FeatureFlag` (`feature_flag`) + `FeatureFlagOverride` (`feature_flag_override`) | [`feature-flags.md`](./feature-flags.md) |
 | `sermon` | `POST /sermons`, `GET /sermons`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `PATCH /sermons/:id`, `DELETE /sermons/:id` | `SermonEntity` (`sermon`) | [`sermon.md`](./sermon.md) |
 | `playlist` | `POST /playlists`, `GET /playlists`, `GET /playlists/:id`, `PATCH /playlists/:id`, `PATCH /playlists/:id/sermons/reorder`, `DELETE /playlists/:id` | `PlaylistEntity` (`playlist`) + `PlaylistSermonJoinEntity` | [`playlist.md`](./playlist.md) |
 | `section` | `POST /section`, `GET /section`, `GET /section/:id`, `PATCH /section/reorder`, `PATCH /section/:id/playlists/reorder`, `PATCH /section/:id`, `DELETE /section/:id` | `SectionEntity` (`section`) + `SectionPlaylistJoinEntity` | [`section.md`](./section.md) |
@@ -27,9 +28,9 @@
 Роли: `admin` / `moderator` / `user` (`UserRole`, живут в JWT-payload `{ id, email, role }` и в БД). `AuthGuard` парсит payload zod-схемой (legacy-токены без роли → 401 → refresh); `RolesGuard` fail-closed по `@Roles(...)`.
 
 - **Публичные чтения** (без аутентификации, любая роль): `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`.
-- **Guarded (`AuthGuard`):** `GET /auth/profile` (любой аутентифицированный, включая `user`), `POST /auth/logout` (любой аутентифицированный; отзывает refresh-токен через denylist).
+- **Guarded (`AuthGuard`):** `GET /auth/profile` (любой аутентифицированный, включая `user`), `POST /auth/logout` (любой аутентифицированный; отзывает refresh-токен через denylist), `GET /feature-flags/me` (эффективные значения флагов для текущего пользователя).
 - **Guarded (`AuthGuard` + `RolesGuard`):**
-  - **admin-only:** все `/users*`, оба `/invidious-instances*`;
+  - **admin-only:** все `/users*`, оба `/invidious-instances*`, управление флагами (`GET/POST/PATCH/DELETE /feature-flags*`, `PUT/DELETE /feature-flags/:id/overrides/:userId` — кроме `GET /feature-flags/me`);
   - **admin/moderator:** все write-эндпоинты (`POST/PATCH/DELETE` sermons/sections/playlists), `POST /files`, `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`), `DELETE /files/:fileName`.
 
 Полная карта — в [`auth.md`](./auth.md), [`users.md`](./users.md) и [`../contracts/rest-api.md`](../contracts/rest-api.md).
