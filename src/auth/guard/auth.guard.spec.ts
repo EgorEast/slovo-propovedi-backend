@@ -77,4 +77,17 @@ describe('AuthGuard', () => {
       guard.canActivate(buildContext({ authorization: 'Bearer bad-token' })),
     ).rejects.toThrow(UnauthorizedException);
   });
+
+  it('fails loud when JWT_SECRET is not configured', async () => {
+    delete process.env.JWT_SECRET;
+    const rejection = guard.canActivate(
+      buildContext({ authorization: 'Bearer valid-token' }),
+    );
+
+    await expect(rejection).rejects.toThrow(
+      'JWT_SECRET environment variable is not set',
+    );
+    await expect(rejection).rejects.not.toBeInstanceOf(UnauthorizedException);
+    expect(jwtService.verifyAsync).not.toHaveBeenCalled();
+  });
 });
