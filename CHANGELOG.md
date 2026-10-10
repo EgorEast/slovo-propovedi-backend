@@ -2,6 +2,28 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.15.0] - 2026-10-10
+
+### Features
+- make /feature-flags/me public with optional auth and uniform rules
+- add GET feature-flag overrides endpoint
+- add feature flags module with per-user overrides
+- fail fast on required env/deploy vars, drop prod defaults
+
+### Bug Fixes
+- add missing idx_section_position to bootstrap
+- align feature_flag_override index naming between bootstrap and migrations
+- add migration 010 for feature_flag_override.created_at on existing databases
+
+### Refactors
+- harden feature-flag override upsert and remove
+- derive feature-flag DTOs from generated schemas
+- remove ADMIN_FRONTEND_HOSTNAME env variable and its CORS origin
+
+### Maintenance
+- pin missing JWT_SECRET behavior in AuthGuard spec
+- list overrides read endpoint in module index
+
 ## [0.14.1] - 2026-10-07
 
 ### ⚠ BREAKING CHANGES
