@@ -229,6 +229,8 @@ CREATE INDEX "IDX_5ce6a49a1e80041f94cb5152fe" ON playlist_sermons_sermon USING b
 CREATE INDEX "IDX_7fd858f1b2a29fa7a6a5ab2c77" ON playlist_sermons_sermon USING btree ("sermonId");
 CREATE INDEX "IDX_39bacf40bb28fa91cdf8c3e1ea" ON section_playlists_playlist USING btree ("playlistId");
 CREATE INDEX "IDX_7e60b48429a43494fcd98f0a70" ON section_playlists_playlist USING btree ("sectionId");
+-- Global section ordering (reorder + list endpoints) — mirrors migration 001.
+CREATE INDEX idx_section_position ON section USING btree (position);
 -- GIN index for full-text search (search_vector @@ tsquery) — mirrors migration 005.
 CREATE INDEX "IDX_sermon_search_vector" ON sermon USING gin (search_vector);
 -- GIN index for playlist full-text search (search_vector @@ tsquery) — mirrors migration 006.

@@ -106,7 +106,7 @@
 | `id` | uuid | PK |
 | `title` | varchar | NOT NULL |
 | `description` | varchar | nullable |
-| `position` | int | NOT NULL default 0 (глобальный порядок) |
+| `position` | int | NOT NULL default 0 (глобальный порядок); индекс `idx_section_position` |
 | `items-size` / `transform` | varchar | enums |
 | `items-rows` | int | nullable |
 | `is-description-title-on-slide-large` | boolean | default false |
@@ -240,7 +240,7 @@
 
 | Файл | Что делает |
 |------|------------|
-| `sql/bootstrap.sql` | **свежая БД**: `CREATE EXTENSION "uuid-ossp"`, таблицы `user`, `revoked_refresh_token`, `invidious_instance`, `feature_flag` + `feature_flag_override`, `sermon`, `section`, `playlist`, join-таблицы `playlist_sermons_sermon` + `section_playlists_playlist` (суррогатный `id` PK + UNIQUE FK-пара + `position`), PK, UNIQUE (`user.email`, `user.username`, `revoked_refresh_token.token_hash`, `invidious_instance.url`, `feature_flag.key`, `feature_flag_override`(`flag_id`,`user_id`), join-пары), 5 btree-индексов на FK-колонках (включая `ix_feature_flag_override_user` на `feature_flag_override.user_id`), FK с `ON DELETE/UPDATE CASCADE` (включая `revoked_refresh_token.user_id → user(id)` и обе FK `feature_flag_override`), сид флагов `read`/`study`. Исторически соответствует выходу TypeORM `synchronize` 0.3.17 (плюс hand-maintained имена констрейнтов). |
+| `sql/bootstrap.sql` | **свежая БД**: `CREATE EXTENSION "uuid-ossp"`, таблицы `user`, `revoked_refresh_token`, `invidious_instance`, `feature_flag` + `feature_flag_override`, `sermon`, `section`, `playlist`, join-таблицы `playlist_sermons_sermon` + `section_playlists_playlist` (суррогатный `id` PK + UNIQUE FK-пара + `position`), PK, UNIQUE (`user.email`, `user.username`, `revoked_refresh_token.token_hash`, `invidious_instance.url`, `feature_flag.key`, `feature_flag_override`(`flag_id`,`user_id`), join-пары), 5 btree-индексов на FK-колонках (включая `ix_feature_flag_override_user` на `feature_flag_override.user_id`), FK с `ON DELETE/UPDATE CASCADE` (включая `revoked_refresh_token.user_id → user(id)` и обе FK `feature_flag_override`), btree-индекс `idx_section_position` на `section.position` (глобальное упорядочивание разделов), сид флагов `read`/`study`. Исторически соответствует выходу TypeORM `synchronize` 0.3.17 (плюс hand-maintained имена констрейнтов). |
 | `sql/migrate-add-username.sql` | **существующие БД** (2026-08-06): `ADD COLUMN IF NOT EXISTS username`, backfill NULL→`'admin'` (совпадает с playbook-var `slovo_admin_user_username`), `SET NOT NULL`, пересоздание UNIQUE `UQ_78a916df40e02a9deb1c4b75edb`. Идемпотентен. |
 | `sql/migrations/001_add_positions.sql` | **существующие БД** (2026-08-07): `ADD COLUMN IF NOT EXISTS position` на `section`, `playlist_sermons_sermon`, `section_playlists_playlist`; конвертация join-таблиц с составного PK на суррогатный `id` (DO-блоки, идемпотентно); backfill позиций через `ROW_NUMBER()` (guard `WHERE position = 0`); индекс `idx_section_position`. Идемпотентен. |
 | `sql/migrations/002_add_user_roles.sql` | **существующие БД** (2026-08-14): `ADD COLUMN IF NOT EXISTS role` на `user`; backfill `NULL → 'admin'` (все прежние аккаунты были неявными админами); `SET DEFAULT 'user'` (least privilege для новых); `SET NOT NULL`; CHECK `user_role_check` (DO-блок, идемпотентно). Идемпотентен. |
