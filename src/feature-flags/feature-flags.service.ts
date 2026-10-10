@@ -119,9 +119,6 @@ export class FeatureFlagsService {
         throw new NotFoundException('Флаг не найден');
       }
 
-      // Overrides reference the flag; drop them first so a missing DB-level
-      // cascade cannot leave orphaned rows behind.
-      await this.overridesRepository.delete({ flagId: id });
       await this.flagsRepository.delete(id);
     } catch (error) {
       throw this.wrap('remove', error);
@@ -141,17 +138,9 @@ export class FeatureFlagsService {
         throw new NotFoundException('Пользователь не найден');
       }
 
-      const existing = await this.overridesRepository.findOne({
-        where: { flagId, userId },
-      });
-      if (existing) {
-        existing.value = value;
-        await this.overridesRepository.save(existing);
-        return;
-      }
-
-      await this.overridesRepository.save(
-        this.overridesRepository.create({ flagId, userId, value }),
+      await this.overridesRepository.upsert(
+        { flagId, userId, value },
+        { conflictPaths: ['flagId', 'userId'] },
       );
     } catch (error) {
       throw this.wrap('setOverride', error);

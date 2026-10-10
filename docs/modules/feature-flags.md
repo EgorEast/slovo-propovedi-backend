@@ -56,8 +56,8 @@
 | `findAll()` | все флаги в порядке `key ASC` (ответ — `{ flags }`) |
 | `create(dto)` | новый флаг с `enabled = false`; дубликат `key` → `409 Conflict` |
 | `update(id, dto)` | частичное обновление; отсутствующий флаг → `404`, дубликат `key` → `409` |
-| `remove(id)` | удаляет override-ы флага, затем сам флаг; отсутствующий флаг → `404` |
-| `setOverride(flagId, userId, value)` | upsert исключения; нет флага/пользователя → `404` |
+| `remove(id)` | удаляет флаг; его override-ы уходят каскадом (`ON DELETE CASCADE`); отсутствующий флаг → `404` |
+| `setOverride(flagId, userId, value)` | атомарный upsert исключения по паре `(flagId, userId)`; нет флага/пользователя → `404` |
 | `deleteOverride(flagId, userId)` | удаляет исключение (идемпотентно); нет флага/пользователя → `404` |
 | `getEffectiveForUser(userId, userRole)` | эффективные значения для пользователя (см. ниже) |
 

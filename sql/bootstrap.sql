@@ -232,6 +232,8 @@ CREATE INDEX "IDX_7e60b48429a43494fcd98f0a70" ON section_playlists_playlist USIN
 CREATE INDEX "IDX_sermon_search_vector" ON sermon USING gin (search_vector);
 -- GIN index for playlist full-text search (search_vector @@ tsquery) — mirrors migration 006.
 CREATE INDEX "IDX_playlist_search_vector" ON playlist USING gin (search_vector);
+-- Index for per-user override lookups (GET /feature-flags/me reads by user_id) — mirrors migration 009.
+CREATE INDEX "IX_feature_flag_override_user" ON feature_flag_override USING btree (user_id);
 
 -- ---------------------------------------------------------------------------
 -- Foreign keys

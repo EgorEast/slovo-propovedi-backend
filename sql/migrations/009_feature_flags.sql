@@ -113,7 +113,11 @@ BEGIN
     END IF;
 END $$;
 
--- 5. Seed the features the mobile app already gates on (disabled by default).
+-- 5. Index for per-user override lookups (getEffectiveForUser reads by user_id)
+CREATE INDEX IF NOT EXISTS IX_feature_flag_override_user
+    ON feature_flag_override (user_id);
+
+-- 6. Seed the features the mobile app already gates on (disabled by default).
 INSERT INTO feature_flag (key, title, enabled)
 VALUES
     ('read', 'Читать', false),

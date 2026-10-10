@@ -33,9 +33,7 @@ describe('FeatureFlagsService', () => {
   };
   let overridesRepository: {
     find: jest.Mock;
-    findOne: jest.Mock;
-    create: jest.Mock;
-    save: jest.Mock;
+    upsert: jest.Mock;
     delete: jest.Mock;
   };
   let usersRepository: {
@@ -54,9 +52,7 @@ describe('FeatureFlagsService', () => {
     };
     overridesRepository = {
       find: jest.fn(),
-      findOne: jest.fn(),
-      create: jest.fn(),
-      save: jest.fn(),
+      upsert: jest.fn(),
       delete: jest.fn(),
     };
     usersRepository = {
@@ -238,18 +234,13 @@ describe('FeatureFlagsService', () => {
   });
 
   describe('remove', () => {
-    it('deletes the flag together with its overrides', async () => {
+    it('deletes the flag; its overrides go with it via ON DELETE CASCADE', async () => {
       flagsRepository.findOne.mockResolvedValue({ ...mockFlag });
 
       await service.remove('flag-1');
 
-      expect(overridesRepository.delete).toHaveBeenCalledWith({
-        flagId: 'flag-1',
-      });
       expect(flagsRepository.delete).toHaveBeenCalledWith('flag-1');
-      expect(
-        overridesRepository.delete.mock.invocationCallOrder[0],
-      ).toBeLessThan(flagsRepository.delete.mock.invocationCallOrder[0]);
+      expect(overridesRepository.delete).not.toHaveBeenCalled();
     });
 
     it('rejects with NotFoundException when the flag is missing', async () => {
@@ -263,41 +254,15 @@ describe('FeatureFlagsService', () => {
   });
 
   describe('setOverride', () => {
-    it('creates a new override when none exists', async () => {
+    it('upserts the override keyed on the (flag, user) pair', async () => {
       flagsRepository.exists.mockResolvedValue(true);
       usersRepository.exists.mockResolvedValue(true);
-      overridesRepository.findOne.mockResolvedValue(null);
-      overridesRepository.create.mockImplementation((data) => data);
 
       await service.setOverride('flag-1', 'user-1', 'grant');
 
-      expect(overridesRepository.create).toHaveBeenCalledWith({
-        flagId: 'flag-1',
-        userId: 'user-1',
-        value: 'grant',
-      });
-      expect(overridesRepository.save).toHaveBeenCalledWith({
-        flagId: 'flag-1',
-        userId: 'user-1',
-        value: 'grant',
-      });
-    });
-
-    it('updates an existing override in place (upsert)', async () => {
-      flagsRepository.exists.mockResolvedValue(true);
-      usersRepository.exists.mockResolvedValue(true);
-      overridesRepository.findOne.mockResolvedValue({
-        id: 'override-1',
-        flagId: 'flag-1',
-        userId: 'user-1',
-        value: 'deny',
-      });
-
-      await service.setOverride('flag-1', 'user-1', 'grant');
-
-      expect(overridesRepository.create).not.toHaveBeenCalled();
-      expect(overridesRepository.save).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'override-1', value: 'grant' }),
+      expect(overridesRepository.upsert).toHaveBeenCalledWith(
+        { flagId: 'flag-1', userId: 'user-1', value: 'grant' },
+        { conflictPaths: ['flagId', 'userId'] },
       );
     });
 
@@ -317,7 +282,7 @@ describe('FeatureFlagsService', () => {
       await expect(
         service.setOverride('flag-1', 'missing', 'grant'),
       ).rejects.toThrow(NotFoundException);
-      expect(overridesRepository.save).not.toHaveBeenCalled();
+      expect(overridesRepository.upsert).not.toHaveBeenCalled();
     });
   });
 
