@@ -33,16 +33,12 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException();
     }
 
-    const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      throw new Error('JWT_SECRET environment variable is not set');
-    }
+    // A missing secret is a server misconfiguration, not a bad token — resolve
+    // it outside the try so it fails loud instead of turning into a 401.
+    const secret = this.resolveSecret();
 
     try {
-      const payload = await this.jwtService.verifyAsync(token, {
-        secret,
-      });
-      request['user'] = accessTokenPayloadSchema.parse(payload);
+      request['user'] = await this.verifyToken(token, secret);
     } catch {
       throw new UnauthorizedException();
     }
@@ -50,7 +46,23 @@ export class AuthGuard implements CanActivate {
     return true;
   }
 
-  private extractTokenFromHeader(request: Request): string | undefined {
+  protected resolveSecret(): string {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET environment variable is not set');
+    }
+    return secret;
+  }
+
+  protected async verifyToken(
+    token: string,
+    secret: string,
+  ): Promise<AccessTokenPayload> {
+    const payload = await this.jwtService.verifyAsync(token, { secret });
+    return accessTokenPayloadSchema.parse(payload);
+  }
+
+  protected extractTokenFromHeader(request: Request): string | undefined {
     const [type, token] = request.headers.authorization?.split(' ') ?? [];
     return type === 'Bearer' ? token : undefined;
   }

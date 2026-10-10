@@ -40,7 +40,7 @@
 
 ## Карта реализации эндпоинтов (sermons + playlists + users + files + feature-flags)
 
-Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловые GET-выдачи по имени (`GET /files/:fileName*`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента), `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`) и `DELETE /files/:fileName` используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** **У feature-flags управление — admin-only, а `GET /feature-flags/me` — под `AuthGuard` без `@Roles`** (эффективные флаги нужны любой роли). Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/invidious-instances/invidious-instances.controller.ts`, `src/feature-flags/feature-flags.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
+Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловые GET-выдачи по имени (`GET /files/:fileName*`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента), `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`) и `DELETE /files/:fileName` используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** **У feature-flags управление — admin-only, а `GET /feature-flags/me` — с опциональной аутентификацией (`OptionalAuthGuard`)**: валидный токен → эффективные флаги пользователя, аноним/невалидный токен → глобальные состояния; `401` не возвращается. Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/invidious-instances/invidious-instances.controller.ts`, `src/feature-flags/feature-flags.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
 
 ### Матрица доступа по ролям
 
@@ -49,9 +49,9 @@
 | `admin` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `moderator` | ✅ | ✅ | ✅ | ❌ `403` | ❌ `403` | ✅ `/me`, ❌ `403` (управление) |
 | `user` | ✅ | ❌ `403` | ❌ `403` | ❌ `403` | ❌ `403` | ✅ `/me`, ❌ `403` (управление) |
-| аноним | ✅ | ❌ `401` (guarded) | ❌ `401` | ❌ `401` | ❌ `401` | ❌ `401` |
+| аноним | ✅ | ❌ `401` (guarded) | ❌ `401` | ❌ `401` | ❌ `401` | ✅ `/me` (глобальные состояния), ❌ `401` (управление) |
 
-**Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/distinct-values`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /auth/profile`, `POST /auth/logout` и `GET /feature-flags/me` — `AuthGuard` без `@Roles` (любой аутентифицированный).
+**Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/distinct-values`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /feature-flags/me` — с **опциональной** аутентификацией (`OptionalAuthGuard`: валидный токен → флаги пользователя, иначе глобальные состояния; `401` не возвращается). `GET /auth/profile`, `POST /auth/logout` — `AuthGuard` без `@Roles` (любой аутентифицированный).
 
 ### Sermons
 
@@ -147,7 +147,7 @@
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
-| `GET /feature-flags/me` | `AuthGuard` (любой аутентифицированный) | `FeatureFlagsController.getEffectiveForMe` | `FeatureFlagsService.getEffectiveForUser(userId, userRole)` |
+| `GET /feature-flags/me` | `OptionalAuthGuard` (опциональная аутентификация) | `FeatureFlagsController.getEffectiveForMe` | `FeatureFlagsService.getEffectiveForUser(userId \| undefined)` |
 | `GET /feature-flags` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.findAll` | `FeatureFlagsService.findAll()` |
 | `GET /feature-flags/:id/overrides` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.findOverrides` | `FeatureFlagsService.findOverrides(flagId)` |
 | `POST /feature-flags` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.create` | `FeatureFlagsService.create(dto)` |
@@ -156,7 +156,7 @@
 | `PUT /feature-flags/:id/overrides/:userId` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.setOverride` | `FeatureFlagsService.setOverride(id, userId, value)` |
 | `DELETE /feature-flags/:id/overrides/:userId` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.deleteOverride` | `FeatureFlagsService.deleteOverride(id, userId)` |
 
-> ✅ Удалённые фича-флаги: глобальный дефолт (`feature_flag.enabled`) + пер-пользовательские исключения `grant`/`deny` (`feature_flag_override`). `GET /feature-flags/me` — единственный роут под `AuthGuard` без `@Roles` (нужен любой роли) и отвечает `{ flags: [{ key, enabled }] }`; управление флагами — **admin-only**. Эффективное значение: `(enabled AND нет deny) OR grant`; **`admin`/`moderator` всегда видят все флаги включёнными**. `POST` body `{ key (^[a-z][a-z0-9-]*$), title }`, `PATCH` body `{ key?, title?, enabled? }`, override body `{ value: 'grant' | 'deny' }`; дубликат `key` → `409`, отсутствующий флаг/пользователь → `404`. `GET /feature-flags/:id/overrides` отвечает `{ overrides: [{ flagId, userId, value, createdAt }] }` в порядке `createdAt ASC`, затем `userId ASC`; пустой список — валидный `200`, отсутствующий флаг → `404`. Флаги `read`/`study` сидируются миграцией. Детали — [`../modules/feature-flags.md`](../modules/feature-flags.md).
+> ✅ Удалённые фича-флаги: глобальный дефолт (`feature_flag.enabled`) + пер-пользовательские исключения `grant`/`deny` (`feature_flag_override`). `GET /feature-flags/me` — с опциональной аутентификацией (`OptionalAuthGuard`) и отвечает `{ flags: [{ key, enabled }] }`: валидный Bearer-токен → эффективные флаги пользователя по единому правилу `(enabled AND нет deny) OR grant`, без токена/невалидный токен → глобальные состояния (исключения не применяются); `401` не возвращается. Правило едино для всех ролей — **админ-байпаса нет** (`admin`/`moderator` подчиняются тому же правилу). Управление флагами — **admin-only**. `POST` body `{ key (^[a-z][a-z0-9-]*$), title }`, `PATCH` body `{ key?, title?, enabled? }`, override body `{ value: 'grant' | 'deny' }`; дубликат `key` → `409`, отсутствующий флаг/пользователь → `404`. `GET /feature-flags/:id/overrides` отвечает `{ overrides: [{ flagId, userId, value, createdAt }] }` в порядке `createdAt ASC`, затем `userId ASC`; пустой список — валидный `200`, отсутствующий флаг → `404`. Флаги `read`/`study` сидируются миграцией. Детали — [`../modules/feature-flags.md`](../modules/feature-flags.md).
 
 ## База URL и аутентификация
 

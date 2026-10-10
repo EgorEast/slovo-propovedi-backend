@@ -8,7 +8,6 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
-import { UserRole } from '../users/user-role.enum';
 import { FeatureFlag } from './entities/feature-flag.entity';
 import {
   FeatureFlagOverride,
@@ -49,12 +48,6 @@ export interface FeatureFlagOverrideResponse {
 export interface FeatureFlagOverrideListResponse {
   overrides: FeatureFlagOverrideResponse[];
 }
-
-// Admins and moderators bypass every override and always see all flags on.
-const PRIVILEGED_ROLES = new Set<UserRole>([
-  UserRole.Admin,
-  UserRole.Moderator,
-]);
 
 @Injectable()
 export class FeatureFlagsService {
@@ -197,15 +190,18 @@ export class FeatureFlagsService {
   }
 
   async getEffectiveForUser(
-    userId: string,
-    userRole: UserRole,
+    userId: string | undefined,
   ): Promise<EffectiveFeatureFlagListResponse> {
     try {
       const flags = await this.flagsRepository.find({ order: { key: 'ASC' } });
 
-      if (PRIVILEGED_ROLES.has(userRole)) {
+      // Anonymous caller: no overrides to apply, so return global states as-is.
+      if (userId === undefined) {
         return {
-          flags: flags.map((flag) => ({ key: flag.key, enabled: true })),
+          flags: flags.map((flag) => ({
+            key: flag.key,
+            enabled: flag.enabled,
+          })),
         };
       }
 

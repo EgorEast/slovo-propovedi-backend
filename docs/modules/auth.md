@@ -1,6 +1,6 @@
 # Модуль `auth` — аутентификация и авторизация по ролям
 
-Авторизация через JWT (Bearer). Никакого Passport / `PassportStrategy` — только собственные `AuthGuard` + `RolesGuard`. Модуль импортирует `UsersModule` (для поиска пользователя) и `JwtModule.register({ global: true })`.
+Авторизация через JWT (Bearer). Никакого Passport / `PassportStrategy` — только собственные `AuthGuard` + `RolesGuard` (+ `OptionalAuthGuard` для роутов с опциональной аутентификацией). Модуль импортирует `UsersModule` (для поиска пользователя) и `JwtModule.register({ global: true })`.
 
 **Слой:** backend (module `auth`)
 **Статус:** актуально
@@ -12,6 +12,7 @@
 | Guard | Что проверяет |
 |-------|---------------|
 | `AuthGuard` | токен валиден (подпись `JWT_SECRET`) **и** payload парсится zod-схемой `{ id: uuid, email, role }` |
+| `OptionalAuthGuard` | то же, но необязательно: нет/невалидный токен → `request.user === undefined`, запрос продолжается; `401` не возвращается |
 | `RolesGuard` | `@Roles(...)` из метаданных содержит роль из payload; **fail-closed** |
 
 Пара `@Roles(...)` + `@UseGuards(AuthGuard, RolesGuard)` включается на мутирующих эндпоинтах. Без `@Roles` guard не ограничивает (возвращает `true`) — роут просто authenticated-only.
@@ -121,6 +122,15 @@ export const accessTokenPayloadSchema = z.object({
 - **Любая ошибка** (нет токена, плохая подпись, payload не парсится) → `UnauthorizedException` (fail loud).
 - **Legacy access-токены** без `role` НЕ проходят parse → `401` → клиент делает `/auth/refresh`, получает ролевую пару и повторяет запрос (механизм refresh-retry в админке).
 - **Принимается только access-токен** (refresh-токен подписан другим секретом и сюда не подходит).
+
+## `OptionalAuthGuard` (`src/auth/guard/optional-auth.guard.ts`)
+
+`extends AuthGuard` (переиспользует `extractTokenFromHeader` / `resolveSecret` / `verifyToken`) и переопределяет `canActivate` для **опциональной** аутентификации:
+
+- Валидный Bearer-токен → `request.user = { id, email, role }` (тот же parse zod-схемой), запрос продолжается.
+- Нет токена / не Bearer / невалидный / просроченный / legacy-токен без `role` → `request.user` остаётся `undefined`, запрос продолжается.
+- **Никогда не возвращает `401`** — используется на публично доступных роутах, где аутентификация лишь уточняет ответ (`GET /feature-flags/me`: аноним получает глобальные состояния).
+- Отсутствие `JWT_SECRET` — серверная мисконфигурация, а не проблема токена: секрет резолвится **вне** `try`, поэтому ошибка пробрасывается (fail loud), а не деградирует в анонима.
 
 ## `RolesGuard` (`src/auth/guard/roles.guard.ts`)
 

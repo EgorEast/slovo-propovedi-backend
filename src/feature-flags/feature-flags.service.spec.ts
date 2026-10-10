@@ -8,7 +8,6 @@ import {
   FeatureFlagOverrideValue,
 } from './entities/feature-flag-override.entity';
 import { User } from '../users/entities/user.entity';
-import { UserRole } from '../users/user-role.enum';
 
 const createdAt = new Date('2026-01-01T00:00:00.000Z');
 
@@ -130,7 +129,7 @@ describe('FeatureFlagsService', () => {
       overridesRepository.find.mockResolvedValue(
         overrideValue === undefined ? [] : [override(overrideValue)],
       );
-      return service.getEffectiveForUser('user-1', UserRole.User);
+      return service.getEffectiveForUser('user-1');
     };
 
     it('enables an enabled flag with no override', async () => {
@@ -148,32 +147,26 @@ describe('FeatureFlagsService', () => {
       expect(result.flags).toEqual([{ key: 'read', enabled: true }]);
     });
 
-    it('disables a disabled flag with no override', async () => {
+    // Uniform rule for every role (admin/moderator included): there is no
+    // privileged bypass anymore, so a globally disabled flag without a grant
+    // stays disabled for any authenticated user.
+    it('keeps a globally disabled flag disabled without a grant for any role', async () => {
       const result = await effectiveFor(false);
       expect(result.flags).toEqual([{ key: 'read', enabled: false }]);
     });
 
-    it('enables every flag for an admin regardless of overrides', async () => {
-      flagsRepository.find.mockResolvedValue([{ ...mockFlag, enabled: false }]);
+    it('returns global states only for an anonymous caller and never reads overrides', async () => {
+      flagsRepository.find.mockResolvedValue([
+        { ...mockFlag, id: 'flag-1', key: 'read', enabled: true },
+        { ...mockFlag, id: 'flag-2', key: 'study', enabled: false },
+      ]);
 
-      const result = await service.getEffectiveForUser(
-        'admin-1',
-        UserRole.Admin,
-      );
+      const result = await service.getEffectiveForUser(undefined);
 
-      expect(result.flags).toEqual([{ key: 'read', enabled: true }]);
-      expect(overridesRepository.find).not.toHaveBeenCalled();
-    });
-
-    it('enables every flag for a moderator regardless of overrides', async () => {
-      flagsRepository.find.mockResolvedValue([{ ...mockFlag, enabled: false }]);
-
-      const result = await service.getEffectiveForUser(
-        'mod-1',
-        UserRole.Moderator,
-      );
-
-      expect(result.flags).toEqual([{ key: 'read', enabled: true }]);
+      expect(result.flags).toEqual([
+        { key: 'read', enabled: true },
+        { key: 'study', enabled: false },
+      ]);
       expect(overridesRepository.find).not.toHaveBeenCalled();
     });
   });

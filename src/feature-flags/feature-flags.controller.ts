@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { ZodResponse } from 'nestjs-zod';
 import { AccessTokenPayload, AuthGuard } from '../auth/guard/auth.guard';
+import { OptionalAuthGuard } from '../auth/guard/optional-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { IdParamDto } from '../shared/dto/id-param.dto';
@@ -28,8 +29,8 @@ import { FeatureFlagListResponseDto } from './dto/feature-flag-list-response.dto
 import { FeatureFlagOverrideListResponseDto } from './dto/feature-flag-override-list-response.dto';
 import { EffectiveFeatureFlagListResponseDto } from './dto/effective-feature-flag-list-response.dto';
 
-interface AuthenticatedRequest {
-  user: Pick<AccessTokenPayload, 'id' | 'role'>;
+interface OptionalUserRequest {
+  user?: Pick<AccessTokenPayload, 'id' | 'role'>;
 }
 
 @Controller('feature-flags')
@@ -37,13 +38,10 @@ export class FeatureFlagsController {
   constructor(private readonly featureFlagsService: FeatureFlagsService) {}
 
   @Get('me')
-  @UseGuards(AuthGuard)
+  @UseGuards(OptionalAuthGuard)
   @ZodResponse({ type: EffectiveFeatureFlagListResponseDto })
-  getEffectiveForMe(@Req() req: AuthenticatedRequest) {
-    return this.featureFlagsService.getEffectiveForUser(
-      req.user.id,
-      req.user.role,
-    );
+  getEffectiveForMe(@Req() req: OptionalUserRequest) {
+    return this.featureFlagsService.getEffectiveForUser(req.user?.id);
   }
 
   @Get()
