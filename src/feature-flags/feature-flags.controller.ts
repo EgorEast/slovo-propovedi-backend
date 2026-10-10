@@ -25,6 +25,7 @@ import { SetFeatureFlagOverrideDto } from './dto/set-feature-flag-override.dto';
 import { FeatureFlagOverrideParamsDto } from './dto/feature-flag-override-params.dto';
 import { FeatureFlagResponseDto } from './dto/feature-flag-response.dto';
 import { FeatureFlagListResponseDto } from './dto/feature-flag-list-response.dto';
+import { FeatureFlagOverrideListResponseDto } from './dto/feature-flag-override-list-response.dto';
 import { EffectiveFeatureFlagListResponseDto } from './dto/effective-feature-flag-list-response.dto';
 
 interface AuthenticatedRequest {
@@ -51,6 +52,14 @@ export class FeatureFlagsController {
   @ZodResponse({ type: FeatureFlagListResponseDto })
   findAll() {
     return this.featureFlagsService.findAll();
+  }
+
+  @Get(':id/overrides')
+  @Roles(UserRole.Admin)
+  @UseGuards(AuthGuard, RolesGuard)
+  @ZodResponse({ type: FeatureFlagOverrideListResponseDto })
+  findOverrides(@Param() params: IdParamDto) {
+    return this.featureFlagsService.findOverrides(params.id);
   }
 
   @Post()

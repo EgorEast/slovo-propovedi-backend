@@ -149,13 +149,14 @@
 |----------|-------|-------------------|----------------|
 | `GET /feature-flags/me` | `AuthGuard` (любой аутентифицированный) | `FeatureFlagsController.getEffectiveForMe` | `FeatureFlagsService.getEffectiveForUser(userId, userRole)` |
 | `GET /feature-flags` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.findAll` | `FeatureFlagsService.findAll()` |
+| `GET /feature-flags/:id/overrides` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.findOverrides` | `FeatureFlagsService.findOverrides(flagId)` |
 | `POST /feature-flags` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.create` | `FeatureFlagsService.create(dto)` |
 | `PATCH /feature-flags/:id` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.update` | `FeatureFlagsService.update(id, dto)` |
 | `DELETE /feature-flags/:id` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.remove` | `FeatureFlagsService.remove(id)` |
 | `PUT /feature-flags/:id/overrides/:userId` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.setOverride` | `FeatureFlagsService.setOverride(id, userId, value)` |
 | `DELETE /feature-flags/:id/overrides/:userId` | `AuthGuard` + `RolesGuard` (admin) | `FeatureFlagsController.deleteOverride` | `FeatureFlagsService.deleteOverride(id, userId)` |
 
-> ✅ Удалённые фича-флаги: глобальный дефолт (`feature_flag.enabled`) + пер-пользовательские исключения `grant`/`deny` (`feature_flag_override`). `GET /feature-flags/me` — единственный роут под `AuthGuard` без `@Roles` (нужен любой роли) и отвечает `{ flags: [{ key, enabled }] }`; управление флагами — **admin-only**. Эффективное значение: `(enabled AND нет deny) OR grant`; **`admin`/`moderator` всегда видят все флаги включёнными**. `POST` body `{ key (^[a-z][a-z0-9-]*$), title }`, `PATCH` body `{ key?, title?, enabled? }`, override body `{ value: 'grant' | 'deny' }`; дубликат `key` → `409`, отсутствующий флаг/пользователь → `404`. Флаги `read`/`study` сидируются миграцией. Детали — [`../modules/feature-flags.md`](../modules/feature-flags.md).
+> ✅ Удалённые фича-флаги: глобальный дефолт (`feature_flag.enabled`) + пер-пользовательские исключения `grant`/`deny` (`feature_flag_override`). `GET /feature-flags/me` — единственный роут под `AuthGuard` без `@Roles` (нужен любой роли) и отвечает `{ flags: [{ key, enabled }] }`; управление флагами — **admin-only**. Эффективное значение: `(enabled AND нет deny) OR grant`; **`admin`/`moderator` всегда видят все флаги включёнными**. `POST` body `{ key (^[a-z][a-z0-9-]*$), title }`, `PATCH` body `{ key?, title?, enabled? }`, override body `{ value: 'grant' | 'deny' }`; дубликат `key` → `409`, отсутствующий флаг/пользователь → `404`. `GET /feature-flags/:id/overrides` отвечает `{ overrides: [{ flagId, userId, value, createdAt }] }` в порядке `createdAt ASC`, затем `userId ASC`; пустой список — валидный `200`, отсутствующий флаг → `404`. Флаги `read`/`study` сидируются миграцией. Детали — [`../modules/feature-flags.md`](../modules/feature-flags.md).
 
 ## База URL и аутентификация
 

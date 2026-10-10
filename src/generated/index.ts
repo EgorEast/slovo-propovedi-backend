@@ -5,7 +5,7 @@
  * REST API сервиса «Слово.Проповеди».
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.20.0
+ * OpenAPI spec version: 0.21.0
  */
 import * as zod from 'zod';
 
@@ -2844,6 +2844,27 @@ export const FeatureFlagsControllerRemoveParams = zod.strictObject({
 });
 
 export const FeatureFlagsControllerRemoveResponse = zod.void();
+
+/**
+ * Возвращает все исключения grant/deny для указанного флага. Пустой список — валидный ответ 200. Отсутствующий флаг → 404. Доступно только администраторам.
+ * @summary Список пер-пользовательских исключений флага
+ */
+export const FeatureFlagsControllerFindOverridesParams = zod.strictObject({
+  id: zod.uuid(),
+});
+
+export const FeatureFlagsControllerFindOverridesResponse = zod.strictObject({
+  overrides: zod.array(
+    zod.strictObject({
+      flagId: zod.uuid(),
+      userId: zod.uuid(),
+      value: zod
+        .enum(['grant', 'deny'])
+        .describe('grant — включить флаг пользователю, deny — выключить'),
+      createdAt: zod.iso.datetime({ offset: true }),
+    }),
+  ),
+});
 
 /**
  * Upsert исключения grant/deny для пары (флаг, пользователь): повторный вызов обновляет значение. Отсутствующий флаг или пользователь → 404. Доступно только администраторам.

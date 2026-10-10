@@ -39,6 +39,17 @@ export interface EffectiveFeatureFlagListResponse {
   flags: EffectiveFeatureFlag[];
 }
 
+export interface FeatureFlagOverrideResponse {
+  flagId: string;
+  userId: string;
+  value: FeatureFlagOverrideValue;
+  createdAt: string;
+}
+
+export interface FeatureFlagOverrideListResponse {
+  overrides: FeatureFlagOverrideResponse[];
+}
+
 // Admins and moderators bypass every override and always see all flags on.
 const PRIVILEGED_ROLES = new Set<UserRole>([
   UserRole.Admin,
@@ -162,6 +173,29 @@ export class FeatureFlagsService {
     }
   }
 
+  async findOverrides(
+    flagId: string,
+  ): Promise<FeatureFlagOverrideListResponse> {
+    try {
+      if (!(await this.flagsRepository.exists({ where: { id: flagId } }))) {
+        throw new NotFoundException('Флаг не найден');
+      }
+
+      const overrides = await this.overridesRepository.find({
+        where: { flagId },
+        order: { createdAt: 'ASC', userId: 'ASC' },
+      });
+
+      return {
+        overrides: overrides.map((override) =>
+          this.toOverrideResponse(override),
+        ),
+      };
+    } catch (error) {
+      throw this.wrap('findOverrides', error);
+    }
+  }
+
   async getEffectiveForUser(
     userId: string,
     userRole: UserRole,
@@ -223,6 +257,17 @@ export class FeatureFlagsService {
       enabled: flag.enabled,
       createdAt: flag.createdAt.toISOString(),
       updatedAt: flag.updatedAt.toISOString(),
+    };
+  }
+
+  private toOverrideResponse(
+    override: FeatureFlagOverride,
+  ): FeatureFlagOverrideResponse {
+    return {
+      flagId: override.flagId,
+      userId: override.userId,
+      value: override.value,
+      createdAt: override.createdAt.toISOString(),
     };
   }
 }

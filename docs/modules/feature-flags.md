@@ -15,6 +15,7 @@
 |---------------|-------|------|------------|----------------|
 | `GET /feature-flags/me` | ✅ `AuthGuard` (любой аутентифицированный) | — | `EffectiveFeatureFlagListResponseDto` (`{ flags: [{ key, enabled }] }`) | `getEffectiveForUser(userId, userRole)` |
 | `GET /feature-flags` | ✅ `AuthGuard` + `RolesGuard` (admin) | — | `FeatureFlagListResponseDto` (`{ flags: FeatureFlag[] }`) | `findAll()` |
+| `GET /feature-flags/:id/overrides` | ✅ `AuthGuard` + `RolesGuard` (admin) | — | `FeatureFlagOverrideListResponseDto` (`{ overrides: FeatureFlagOverride[] }`) | `findOverrides(id)` |
 | `POST /feature-flags` | ✅ `AuthGuard` + `RolesGuard` (admin) | `CreateFeatureFlagDto` (`{ key, title }`) | `FeatureFlagResponseDto` | `create(dto)` |
 | `PATCH /feature-flags/:id` | ✅ `AuthGuard` + `RolesGuard` (admin) | `UpdateFeatureFlagDto` (`{ key?, title?, enabled? }`) | `FeatureFlagResponseDto` | `update(id, dto)` |
 | `DELETE /feature-flags/:id` | ✅ `AuthGuard` + `RolesGuard` (admin) | — | `204 No Content` | `remove(id)` |
@@ -46,6 +47,7 @@
 | `flagId` | `flag_id` | uuid | FK → `feature_flag`(id), CASCADE; UNIQUE(`flag_id`, `user_id`) |
 | `userId` | `user_id` | uuid | FK → `user`(id), CASCADE |
 | `value` | `value` | varchar | NOT NULL, `'grant' \| 'deny'` (TS-union `FeatureFlagOverrideValue`) |
+| `createdAt` | `created_at` | timestamptz | NOT NULL, default `now()` |
 
 > ✅ На пару `(flag, user)` — не более одной строки (композитный UNIQUE `UQ_feature_flag_override_pair`). Отсутствие строки и наличие строки — два возможных состояния; `setOverride` — upsert, поэтому повторный вызов обновляет значение, а не плодит дубли.
 
@@ -59,6 +61,7 @@
 | `remove(id)` | удаляет флаг; его override-ы уходят каскадом (`ON DELETE CASCADE`); отсутствующий флаг → `404` |
 | `setOverride(flagId, userId, value)` | атомарный upsert исключения по паре `(flagId, userId)`; нет флага/пользователя → `404` |
 | `deleteOverride(flagId, userId)` | удаляет исключение (идемпотентно); нет флага/пользователя → `404` |
+| `findOverrides(flagId)` | исключения флага, смапленные в ответ `{ flagId, userId, value, createdAt }`, в детерминированном порядке (`createdAt ASC`, затем `userId ASC`); отсутствующий флаг → `404`, пустой список → валидный `200` |
 | `getEffectiveForUser(userId, userRole)` | эффективные значения для пользователя (см. ниже) |
 
 ### Вычисление эффективного значения (`getEffectiveForUser`)
@@ -86,6 +89,7 @@
 | `feature-flag-override-params.dto.ts` | `FeatureFlagsControllerSetOverrideParams` — `{ id: uuid, userId: uuid }` (та же форма у DELETE-override) |
 | `feature-flag-response.dto.ts` | `FeatureFlagsControllerCreateResponse` — `FeatureFlagResponseDto`, для create + update |
 | `feature-flag-list-response.dto.ts` | `FeatureFlagsControllerFindAllResponse` — `{ flags: FeatureFlagResponse[] }` |
+| `feature-flag-override-list-response.dto.ts` | `FeatureFlagsControllerFindOverridesResponse` — `{ overrides: FeatureFlagOverride[] }` |
 | `effective-feature-flag-list-response.dto.ts` | `FeatureFlagsControllerGetEffectiveForMeResponse` — `{ flags: [{ key, enabled }] }` |
 
 ## Связанные документы

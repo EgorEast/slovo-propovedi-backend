@@ -119,6 +119,7 @@ describe('FeatureFlagsService', () => {
       flagId: mockFlag.id,
       userId: 'user-1',
       value,
+      createdAt,
     });
 
     const effectiveFor = (
@@ -316,6 +317,68 @@ describe('FeatureFlagsService', () => {
         NotFoundException,
       );
       expect(overridesRepository.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findOverrides', () => {
+    const overrideRow = (
+      userId: string,
+      timestamp: Date,
+    ): FeatureFlagOverride => ({
+      id: `override-${userId}`,
+      flagId: mockFlag.id,
+      userId,
+      value: 'grant',
+      createdAt: timestamp,
+    });
+
+    it('returns overrides mapped to the response shape in deterministic order', async () => {
+      flagsRepository.exists.mockResolvedValue(true);
+      const earlier = new Date('2026-01-01T00:00:00.000Z');
+      const later = new Date('2026-02-01T00:00:00.000Z');
+      overridesRepository.find.mockResolvedValue([
+        overrideRow('user-1', earlier),
+        overrideRow('user-2', later),
+      ]);
+
+      const result = await service.findOverrides('flag-1');
+
+      expect(overridesRepository.find).toHaveBeenCalledWith({
+        where: { flagId: 'flag-1' },
+        order: { createdAt: 'ASC', userId: 'ASC' },
+      });
+      expect(result.overrides).toEqual([
+        {
+          flagId: 'flag-1',
+          userId: 'user-1',
+          value: 'grant',
+          createdAt: earlier.toISOString(),
+        },
+        {
+          flagId: 'flag-1',
+          userId: 'user-2',
+          value: 'grant',
+          createdAt: later.toISOString(),
+        },
+      ]);
+    });
+
+    it('returns an empty list when the flag has no overrides', async () => {
+      flagsRepository.exists.mockResolvedValue(true);
+      overridesRepository.find.mockResolvedValue([]);
+
+      const result = await service.findOverrides('flag-1');
+
+      expect(result.overrides).toEqual([]);
+    });
+
+    it('rejects with NotFoundException when the flag is missing', async () => {
+      flagsRepository.exists.mockResolvedValue(false);
+
+      await expect(service.findOverrides('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(overridesRepository.find).not.toHaveBeenCalled();
     });
   });
 });

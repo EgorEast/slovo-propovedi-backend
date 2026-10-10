@@ -1,4 +1,10 @@
-import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  Unique,
+} from 'typeorm';
 
 // A per-user exception to a flag's global default. At most one row per
 // (flag, user) pair — enforced by the composite unique constraint — so the
@@ -19,4 +25,7 @@ export class FeatureFlagOverride {
 
   @Column({ name: 'value', type: 'varchar' })
   value: FeatureFlagOverrideValue;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt: Date;
 }

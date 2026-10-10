@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS feature_flag_override (
     flag_id uuid NOT NULL,
     user_id uuid NOT NULL,
     -- "grant" | "deny"
-    value character varying NOT NULL
+    value character varying NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 -- 2. Primary keys
