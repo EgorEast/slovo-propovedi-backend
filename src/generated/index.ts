@@ -5,7 +5,7 @@
  * REST API сервиса «Слово.Проповеди».
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.19.0
+ * OpenAPI spec version: 0.20.0
  */
 import * as zod from 'zod';
 
@@ -2740,3 +2740,135 @@ export const InvidiousInstancesControllerReplaceResponseItem = zod.strictObject(
 export const InvidiousInstancesControllerReplaceResponse = zod.array(
   InvidiousInstancesControllerReplaceResponseItem,
 );
+
+/**
+ * Возвращает эффективное значение каждого флага для текущего пользователя: глобальный дефолт с учётом пер-пользовательского исключения (grant/deny). Доступно любому аутентифицированному пользователю; admin и moderator всегда видят все флаги включёнными.
+ * @summary Эффективные фича-флаги текущего пользователя
+ */
+export const FeatureFlagsControllerGetEffectiveForMeResponse = zod.strictObject(
+  {
+    flags: zod.array(
+      zod.strictObject({
+        key: zod.string(),
+        enabled: zod.boolean(),
+      }),
+    ),
+  },
+);
+
+/**
+ * Возвращает все фича-флаги с их глобальными дефолтами. Доступно только администраторам.
+ * @summary Список фича-флагов
+ */
+export const FeatureFlagsControllerFindAllResponse = zod.strictObject({
+  flags: zod.array(
+    zod.strictObject({
+      id: zod.string(),
+      key: zod
+        .string()
+        .describe('Стабильный ключ флага (lowercase kebab-case)'),
+      title: zod.string().describe('Человекочитаемое название флага'),
+      enabled: zod
+        .boolean()
+        .describe(
+          'Глобальный дефолт флага (до пер-пользовательских исключений)',
+        ),
+      createdAt: zod.iso.datetime({ offset: true }),
+      updatedAt: zod.iso.datetime({ offset: true }),
+    }),
+  ),
+});
+
+/**
+ * Создаёт флаг в выключенном состоянии (enabled=false). Ключ — lowercase kebab-case (^[a-z][a-z0-9-]*$), уникален. Доступно только администраторам.
+ * @summary Создать фича-флаг
+ */
+export const featureFlagsControllerCreateBodyKeyRegExp = new RegExp(
+  '^[a-z][a-z0-9-]*$',
+);
+
+export const FeatureFlagsControllerCreateBody = zod.strictObject({
+  key: zod
+    .string()
+    .regex(featureFlagsControllerCreateBodyKeyRegExp)
+    .describe('Уникальный ключ флага (lowercase kebab-case)'),
+  title: zod.string().min(1),
+});
+
+export const FeatureFlagsControllerCreateResponse = zod.strictObject({
+  id: zod.string(),
+  key: zod.string().describe('Стабильный ключ флага (lowercase kebab-case)'),
+  title: zod.string().describe('Человекочитаемое название флага'),
+  enabled: zod
+    .boolean()
+    .describe('Глобальный дефолт флага (до пер-пользовательских исключений)'),
+  createdAt: zod.iso.datetime({ offset: true }),
+  updatedAt: zod.iso.datetime({ offset: true }),
+});
+
+/**
+ * Частичное обновление флага (ключ, название, глобальный дефолт). Дубликат ключа → 409. Доступно только администраторам.
+ * @summary Обновить фича-флаг
+ */
+export const FeatureFlagsControllerUpdateParams = zod.strictObject({
+  id: zod.uuid(),
+});
+
+export const featureFlagsControllerUpdateBodyKeyRegExp = new RegExp(
+  '^[a-z][a-z0-9-]*$',
+);
+
+export const FeatureFlagsControllerUpdateBody = zod.strictObject({
+  key: zod.string().regex(featureFlagsControllerUpdateBodyKeyRegExp).optional(),
+  title: zod.string().min(1).optional(),
+  enabled: zod.boolean().optional(),
+});
+
+export const FeatureFlagsControllerUpdateResponse = zod.strictObject({
+  id: zod.string(),
+  key: zod.string().describe('Стабильный ключ флага (lowercase kebab-case)'),
+  title: zod.string().describe('Человекочитаемое название флага'),
+  enabled: zod
+    .boolean()
+    .describe('Глобальный дефолт флага (до пер-пользовательских исключений)'),
+  createdAt: zod.iso.datetime({ offset: true }),
+  updatedAt: zod.iso.datetime({ offset: true }),
+});
+
+/**
+ * Удаляет флаг вместе со всеми его пер-пользовательскими исключениями. Доступно только администраторам.
+ * @summary Удалить фича-флаг
+ */
+export const FeatureFlagsControllerRemoveParams = zod.strictObject({
+  id: zod.uuid(),
+});
+
+export const FeatureFlagsControllerRemoveResponse = zod.void();
+
+/**
+ * Upsert исключения grant/deny для пары (флаг, пользователь): повторный вызов обновляет значение. Отсутствующий флаг или пользователь → 404. Доступно только администраторам.
+ * @summary Задать пер-пользовательское исключение
+ */
+export const FeatureFlagsControllerSetOverrideParams = zod.strictObject({
+  id: zod.uuid(),
+  userId: zod.uuid(),
+});
+
+export const FeatureFlagsControllerSetOverrideBody = zod.strictObject({
+  value: zod
+    .enum(['grant', 'deny'])
+    .describe('grant — включить флаг пользователю, deny — выключить'),
+});
+
+export const FeatureFlagsControllerSetOverrideResponse = zod.void();
+
+/**
+ * Удаляет исключение для пары (флаг, пользователь); идемпотентно. Отсутствующий флаг или пользователь → 404. Доступно только администраторам.
+ * @summary Удалить пер-пользовательское исключение
+ */
+export const FeatureFlagsControllerDeleteOverrideParams = zod.strictObject({
+  id: zod.uuid(),
+  userId: zod.uuid(),
+});
+
+export const FeatureFlagsControllerDeleteOverrideResponse = zod.void();

@@ -1,9 +1,8 @@
 import { createZodDto } from 'nestjs-zod';
-import { z } from 'zod';
+import { FeatureFlagsControllerSetOverrideParams } from '../../generated';
 
+// Used for both the PUT and DELETE override routes — both target the same
+// (flag id, user id) pair and share one generated params shape.
 export class FeatureFlagOverrideParamsDto extends createZodDto(
-  z.strictObject({
-    id: z.string().uuid(),
-    userId: z.string().uuid(),
-  }),
+  FeatureFlagsControllerSetOverrideParams,
 ) {}

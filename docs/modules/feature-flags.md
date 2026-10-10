@@ -76,18 +76,17 @@
 
 ## DTO
 
-Все DTO — рукописные `createZodDto(z.strictObject({...}))` (`src/feature-flags/dto/`), т.к. спецификация `feature-flags` ещё не попала в сгенерированный `src/generated/index.ts`.
+Все DTO — `createZodDto(...)` над сгенерированными схемами `FeatureFlagsController*` из `src/generated/index.ts` (`src/feature-flags/dto/`). Рукописных zod-схем нет: спецификация `feature-flags` попала в генерацию в OpenAPI 0.20.0, сгенерированные схемы — единственный источник истины ([`../contracts/rest-api.md`](../contracts/rest-api.md)).
 
-| Файл | Схема |
-|------|-------|
-| `create-feature-flag.dto.ts` | `{ key: regex ^[a-z][a-z0-9-]*$, title: string (min 1) }` |
-| `update-feature-flag.dto.ts` | `{ key?, title?, enabled? }` |
-| `set-feature-flag-override.dto.ts` | `{ value: 'grant' \| 'deny' }` |
-| `feature-flag-override-params.dto.ts` | `{ id: uuid, userId: uuid }` |
-| `feature-flag-response.dto.ts` | `FeatureFlagResponseDto` — `{ id, key, title, enabled, createdAt, updatedAt }` |
-| `feature-flag-list-response.dto.ts` | `FeatureFlagListResponseDto` — `{ flags: FeatureFlagResponseDto[] }` |
-| `effective-feature-flag.dto.ts` | `EffectiveFeatureFlagDto` — `{ key, enabled }` |
-| `effective-feature-flag-list-response.dto.ts` | `EffectiveFeatureFlagListResponseDto` — `{ flags: EffectiveFeatureFlagDto[] }` |
+| Файл | Сгенерированная схема |
+|------|-----------------------|
+| `create-feature-flag.dto.ts` | `FeatureFlagsControllerCreateBody` — `{ key: regex ^[a-z][a-z0-9-]*$, title: string (min 1) }` |
+| `update-feature-flag.dto.ts` | `FeatureFlagsControllerUpdateBody` — `{ key?, title?, enabled? }` |
+| `set-feature-flag-override.dto.ts` | `FeatureFlagsControllerSetOverrideBody` — `{ value: 'grant' \| 'deny' }` |
+| `feature-flag-override-params.dto.ts` | `FeatureFlagsControllerSetOverrideParams` — `{ id: uuid, userId: uuid }` (та же форма у DELETE-override) |
+| `feature-flag-response.dto.ts` | `FeatureFlagsControllerCreateResponse` — `FeatureFlagResponseDto`, для create + update |
+| `feature-flag-list-response.dto.ts` | `FeatureFlagsControllerFindAllResponse` — `{ flags: FeatureFlagResponse[] }` |
+| `effective-feature-flag-list-response.dto.ts` | `FeatureFlagsControllerGetEffectiveForMeResponse` — `{ flags: [{ key, enabled }] }` |
 
 ## Связанные документы
 

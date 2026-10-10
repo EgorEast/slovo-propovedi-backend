@@ -1,8 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
-import { z } from 'zod';
+import { FeatureFlagsControllerSetOverrideBody } from '../../generated';
 
 export class SetFeatureFlagOverrideDto extends createZodDto(
-  z.strictObject({
-    value: z.enum(['grant', 'deny']),
-  }),
+  FeatureFlagsControllerSetOverrideBody,
 ) {}
