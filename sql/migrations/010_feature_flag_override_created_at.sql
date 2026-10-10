@@ -1,0 +1,31 @@
+-- =============================================================================
+-- Migration 010: feature_flag_override.created_at (2026-10-10)
+-- =============================================================================
+--
+-- Adds the created_at column to feature_flag_override. It is required by the
+-- GET /feature-flags/:id/overrides response (FeatureFlagOverride.createdAt) and
+-- the FeatureFlagOverride entity (@CreateDateColumn). The column was originally
+-- folded into migration 009 by editing it in place — wrong for any database
+-- where 009 had already run: its feature_flag_override table predates the
+-- column and `CREATE TABLE IF NOT EXISTS` skips it, so the new endpoint fails
+-- validation. Migration files, once shipped, must never be edited in place;
+-- this standalone follow-up fixes existing databases.
+--
+-- This migration is IDEMPOTENT — safe to run more than once:
+--   * ADD COLUMN IF NOT EXISTS
+--
+-- Fresh databases get the column directly from sql/bootstrap.sql and the
+-- updated sql/migrations/009_feature_flags.sql (same type/default), so running
+-- this migration there is a no-op.
+--
+-- Run as the DB owner, e.g.:
+--   psql -h <host> -U <user> -d <db> -f sql/migrations/010_feature_flag_override_created_at.sql
+--
+-- REVERT (rollback on a broken deploy):
+--   ALTER TABLE feature_flag_override DROP COLUMN IF EXISTS created_at;
+-- =============================================================================
+
+-- 1. Column — type/default match feature_flag.created_at, feature_flag.updated_at
+--    and the entity's @CreateDateColumn (timestamptz + now()).
+ALTER TABLE feature_flag_override
+    ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now() NOT NULL;

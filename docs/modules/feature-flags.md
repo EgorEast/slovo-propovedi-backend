@@ -50,6 +50,8 @@
 | `createdAt` | `created_at` | timestamptz | NOT NULL, default `now()` |
 
 > ✅ На пару `(flag, user)` — не более одной строки (композитный UNIQUE `UQ_feature_flag_override_pair`). Отсутствие строки и наличие строки — два возможных состояния; `setOverride` — upsert, поэтому повторный вызов обновляет значение, а не плодит дубли.
+>
+> ✅ `created_at` (`timestamp with time zone NOT NULL DEFAULT now()`) присутствует в `bootstrap.sql` и `009_feature_flags.sql`; для БД, где 009 уже отработала до появления колонки, её добавляет идемпотентная миграция `010_feature_flag_override_created_at.sql` (см. [`../db.md`](../db.md)).
 
 ## `FeatureFlagsService` (`src/feature-flags/feature-flags.service.ts`)
 
@@ -95,6 +97,6 @@
 ## Связанные документы
 
 - [README.md](./README.md) — индекс модулей
-- [../db.md](../db.md) — таблицы `feature_flag` / `feature_flag_override`, миграция `009_feature_flags.sql`
+- [../db.md](../db.md) — таблицы `feature_flag` / `feature_flag_override`, миграции `009_feature_flags.sql` и `010_feature_flag_override_created_at.sql`
 - [../contracts/rest-api.md](../contracts/rest-api.md) — контракт `FeatureFlagsController*` и матрица ролей
 - Клиентские табы «Читать»/«Учиться» — репозиторий `slovo-propovedi-mobile`
