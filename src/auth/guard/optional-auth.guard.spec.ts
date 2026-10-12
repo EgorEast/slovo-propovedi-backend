@@ -1,3 +1,4 @@
+import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { OptionalAuthGuard } from './optional-auth.guard';
 import { UserRole } from '../../users/user-role.enum';
@@ -68,18 +69,20 @@ describe('OptionalAuthGuard', () => {
     expect(request.user).toEqual(payload);
   });
 
-  it('proceeds anonymously when the token fails verification (invalid/expired)', async () => {
+  it('rejects with 401 when the token fails verification (invalid/expired)', async () => {
     jwtService.verifyAsync.mockRejectedValue(new Error('invalid token'));
     const { context, request } = buildContext({
       authorization: 'Bearer bad-token',
     });
 
-    await expect(guard.canActivate(context)).resolves.toBe(true);
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      UnauthorizedException,
+    );
 
     expect(request.user).toBeUndefined();
   });
 
-  it('proceeds anonymously for a legacy token without a role claim', async () => {
+  it('rejects with 401 for a legacy token without a role claim', async () => {
     jwtService.verifyAsync.mockResolvedValue({
       id: '11111111-1111-4111-8111-111111111111',
       email: 'user@example.com',
@@ -88,7 +91,9 @@ describe('OptionalAuthGuard', () => {
       authorization: 'Bearer legacy-token',
     });
 
-    await expect(guard.canActivate(context)).resolves.toBe(true);
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      UnauthorizedException,
+    );
 
     expect(request.user).toBeUndefined();
   });
@@ -97,9 +102,12 @@ describe('OptionalAuthGuard', () => {
     delete process.env.JWT_SECRET;
     const { context } = buildContext({ authorization: 'Bearer valid-token' });
 
-    await expect(guard.canActivate(context)).rejects.toThrow(
+    const result = guard.canActivate(context);
+
+    await expect(result).rejects.toThrow(
       'JWT_SECRET environment variable is not set',
     );
+    await expect(result).rejects.not.toBeInstanceOf(UnauthorizedException);
     expect(jwtService.verifyAsync).not.toHaveBeenCalled();
   });
 });

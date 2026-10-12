@@ -1,6 +1,6 @@
 # Модуль `feature-flags` — удалённые фича-флаги с пер-пользовательскими исключениями
 
-Удалённые переключатели функциональности. Глобальный дефолт каждого флага живёт в таблице `feature_flag`, а пер-пользовательские исключения (`grant` / `deny`) — в `feature_flag_override`. Эффективное значение для пользователя вычисляется на чтение (глобальный дефолт + override), поэтому клиенту достаточно одного `GET /feature-flags/me`. Аутентификация на `/me` опциональна: с валидным токеном возвращаются эффективные флаги пользователя, без токена (аноним) — только глобальные состояния.
+Удалённые переключатели функциональности. Глобальный дефолт каждого флага живёт в таблице `feature_flag`, а пер-пользовательские исключения (`grant` / `deny`) — в `feature_flag_override`. Эффективное значение для пользователя вычисляется на чтение (глобальный дефолт + override), поэтому клиенту достаточно одного `GET /feature-flags/me`. Аутентификация на `/me` опциональна: с валидным токеном возвращаются эффективные флаги пользователя; без токена — глобальные состояния флагов; с невалидным/просроченным токеном — `401` (клиент обновит токен и повторит запрос).
 
 **Слой:** backend (module `feature-flags`)
 **Статус:** актуально
@@ -13,7 +13,7 @@
 
 | Метод / путь | Guard | Body | DTO ответа | Метод сервиса |
 |---------------|-------|------|------------|----------------|
-| `GET /feature-flags/me` | ✅ `OptionalAuthGuard` (опциональная аутентификация; аноним получает глобальные состояния, `401` никогда) | — | `EffectiveFeatureFlagListResponseDto` (`{ flags: [{ key, enabled }] }`) | `getEffectiveForUser(userId \| undefined)` |
+| `GET /feature-flags/me` | ✅ `OptionalAuthGuard` (опциональная аутентификация; без токена — глобальные состояния, с невалидным/просроченным токеном — `401`) | — | `EffectiveFeatureFlagListResponseDto` (`{ flags: [{ key, enabled }] }`) | `getEffectiveForUser(userId \| undefined)` |
 | `GET /feature-flags` | ✅ `AuthGuard` + `RolesGuard` (admin) | — | `FeatureFlagListResponseDto` (`{ flags: FeatureFlag[] }`) | `findAll()` |
 | `GET /feature-flags/:id/overrides` | ✅ `AuthGuard` + `RolesGuard` (admin) | — | `FeatureFlagOverrideListResponseDto` (`{ overrides: FeatureFlagOverride[] }`) | `findOverrides(id)` |
 | `POST /feature-flags` | ✅ `AuthGuard` + `RolesGuard` (admin) | `CreateFeatureFlagDto` (`{ key, title }`) | `FeatureFlagResponseDto` | `create(dto)` |
@@ -22,7 +22,7 @@
 | `PUT /feature-flags/:id/overrides/:userId` | ✅ `AuthGuard` + `RolesGuard` (admin) | `SetFeatureFlagOverrideDto` (`{ value: 'grant' \| 'deny' }`) | `204 No Content` | `setOverride(id, userId, value)` |
 | `DELETE /feature-flags/:id/overrides/:userId` | ✅ `AuthGuard` + `RolesGuard` (admin) | — | `204 No Content` | `deleteOverride(id, userId)` |
 
-> ✅ `GET /feature-flags/me` — **единственный** роут с **опциональной** аутентификацией (`OptionalAuthGuard`, `src/auth/guard/optional-auth.guard.ts`): валидный Bearer-токен → эффективные флаги пользователя; отсутствующий/невалидный/просроченный токен → аноним, только глобальные состояния; `401` не возвращается никогда. Правило едино для всех ролей — админ-байпаса нет. Всё управление флагами (`GET`-список, create/update/delete, override-ы) — **admin-only** (moderator доступа не имеет).
+> ✅ `GET /feature-flags/me` — **единственный** роут с **опциональной** аутентификацией (`OptionalAuthGuard`, `src/auth/guard/optional-auth.guard.ts`): валидный Bearer-токен → эффективные флаги пользователя; без токена — глобальные состояния (`200`); невалидный/просроченный/legacy токен → `401` (клиент обновит токен и повторит запрос). Правило едино для всех ролей — админ-байпаса нет. Всё управление флагами (`GET`-список, create/update/delete, override-ы) — **admin-only** (moderator доступа не имеет).
 >
 > ⚠️ Параметры маршрута — zod-DTO: `:id` → `IdParamDto`, `:id` + `:userId` → `FeatureFlagOverrideParamsDto` (оба uuid). Требование `strictSchemaDeclaration: true` (см. [`../validation-pipeline.md`](../validation-pipeline.md)).
 
@@ -77,7 +77,7 @@
 | `false` | `grant` | ✅ включён |
 | `false` | — | ❌ выключен |
 
-> ✅ `userId === undefined` (аноним: нет токена / невалидный / просроченный) — исключения не читаются вовсе, возвращается `flag.enabled` каждого флага. Логика плоская (guard-клауза на `userId === undefined` + `Map` override-ов по `flagId`), без вложенных условий.
+> ✅ `userId === undefined` (аноним: токен не передан; невалидный/просроченный токен отсекается `OptionalAuthGuard` с `401` ещё до вызова сервиса) — исключения не читаются вовсе, возвращается `flag.enabled` каждого флага. Логика плоская (guard-клауза на `userId === undefined` + `Map` override-ов по `flagId`), без вложенных условий.
 >
 > ⚠️ Раньше `admin`/`moderator` видели все флаги включёнными (множество `PRIVILEGED_ROLES`); байпас удалён — роль в `getEffectiveForUser` больше не передаётся.
 

@@ -1,10 +1,18 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuthGuard } from './auth.guard';
 
-// Authentication is optional: a valid Bearer token attaches `{ id, role }` to
-// `request.user`; a missing, invalid or expired token leaves it undefined and
-// the request proceeds. This guard never answers 401.
+// Authentication is optional only for a missing token: the request proceeds
+// anonymously and `request.user` stays undefined. A token that is present but
+// fails verification — invalid, expired or legacy — answers 401 instead of
+// silently downgrading the caller to anonymous, so the client can refresh the
+// token and retry. A valid Bearer token attaches `{ id, role }` to
+// `request.user`.
 @Injectable()
 export class OptionalAuthGuard extends AuthGuard implements CanActivate {
   constructor(jwtService: JwtService) {
@@ -27,7 +35,9 @@ export class OptionalAuthGuard extends AuthGuard implements CanActivate {
     try {
       request['user'] = await this.verifyToken(token, secret);
     } catch {
-      // Invalid, expired or legacy token → anonymous request.
+      // Invalid, expired or legacy token → 401, never a silent anonymous
+      // downgrade: the client refreshes the token and retries.
+      throw new UnauthorizedException();
     }
 
     return true;

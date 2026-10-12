@@ -28,7 +28,7 @@
 Роли: `admin` / `moderator` / `user` (`UserRole`, живут в JWT-payload `{ id, email, role }` и в БД). `AuthGuard` парсит payload zod-схемой (legacy-токены без роли → 401 → refresh); `RolesGuard` fail-closed по `@Roles(...)`.
 
 - **Публичные чтения** (без аутентификации, любая роль): `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`.
-- **Опциональная аутентификация (`OptionalAuthGuard`):** `GET /feature-flags/me` — с валидным Bearer-токеном возвращает эффективные флаги пользователя (единое правило для всех ролей, админ-байпаса нет), без/с невалидным токеном — глобальные состояния; `401` не возвращается.
+- **Опциональная аутентификация (`OptionalAuthGuard`):** `GET /feature-flags/me` — с валидным Bearer-токеном возвращает эффективные флаги пользователя (единое правило для всех ролей, админ-байпаса нет); без токена — глобальные состояния; невалидный/просроченный токен → `401` (клиент обновит токен и повторит запрос).
 - **Guarded (`AuthGuard`):** `GET /auth/profile` (любой аутентифицированный, включая `user`), `POST /auth/logout` (любой аутентифицированный; отзывает refresh-токен через denylist).
 - **Guarded (`AuthGuard` + `RolesGuard`):**
   - **admin-only:** все `/users*`, оба `/invidious-instances*`, управление флагами (`GET/POST/PATCH/DELETE /feature-flags*`, `PUT/DELETE /feature-flags/:id/overrides/:userId` — кроме `GET /feature-flags/me`);
