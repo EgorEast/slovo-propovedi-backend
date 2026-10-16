@@ -2,6 +2,11 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.15.1] - 2026-10-16
+
+### Bug Fixes
+- reject invalid and expired tokens with 401 in optional auth
+
 ## [0.15.0] - 2026-10-10
 
 ### Features
