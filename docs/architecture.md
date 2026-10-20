@@ -189,7 +189,7 @@ npm run lint             # eslint --fix
 
 - `npm run build` = `rimraf dist && tsgo -p tsconfig.build.json && tsc-alias -p tsconfig.build.json`; компиляция — по `tsconfig.build.json` (`rootDir: ./src`, `incremental: false`, исключены `test`/`dist`/`**/*spec.ts`).
 - Правки `tsconfig` под `tsgo`: **`baseUrl` удалён** (native-компилятор его не поддерживает), `paths` (`src/*` → `./src/*`) сохранены, `types` сужены до `["node", "jest", "multer"]`. `tsgo` не переписывает path-alias'ы в JS-выводе — это делает `tsc-alias`.
-- **`typescript@6` оставлен рядом** (в devDependencies; диапазон намеренно ограничен мажором 6, чтобы npm не мог поставить версию за пределами peer-диапазона `typescript-eslint`): ESLint (`typescript-eslint`) и `nest start`/`start:dev` (`@nestjs/cli`) пока работают через legacy compiler API, которого у `tsgo` нет. Это осознанная временная конфигурация, пока native-компилятор не получит compiler API.
+- **`typescript@6` оставлен рядом** (в devDependencies; диапазон намеренно ограничен на уровне минора 6.0, чтобы стандартное разрешение зависимостей не выбрало версию за пределами peer-диапазона `typescript-eslint`): ESLint (`typescript-eslint`) и `nest start`/`start:dev` (`@nestjs/cli`) пока работают через legacy compiler API, которого у `tsgo` нет. Это осознанная временная конфигурация, пока native-компилятор не получит compiler API.
 
 ### Тесты: Jest на `@swc/jest`
 
