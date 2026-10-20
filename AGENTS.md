@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Backend API guide for agents working in this repository: the **Слово.Проповеди NestJS backend API** —
-a NestJS 12 + TypeORM + PostgreSQL + MinIO service. This repo is the standalone backend, split from the
+a NestJS + TypeORM + PostgreSQL + MinIO service. This repo is the standalone backend, split from the
 former `slovo-propovedi-admin` monorepo; its former path `backend/` is now the repo root.
 
 ## Read the knowledge base first
@@ -32,13 +32,16 @@ the exceptions — they are in English).
 - **Tech debt: fix new debt immediately instead of recording it.** When a debt item is resolved,
   **delete** its entry from `docs/debt.md` — the file lists **open** debts only; resolved entries are
   removed, not archived.
+- **Don't pin package versions in docs** — they go stale. Use a minimal bound (bare major like
+  `typescript@6`, or "not above major X") where a version is essential. Historical/spec anchors
+  (OpenAPI spec versions, release tags, commit hashes) are exempt.
 
 ## Stack & conventions
 
-- **NestJS 12**, **TypeORM** (`synchronize: false`), **PostgreSQL**, **MinIO**.
-- **Build & test toolchain:** the production build runs the native TypeScript 7 compiler (`tsgo`,
+- **NestJS**, **TypeORM** (`synchronize: false`), **PostgreSQL**, **MinIO**.
+- **Build & test toolchain:** the production build runs the native TypeScript compiler (`tsgo`,
   `@typescript/native-preview`) plus `tsc-alias` — not `nest build`; `typescript@6` stays installed for
-  ESLint and `nest start`. Unit tests run on Jest 30 with the `@swc/jest` transform (no `ts-jest`).
+  ESLint and `nest start`. Unit tests run on Jest with the `@swc/jest` transform (no `ts-jest`).
 - **Validation via `nestjs-zod`**: `createZodDto(...)` for every request DTO, `@ZodResponse` for
   responses, strict `zod.strictObject` at the boundary. `strictSchemaDeclaration: true` requires every
   route parameter to be a Zod DTO.
@@ -66,8 +69,8 @@ the exceptions — they are in English).
 
 ## Quality gates
 
-- `npm run test` — unit tests (Jest 30, `@swc/jest` transform).
-- `npm run build` — native TypeScript 7 build (`tsgo` + `tsc-alias`), not `nest build`.
+- `npm run test` — unit tests (Jest, `@swc/jest` transform).
+- `npm run build` — native TypeScript build (`tsgo` + `tsc-alias`), not `nest build`.
 - `npm run lint` — eslint.
 
 ## Deployment

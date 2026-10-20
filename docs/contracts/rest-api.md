@@ -30,7 +30,7 @@
 | Команда | `npm run gen:schemas` |
 | Реализация | `scripts/gen-schemas.mjs` — вызывает orval программно, затем prettier по выходному файлу |
 
-> ✅ `strict: true` для zod требует **per-context** ключей (Orval 8.23.0 молча нормализует простой `strict: true` в all-false) — см. комментарий в `orval.config.mjs`. Результат: каждая zod-схема на границе отбраковывает лишние ключи.
+> ✅ `strict: true` для zod требует **per-context** ключей (Orval молча нормализует простой `strict: true` в all-false) — см. комментарий в `orval.config.mjs`. Результат: каждая zod-схема на границе отбраковывает лишние ключи.
 
 `gen:schemas` = `node scripts/gen-schemas.mjs`. Выходные схемы используются в `@ZodResponse()` и DTO контроллеров (`src/sermon/`, `src/playlist/`).
 
