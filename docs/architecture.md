@@ -183,6 +183,8 @@ npm run gen:schemas      # регенерация src/generated/index.ts (Orval 
 npm run lint             # eslint --fix
 ```
 
+> 🪝 Pre-commit hook (husky + lint-staged) прогоняет `eslint --fix` по застейдженным `.ts`-файлам перед коммитом; в CI (`HUSKY=0`) он отключён.
+
 ### Сборочный конвейер: `tsgo` + `tsc-alias`
 
 Сборка идёт **не** через `nest build`, а нативным компилятором TypeScript (`tsgo`, dev-пакет `@typescript/native-preview`) с последующим `tsc-alias`:
