@@ -6,8 +6,10 @@ export type Transform = 'high' | 'short' | 'middle';
 /**
  * Where the section slide title is rendered.
  *
- * @deprecated The `'bothOnAndUnder'` value is deprecated: do not use it in new
- * sections. It is read as `'under'`. The `'on'` and `'under'` values remain valid.
+ * `'on'` — centered over the artwork. `'under'` — caption below the card.
+ * `'bothOnAndUnder'` — title and description stacked at the bottom of the card
+ * (title above the description). The DB value string is kept for backward
+ * compatibility with existing rows.
  */
 export type WhereIsSlideTitleLocated = 'on' | 'under' | 'bothOnAndUnder';
 

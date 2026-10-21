@@ -5,7 +5,7 @@
  * REST API сервиса «Слово.Проповеди».
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.21.2
+ * OpenAPI spec version: 0.22.1
  */
 import * as zod from 'zod';
 
@@ -148,7 +148,7 @@ export const SectionControllerCreateBody = zod.strictObject({
     .enum(['on', 'under', 'bothOnAndUnder'])
     .optional()
     .describe(
-      'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+      'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
     ),
   borderRadius: zod.boolean().optional(),
 });
@@ -182,7 +182,7 @@ export const SectionControllerCreateResponse = zod.strictObject({
     .enum(['on', 'under', 'bothOnAndUnder'])
     .default(sectionControllerCreateResponseWhereIsSlideTitleLocatedDefault)
     .describe(
-      'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+      'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
     ),
   borderRadius: zod
     .boolean()
@@ -303,7 +303,7 @@ export const SectionControllerFindAllResponse = zod.strictObject({
           sectionControllerFindAllResponseSectionsItemWhereIsSlideTitleLocatedDefault,
         )
         .describe(
-          'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+          'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
         ),
       borderRadius: zod
         .boolean()
@@ -441,7 +441,7 @@ export const SectionControllerFindOneResponse = zod.strictObject({
     .enum(['on', 'under', 'bothOnAndUnder'])
     .default(sectionControllerFindOneResponseWhereIsSlideTitleLocatedDefault)
     .describe(
-      'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+      'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
     ),
   borderRadius: zod
     .boolean()
@@ -544,7 +544,7 @@ export const SectionControllerUpdateBody = zod.strictObject({
   whereIsSlideTitleLocated: zod
     .enum(['on', 'under', 'bothOnAndUnder'])
     .describe(
-      'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+      'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
     ),
   borderRadius: zod.boolean(),
 });
@@ -578,7 +578,7 @@ export const SectionControllerUpdateResponse = zod.strictObject({
     .enum(['on', 'under', 'bothOnAndUnder'])
     .default(sectionControllerUpdateResponseWhereIsSlideTitleLocatedDefault)
     .describe(
-      'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+      'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
     ),
   borderRadius: zod
     .boolean()
@@ -747,7 +747,7 @@ export const PlaylistControllerCreateResponse = zod.strictObject({
           playlistControllerCreateResponseSectionsItemWhereIsSlideTitleLocatedDefault,
         )
         .describe(
-          'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+          'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
         ),
       borderRadius: zod
         .boolean()
@@ -981,7 +981,7 @@ export const PlaylistControllerFindAllResponse = zod.strictObject({
               playlistControllerFindAllResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault,
             )
             .describe(
-              'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+              'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
             ),
           borderRadius: zod
             .boolean()
@@ -1189,7 +1189,7 @@ export const PlaylistControllerFindOneResponse = zod.strictObject({
           playlistControllerFindOneResponseSectionsItemWhereIsSlideTitleLocatedDefault,
         )
         .describe(
-          'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+          'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
         ),
       borderRadius: zod
         .boolean()
@@ -1394,7 +1394,7 @@ export const PlaylistControllerUpdateResponse = zod.strictObject({
           playlistControllerUpdateResponseSectionsItemWhereIsSlideTitleLocatedDefault,
         )
         .describe(
-          'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+          'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
         ),
       borderRadius: zod
         .boolean()
@@ -1720,7 +1720,7 @@ export const SermonControllerCreateResponse = zod.strictObject({
               sermonControllerCreateResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault,
             )
             .describe(
-              'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+              'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
             ),
           borderRadius: zod
             .boolean()
@@ -2024,7 +2024,7 @@ export const SermonControllerFindAllResponse = zod.strictObject({
                   sermonControllerFindAllResponseSermonsItemPlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault,
                 )
                 .describe(
-                  'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+                  'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
                 ),
               borderRadius: zod
                 .boolean()
@@ -2307,7 +2307,7 @@ export const SermonControllerFindOneResponse = zod.strictObject({
               sermonControllerFindOneResponsePlaylistsItemSectionsItemWhereIsSlideTitleLocatedDefault,
             )
             .describe(
-              'Расположение заголовка на карточке. Значение `bothOnAndUnder` устарело и не используется: новые секции должны использовать `on` или `under`; существующие значения `bothOnAndUnder` клиент читает как `under`.',
+              'Расположение заголовка на карточке. `bothOnAndUnder` — заголовок и описание внизу карточки: заголовок над описанием. `on` — заголовок по центру карточки, `under` — заголовок под карточкой.',
             ),
           borderRadius: zod
             .boolean()
