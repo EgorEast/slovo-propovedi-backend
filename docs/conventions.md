@@ -48,9 +48,13 @@ const FindAllSermonsQuerySchema = SermonControllerFindAllQueryParams.extend({
   take: z.coerce.number().int().min(1).max(100).optional(), // string → number
   search: z.string().trim().min(1).optional(),              // trim + reject empty
   cursor: z.string().min(1).optional(),                     // generated zod.uuid() → opaque string
+  page: z.coerce.number().int().min(1).optional(),          // string → number (offset mode)
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 }).superRefine((query, ctx) => {
-  if (query.cursor && !query.search && !z.string().uuid().safeParse(query.cursor).success) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cursor'], message: 'cursor must be a valid uuid when search is absent' });
+  const offset = query.page !== undefined || query.limit !== undefined;
+  const keyset = query.take !== undefined || query.cursor !== undefined;
+  if (offset && keyset) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['page'], message: 'page and limit are mutually exclusive with take and cursor' });
   }
 });
 
@@ -59,7 +63,7 @@ export class FindAllSermonsQueryDto extends createZodDto(FindAllSermonsQuerySche
 
 - `take` коэрсится `z.coerce.number()` (query-строка → число) и ограничивается `1..100`;
 - `search` нормализуется `trim()` и отклоняется, если после обрезки пуст;
-- `cursor` переопределяется с сгенерированного `zod.uuid()` на непрозрачную строку: search-страницы несут составной курсор `{rank, id}` (base64 JSON), non-search — прежний uuid-id. Условие в `superRefine` сохраняет прежний fail-fast (400) для мусорного курсора, когда поиска нет.
+- `cursor` переопределяется с сгенерированного `zod.uuid()` на непрозрачную строку: формат зависит от режима — `{rank, id}` (base64 JSON) при поиске и `{createdAt, id}` для keyset-страниц по дате. Формат знает только сервис (декодер на каждый режим), DTO его не дублирует; старые голые uuid-курсоры сервис отклоняет с `400 invalid or stale cursor`. `superRefine` держит только взаимоисключение режимов пагинации.
 
 > ✅ Правило: **не переписывать** сгенерированные схемы руками — только `.extend(...)`/override поверх них. Так контракт остаётся в одной точке (`generated`), а ручные правки — локальные уточнения на границе.
 
@@ -68,7 +72,8 @@ export class FindAllSermonsQueryDto extends createZodDto(FindAllSermonsQuerySche
 | Правило | Пример |
 |---------|--------|
 | Таблица через `@Entity('<name>')` — имя таблицы = название сущности | `@Entity('sermon')` → `SermonEntity` |
-| `@PrimaryGeneratedColumn('uuid')` `id: string` — uuid-PK у всех сущностей | `sermon`, `playlist`, `section`, join-таблицы |
+| `@PrimaryGeneratedColumn('uuid')` `id: string` — uuid-PK у всех сущностей; DB default — нативный `uuidv7()` (PostgreSQL ≥ 18) | `sermon`, `playlist`, `section`, join-таблицы |
+| Колонки-таймстемпы — `@CreateDateColumn`/`@UpdateDateColumn` с явным именем и типом | `@CreateDateColumn({ name: 'created_at', type: 'timestamptz' })` в `sermon`, `playlist`, `feature_flag`, `feature_flag_override` |
 | Колонки с явным именем через `@Column({ name: '...' })` | `text-file-url`, `audio-url`, `items-size` |
 | Nullable-поля — через `nullable: true` | `book`, `chapter`, `verse` |
 | Join-таблицы — **явные join-сущности** с суррогатным `id`-PK + UNIQUE на FK-паре + `position` | `PlaylistSermonJoinEntity`, `SectionPlaylistJoinEntity` |
@@ -117,7 +122,7 @@ await repository.createQueryBuilder()
 
 ## OpenAPI-first codegen
 
-Внешняя спецификация (`https://docs.slovo-propovedi.ru/openAPI.yaml`) — **вход кодогенерации**: backend генерирует из неё zod-схемы через Orval. **Источник истины контракта — сгенерированные схемы валидации** (`src/generated/index.ts`): prose описывает, схема решает; при расхождении между текстом и схемой приоритет у схемы. Версию спецификации в доках не фиксируют — актуальная версия в `info.version` внешнего `openAPI.yaml`.
+Внешняя спецификация (`https://docs.slovo-propovedi.ru/openAPI.yaml`) — **вход кодогенерации**: backend генерирует из неё zod-схемы через Orval. **Источник истины контракта — сгенерированные схемы валидации** (`src/generated/index.ts`): prose описывает, схема решает; при расхождении между текстом и схемой приоритет у схемы. Актуальную версию спецификации в доках не поддерживают — она в `info.version` внешнего `openAPI.yaml`; исторические якоря помечаются явно.
 
 | Параметр | Значение |
 |----------|----------|
@@ -144,6 +149,7 @@ await repository.createQueryBuilder()
 | `sql/bootstrap.sql` | полная схема свежей БД | один раз на новую БД (superuser/owner) |
 | `sql/migrate-add-username.sql` | колонка `username` на `user` | вручную на существующие установки |
 | `sql/migrations/001_add_positions.sql` | колонки `position` + суррогатный PK join-таблиц | вручную на существующие установки |
+| `sql/migrations/002…015` | роли, denylist refresh-токенов, FTS-векторы, json-глава, Invidious, фича-флаги, `token_version`, rehash паролей, `created_at` (013), uuidv7-defaults (014), rekey id (015) | вручную, по порядку; полный список и предупреждения — [`db.md`](./db.md) |
 
 Команда применения — как DB-owner:
 
