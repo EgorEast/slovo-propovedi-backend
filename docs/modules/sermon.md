@@ -1,6 +1,6 @@
 # Модуль `sermon` — проповеди
 
-Проповедь — основная единица контента. Модуль: CRUD, поиск (полнотекстовый, независимый от порядка слов, с ранжированием по релевантности: PostgreSQL FTS `russian` + `ts_rank`), пагинация (keyset `take`/`cursor` **или** offset `page`/`limit`), presigned-URL аудио, синхронизация членства в плейлистах.
+Проповедь — основная единица контента. Модуль: CRUD, поиск (полнотекстовый, независимый от порядка слов, с ранжированием по релевантности: PostgreSQL FTS `russian` + `ts_rank`), пагинация (keyset `take`/`cursor` **или** offset `page`/`limit`), синхронизация членства в плейлистах.
 
 **Слой:** backend (module `sermon`)
 **Статус:** актуально
@@ -13,7 +13,6 @@
 | `GET /sermons` | публичный | query `FindAllSermonsQueryDto` | `AllSermonsResponseDto` | `findAll(take, cursor, search, page, limit, sort, order)` |
 | `GET /sermons/distinct-values` | публичный | — | `DistinctValuesResponseDto` | `getDistinctValues` |
 | `GET /sermons/:id` | публичный | param `IdParamDto` | `SermonResponseDto` | `findOne` |
-| `GET /sermons/:id/stream-url` | публичный | param `IdParamDto` | `StreamUrlResponseDto` | `getStreamUrl` |
 | `PATCH /sermons/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | param + body `UpdateSermonDto` | `StatusSermonResponseDto` | `update` |
 | `DELETE /sermons/:id` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | param `IdParamDto` | `StatusSermonResponseDto` | `remove` |
 
@@ -172,10 +171,6 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 - `update` дополнительно проверяет **эффективные** `chapter`/`verse` (присутствующий в запросе ключ, иначе — сохранённое значение): комбинация, валидная в рамках одного запроса, но недопустимая для сохранённого состояния (диапазон глав + не-null не-диапазонный стих), возвращает 400 с тем же сообщением, что и DTO.
 - Затем `syncSermonPlaylistMembership(existingSermon, playlistsIds)`: разница текущих join-ов и желаемого набора — удаляет лишние, добавляет недостающие (`attachSermonToPlaylists`). Возвращает `{ status: 'success' }`.
 
-## `getStreamUrl`
-
-`findOne` по `id` (иначе `NotFoundException`), требует `audioUrl` (иначе `NotFoundException`), вытаскивает имя объекта из URL через `MinioService.extractFileNameFromUrl`, отдаёт `getPresignedFileUrl` → `{ url }`. Подробнее — [`minio.md`](./minio.md).
-
 ## `remove`
 
 Удаляет строку из БД, затем (best-effort) чистит аудио- и текстовый файлы из MinIO через `MinioService.removeObjectByUrl(audioUrl)` / `removeObjectByUrl(textFileUrl)`. URL читаются до удаления строки (пока запись ещё существует). Любой сбой очистки — файл не найден, невалидный/чужой URL, MinIO недоступен — логируется как `WARN` и не валит HTTP-запрос: БД остаётся источником истины. Ответ: `{ status: 'success' }`.
@@ -190,7 +185,6 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 | `src/sermon/dto/sermon-response.dto.ts` | create/findOne |
 | `src/sermon/dto/all-sermons-response.dto.ts` | findAll |
 | `src/sermon/dto/distinct-values-response.dto.ts` | distinct-values |
-| `src/sermon/dto/stream-url-response.dto.ts` | stream-url |
 | `src/sermon/dto/status-sermon-response.dto.ts` | update/remove |
 
 > ✅ **Cross-field правило «глава-диапазон»** (OpenAPI 0.13.0): `chapter` — `integer | [integer, integer] | null`; `verse` — `integer | [integer, integer] | (integer | [integer, integer])[] | null` (список разрозненных отрезков, например `[[9,18],20]`). Диапазон глав (`chapter: [3, 4]`) обязан сочетаться с диапазоном стихов (`verse: [16, 2]`) или отсутствием стиха (`verse: null`) — одиночный стих (`verse: 16`) и список отрезков (`verse: [[9,18],20]`) не могут быть привязаны к диапазону глав (отрезки имеют смысл только внутри одной главы). Оба DTO (`create`/`update`) навешивают `.superRefine(...)` на сгенерированную схему: `Array.isArray(chapter) && verse !== undefined && verse !== null && !isVerseRange(verse)` → ошибка `'verse must be a two-integer range or null when chapter is a range'` по пути `verse`. `chapter`/`verse` — **необязательные** ключи (book-only ссылка валидна): отсутствующий ключ в `create` нормализуется в `null` на границе сервиса, в `update` — означает «не менять поле». Правило продублировано в сервисе: `update()` проверяет **эффективные** значения (присутствующий ключ, иначе сохранённое) — дыра «cross-request» (PATCH меняет стих, не трогая главу) закрыта на сервисном уровне. **Неоднозначность на проводе:** массив из ровно двух целых чисел всегда трактуется как диапазон — список отрезков из двух одиночных стихов неотличим от диапазона, поэтому клиенты оборачивают одиночные стихи как `[n,n]` (`[[9,9],[20,20]]`). Сгенерированная схема не переписывается — правило добавляется поверх (см. [`../validation-pipeline.md`](../validation-pipeline.md)).
@@ -201,7 +195,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 - [README.md](./README.md) — индекс модулей
 - [playlist.md](./playlist.md) — плейлисты и join-таблица `playlist_sermons_sermon`
-- [minio.md](./minio.md) — presigned-URL аудио, `extractFileNameFromUrl`
+- [minio.md](./minio.md) — `removeObjectByUrl` для best-effort очистки аудио/текста, `extractFileNameFromUrl`
 - [shared.md](./shared.md) — `IdParamDto`
 - [../db.md](../db.md) — сущность и связи
 - [../contracts/rest-api.md](../contracts/rest-api.md) — контракт `SermonController*`

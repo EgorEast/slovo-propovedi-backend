@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import * as Minio from 'minio';
-import * as path from 'path';
+import {
+  AUDIO_TEXT_EXTENSIONS,
+  getFileExtension,
+  IMAGE_EXTENSIONS,
+  MEDIA_EXTENSIONS,
+} from 'src/shared/media';
 
 export interface StoredFile {
   fileName: string;
@@ -34,32 +39,14 @@ export type StoredImage = StoredFile;
 export class MinioService {
   static readonly BUCKET_NAME = 'files';
 
-  // Upload allow-list / media classification taxonomy. Single source of truth —
-  // uploads reject anything outside it and the orphans scan classifies by it.
-  static readonly IMAGE_EXTENSIONS: readonly string[] = [
-    '.jpeg',
-    '.jpg',
-    '.png',
-    '.webp',
-  ];
-  static readonly AUDIO_TEXT_EXTENSIONS: readonly string[] = [
-    '.mp3',
-    '.m4a',
-    '.pdf',
-    '.fb2',
-  ];
-  static readonly MEDIA_EXTENSIONS: readonly string[] = [
-    ...MinioService.IMAGE_EXTENSIONS,
-    ...MinioService.AUDIO_TEXT_EXTENSIONS,
-  ];
+  // Re-exported from `src/shared/media.ts` so existing consumers keep using
+  // MinioService while the taxonomy itself has one definition.
+  static readonly IMAGE_EXTENSIONS = IMAGE_EXTENSIONS;
+  static readonly AUDIO_TEXT_EXTENSIONS = AUDIO_TEXT_EXTENSIONS;
+  static readonly MEDIA_EXTENSIONS = MEDIA_EXTENSIONS;
 
-  /**
-   * Lowercased extension (with the leading dot) of a file name; names without
-   * a dot have no extension and yield an empty string.
-   */
   static getFileExtension(fileName: string): string {
-    const dotIndex = fileName.lastIndexOf('.');
-    return dotIndex === -1 ? '' : fileName.slice(dotIndex).toLowerCase();
+    return getFileExtension(fileName);
   }
 
   static isImageFile(fileName: string): boolean {
@@ -87,17 +74,20 @@ export class MinioService {
   private readonly minioClient: Minio.Client;
 
   /**
-   * Presigning client: points at the browser-accessible MinIO endpoint
-   * (MINIO_PUBLIC_URI, e.g. https://minio.example.com routed via Traefik).
-   * The host header is part of the SigV4 signature, so a presigned URL must
-   * be generated with the same host the browser will use — replacing the
-   * host afterwards would invalidate the signature.
+   * Browser-facing base of static object URLs. Validated on boot: without it
+   * every URL returned to clients would be malformed.
    */
-  private readonly presignClient: Minio.Client;
+  private readonly publicUri: string;
 
   constructor(private readonly configService: ConfigService) {
+    const publicUri = this.configService.get('MINIO_PUBLIC_URI');
+    if (!publicUri) {
+      throw new Error(
+        'MINIO_PUBLIC_URI is not set — static file URLs cannot be built',
+      );
+    }
+    this.publicUri = publicUri;
     this.minioClient = this.buildInternalClient();
-    this.presignClient = this.buildPresignClient();
   }
 
   async createBucketIfNotExists(): Promise<void> {
@@ -137,7 +127,9 @@ export class MinioService {
   }
 
   async uploadFile(file: Express.Multer.File): Promise<string> {
-    const fileType = path.extname(file.originalname);
+    // Normalize the extension once: `.MP3` must not be stored with an
+    // application/octet-stream content type.
+    const fileType = MinioService.getFileExtension(file.originalname);
     const contentType = this.getContentType(fileType);
     const fileName = randomUUID() + fileType;
     await this.minioClient.putObject(
@@ -154,9 +146,7 @@ export class MinioService {
   }
 
   async getFileUrl(fileName: string): Promise<string> {
-    return `${this.configService.get('MINIO_PUBLIC_URI')}/${
-      MinioService.BUCKET_NAME
-    }/${fileName}`;
+    return `${this.publicUri}/${MinioService.BUCKET_NAME}/${fileName}`;
   }
 
   /**
@@ -342,40 +332,6 @@ export class MinioService {
     );
   }
 
-  async getPresignedUrl(
-    bucket: string,
-    fileName: string,
-    expirySeconds = 3600,
-  ): Promise<string> {
-    if (!bucket || !fileName) {
-      throw new Error(
-        'Bucket and file name are required to generate a presigned URL',
-      );
-    }
-    return await this.presignClient.presignedGetObject(
-      bucket,
-      fileName,
-      expirySeconds,
-    );
-  }
-
-  /**
-   * Generates a browser-accessible presigned URL for a file in the default
-   * bucket. Streaming endpoints use it so audio/video is served directly from
-   * MinIO instead of being proxied through the backend — a proxied stream would
-   * hold buffers in the Node.js heap and exhaust it under 200 concurrent users.
-   */
-  async getPresignedFileUrl(
-    fileName: string,
-    expirySeconds = 3600,
-  ): Promise<string> {
-    return await this.getPresignedUrl(
-      MinioService.BUCKET_NAME,
-      fileName,
-      expirySeconds,
-    );
-  }
-
   /**
    * Extracts the object name from a stored file URL (e.g. the `audioUrl` of a
    * sermon). File URLs look like `${MINIO_PUBLIC_URI}/files/<object-name>`.
@@ -438,6 +394,12 @@ export class MinioService {
       case '.m4a': {
         return 'audio/mp4';
       }
+      case '.pdf': {
+        return 'application/pdf';
+      }
+      case '.fb2': {
+        return 'application/xml';
+      }
       default: {
         return 'application/octet-stream';
       }
@@ -452,33 +414,5 @@ export class MinioService {
       accessKey: this.configService.get('MINIO_ACCESS_KEY'),
       secretKey: this.configService.get('MINIO_SECRET_KEY'),
     });
-  }
-
-  private buildPresignClient(): Minio.Client {
-    const publicUri = this.configService.get('MINIO_PUBLIC_URI');
-    if (!publicUri) {
-      throw new Error(
-        'MINIO_PUBLIC_URI is not set — presigned URLs cannot be generated',
-      );
-    }
-    let url: URL;
-    try {
-      url = new URL(publicUri);
-    } catch {
-      throw new Error(`MINIO_PUBLIC_URI is not a valid URL: "${publicUri}"`);
-    }
-    const clientOptions: Minio.ClientOptions = {
-      endPoint: url.hostname,
-      useSSL: url.protocol === 'https:',
-      accessKey: this.configService.get('MINIO_ACCESS_KEY'),
-      secretKey: this.configService.get('MINIO_SECRET_KEY'),
-      // Buckets are created in us-east-1; pinning the region skips the
-      // GetBucketLocation network round-trip and keeps presigning purely local.
-      region: 'us-east-1',
-    };
-    if (url.port) {
-      clientOptions.port = parseInt(url.port, 10);
-    }
-    return new Minio.Client(clientOptions);
   }
 }

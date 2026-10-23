@@ -16,14 +16,14 @@
 | [`debt.md`](./debt.md) | Реестр технического долга и инцидентов (срезанные углы, known-issues) |
 | [`scripts.md`](./scripts.md) | CLI-скрипты: bulk-загрузка mp3-проповедей в API (`npm run upload-sermons`), кодогенерация |
 | [`modules/README.md`](./modules/README.md) | Индекс модулей: module → endpoints → entity → doc |
-| [`modules/app.md`](./modules/app.md) | Файловое хранилище: `POST/GET /files`, orphans, `DELETE /files/:fileName`, stream-url |
+| [`modules/app.md`](./modules/app.md) | Файловое хранилище: `POST/GET /files`, orphans, `DELETE /files/:fileName` |
 | [`modules/health.md`](./modules/health.md) | `GET /health` → `{ status: 'ok' }` |
 | [`modules/auth.md`](./modules/auth.md) | login/refresh/logout/profile, JWT-токены, denylist, bcrypt, `AuthGuard` |
 | [`modules/users.md`](./modules/users.md) | Сущность `user`, `UsersService`, `UsersController` (CRUD + смена пароля) |
 | [`modules/sermon.md`](./modules/sermon.md) | CRUD проповедей, поиск, keyset-пагинация |
 | [`modules/playlist.md`](./modules/playlist.md) | CRUD плейлистов, bulk-replace, reorder |
 | [`modules/section.md`](./modules/section.md) | CRUD разделов, enums, reorder |
-| [`modules/minio.md`](./modules/minio.md) | MinIO-клиенты, bucket `files`, presign, public-read |
+| [`modules/minio.md`](./modules/minio.md) | MinIO-клиент, bucket `files`, public-read, статические URL |
 | [`modules/shared.md`](./modules/shared.md) | Общие DTO и сгенерированный `generated/index.ts` |
 
 > ✅ Внешний контракт REST API и конвейер кодогенерации описаны в [`contracts/rest-api.md`](./contracts/rest-api.md). Здесь — реализация backend; спецификация и сгенерированные схемы — там.
@@ -49,14 +49,14 @@
 |----------------------|------------|
 | `src/main.ts` | Bootstrap: CORS, `createZodValidationPipe(strict)`, MinIO bucket, Swagger UI, порт 3000 |
 | `src/app.module.ts` | Корневой модуль: регистрирует все модули + глобальные `ZodSerializerInterceptor` и `ThrottlerGuard` |
-| `src/app.controller.ts` | `POST/GET /files`, `GET /files/orphans`, `POST /files/orphans/cleanup`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `DELETE /files/:fileName` |
+| `src/app.controller.ts` | `POST/GET /files`, `GET /files/orphans`, `POST /files/orphans/cleanup`, `GET /files/:fileName`, `DELETE /files/:fileName` |
 | `src/db/typeorm.module.ts` | Подключение к PostgreSQL (конфиг, `synchronize: false`, PgBouncer) |
 | `src/auth/` | `AuthGuard`, auth-контроллер, DTO |
 | `src/users/` | Сущность `user`, `UsersService`, `UsersController` (CRUD + смена пароля) |
 | `src/sermon/` | Проповеди: сущность, контроллер, сервис, DTO |
 | `src/playlist/` | Плейлисты: сущности, контроллер, сервис, DTO |
 | `src/section/` | Разделы: сущности, контроллер, сервис, DTO |
-| `src/minio/` | Обёртка над объектным хранилищем (два клиента) |
+| `src/minio/` | Обёртка над объектным хранилищем (data-plane клиент) |
 | `src/health/` | `GET /health` |
 | `src/shared/dto/` | Общие DTO (`IdParamDto`, `FileNameParamDto`) |
 | `src/generated/index.ts` | Сгенерированные Orval zod-схемы (не редактировать) |

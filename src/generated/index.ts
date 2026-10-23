@@ -100,17 +100,6 @@ export const AppControllerCleanupOrphanedFilesResponse = zod.strictObject({
 });
 
 /**
- * @summary Получить URL потока для файла
- */
-export const AppControllerGetStreamUrlParams = zod.strictObject({
-  fileName: zod.string(),
-});
-
-export const AppControllerGetStreamUrlResponse = zod.strictObject({
-  url: zod.string(),
-});
-
-/**
  * @summary Получить публичный URL файла
  */
 export const AppControllerGetFileParams = zod.strictObject({
@@ -2191,17 +2180,6 @@ export const SermonControllerGetDistinctValuesResponse = zod
     books: zod.array(zod.string()),
   })
   .describe('Списки уникальных значений проповедников и книг');
-
-/**
- * @summary Получить URL потока для аудио проповеди
- */
-export const SermonControllerGetStreamUrlParams = zod.strictObject({
-  id: zod.uuid(),
-});
-
-export const SermonControllerGetStreamUrlResponse = zod.strictObject({
-  url: zod.string(),
-});
 
 /**
  * @summary Получить одну проповедь по ID

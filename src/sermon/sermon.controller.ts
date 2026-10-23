@@ -16,7 +16,6 @@ import { UpdateSermonDto } from './dto/update-sermon.dto';
 import { FindAllSermonsQueryDto } from './dto/find-all-sermons-query.dto';
 import { SermonResponseDto } from './dto/sermon-response.dto';
 import { AllSermonsResponseDto } from './dto/all-sermons-response.dto';
-import { StreamUrlResponseDto } from './dto/stream-url-response.dto';
 import { StatusSermonResponseDto } from './dto/status-sermon-response.dto';
 import { DistinctValuesResponseDto } from './dto/distinct-values-response.dto';
 import { AuthGuard } from '../auth/guard/auth.guard';
@@ -61,14 +60,6 @@ export class SermonController {
   @ZodResponse({ type: DistinctValuesResponseDto })
   async getDistinctValues(): Promise<DistinctValuesResponseDto> {
     return await this.sermonService.getDistinctValues();
-  }
-
-  @Get(':id/stream-url')
-  @ZodResponse({ type: StreamUrlResponseDto })
-  async getStreamUrl(
-    @Param() params: IdParamDto,
-  ): Promise<StreamUrlResponseDto> {
-    return await this.sermonService.getStreamUrl(params.id);
   }
 
   @Get(':id')

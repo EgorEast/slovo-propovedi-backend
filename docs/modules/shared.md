@@ -20,22 +20,27 @@ export class IdParamDto extends createZodDto(
 ) {}
 ```
 
-Используется во всех `GET/PATCH/DELETE /:id` эндпоинтах (`sermon`, `playlist`, `section`, files-stream). См. [`app.md`](./app.md), [`sermon.md`](./sermon.md), [`playlist.md`](./playlist.md), [`section.md`](./section.md).
+Используется во всех `GET/PATCH/DELETE /:id` эндпоинтах (`sermon`, `playlist`, `section`). См. [`app.md`](./app.md), [`sermon.md`](./sermon.md), [`playlist.md`](./playlist.md), [`section.md`](./section.md).
 
 ### `FileNameParamDto` (`src/shared/dto/file-name-param.dto.ts`)
 
-Параметр пути `:fileName` (имя объекта в MinIO):
+Параметр пути `:fileName` (имя объекта в MinIO). Хранимые имена — всегда `randomUUID() + <media extension>`, поэтому DTO принимает **только** такую форму:
 
 ```ts
-import { createZodDto } from 'nestjs-zod';
-import { z } from 'zod';
-
-export class FileNameParamDto extends createZodDto(
-  z.object({ fileName: z.string() }),
-) {}
+const FileNameParamSchema = AppControllerGetFileParams.extend({
+  fileName: z.string().max(255).regex(STORED_FILE_NAME_PATTERN),
+});
+export class FileNameParamDto extends createZodDto(FileNameParamSchema) {}
 ```
 
-Используется в `GET /files/:fileName` и `GET /files/:fileName/stream-url` ([`app.md`](./app.md)).
+- `STORED_FILE_NAME_PATTERN` (`src/shared/media.ts`) — `^<uuid>\.(jpeg|jpg|png|webp|mp3|m4a|pdf|fb2)$`, case-insensitive; альтернация расширений **выводится** из `MEDIA_EXTENSIONS`, не копируется вручную.
+- Сгенерированная схема `AppControllerGetFileParams` расширяется (не переписывается); strict-объект наследуется.
+- Отклоняет произвольные строки, path traversal (`../../x`, URL-encoded варианты), неизвестные расширения и лишние ключи — `400` до вызова MinIO.
+- Используется в `GET /files/:fileName` и `DELETE /files/:fileName` ([`app.md`](./app.md)).
+
+### `media.ts` (`src/shared/media.ts`)
+
+Единый источник истины таксономии медиа: `IMAGE_EXTENSIONS`, `AUDIO_TEXT_EXTENSIONS`, `MEDIA_EXTENSIONS`, `getFileExtension()`, `STORED_FILE_NAME_PATTERN`. Из него выводятся upload allow-list (`src/app/upload-file-filter.ts`), classification бакета (`MinioService`) и валидация `:fileName` — добавили формат в одном месте, обновились все три.
 
 ### `SortOrder` (`src/shared/sort.ts`)
 
@@ -68,3 +73,4 @@ npm run gen:schemas   # регенерация + prettier
 - [app.md](./app.md) — `FileNameParamDto` в файловых эндпоинтах
 - [../conventions.md](../conventions.md) — extend/override DTO поверх сгенерированных схем
 - [../contracts/rest-api.md](../contracts/rest-api.md) — конвейер кодогенерации Orval
+- [minio.md](./minio.md) — таксономия медиа в storage-слое

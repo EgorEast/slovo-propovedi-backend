@@ -22,7 +22,6 @@ import {
   DistinctValuesResponse,
   NormalizedSermonResponse,
   StatusSermonResponse,
-  StreamUrlResponse,
   UpdateSermon,
 } from './interfaces/interface';
 import { MinioService } from 'src/minio/minio.service';
@@ -733,20 +732,6 @@ export class SermonService {
       }
     }
     return groups;
-  }
-
-  async getStreamUrl(id: string): Promise<StreamUrlResponse> {
-    const sermon = await this.sermonRepository.findOne({ where: { id } });
-    if (!sermon) {
-      throw new NotFoundException(`Sermon with id "${id}" not found`);
-    }
-    if (!sermon.audioUrl) {
-      throw new NotFoundException(`Sermon with id "${id}" has no audio file`);
-    }
-
-    const fileName = MinioService.extractFileNameFromUrl(sermon.audioUrl);
-    const url = await this.minioService.getPresignedFileUrl(fileName);
-    return { url };
   }
 
   // Distinct previously-used artists/books for autocomplete. DISTINCT on two

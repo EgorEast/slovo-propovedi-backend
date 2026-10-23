@@ -8,9 +8,6 @@ import { SermonEntity } from './sermon/entities/sermon.entity';
 import { PlaylistEntity } from './playlist/entities/playlist.entity';
 import { UsersService } from './users/users.service';
 
-const REJECTED_FILE_MESSAGE =
-  'Недопустимый тип файла. Разрешены только: JPEG, PNG, WebP, MP3, M4A, PDF, FB2.';
-
 const DELETE_REJECTED_FILE_MESSAGE =
   'Удалять можно только изображения (JPEG, PNG, WebP). Аудио и текстовые файлы удаляются через очистку осиротевших файлов.';
 
@@ -84,13 +81,6 @@ describe('AppController', () => {
         fileName: 'uuid.m4a',
         fileUrl: 'http://localhost:9000/files/uuid.m4a',
       });
-    });
-
-    it('rejects an extension outside the allow-list before touching storage', async () => {
-      await expect(
-        appController.uploadFile(multerFile('sermon.wav')),
-      ).rejects.toThrow(new BadRequestException(REJECTED_FILE_MESSAGE));
-      expect(uploadFile).not.toHaveBeenCalled();
     });
 
     it('fails fast when no file was attached', async () => {

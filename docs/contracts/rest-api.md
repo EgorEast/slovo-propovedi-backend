@@ -38,9 +38,11 @@
 
 При изменении спецификации схемы регенерируются в этом репозитории (`npm run gen:schemas`); фронтенд-SDK регенерируется отдельно в своём репозитории (`slovo-propovedi-admin`). Сгенерированные файлы коммитятся вместе с кодом.
 
+> ⚠️ **Порядок выката при удалении эндпоинтов.** Если из спецификации удалён маршрут, SDK админки (`slovo-propovedi-admin`) может продолжать его вызывать. Сначала регенерируется и обновляется фронтенд, затем деплоится backend-релиз — иначе UI получит `404`.
+
 ## Карта реализации эндпоинтов (sermons + playlists + users + files + feature-flags)
 
-Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловые GET-выдачи по имени (`GET /files/:fileName*`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента), `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`) и `DELETE /files/:fileName` используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** **У feature-flags управление — admin-only, а `GET /feature-flags/me` — с опциональной аутентификацией (`OptionalAuthGuard`)**: валидный токен → эффективные флаги пользователя; без токена — глобальные состояния (`200`); невалидный/просроченный токен → `401` (клиент обновит токен и повторит запрос). Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/invidious-instances/invidious-instances.controller.ts`, `src/feature-flags/feature-flags.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
+Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловая выдача по имени (`GET /files/:fileName`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента), `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`) и `DELETE /files/:fileName` используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** **У feature-flags управление — admin-only, а `GET /feature-flags/me` — с опциональной аутентификацией (`OptionalAuthGuard`)**: валидный токен → эффективные флаги пользователя; без токена — глобальные состояния (`200`); невалидный/просроченный токен → `401` (клиент обновит токен и повторит запрос). Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/invidious-instances/invidious-instances.controller.ts`, `src/feature-flags/feature-flags.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.
 
 ### Матрица доступа по ролям
 
@@ -51,7 +53,7 @@
 | `user` | ✅ | ❌ `403` | ❌ `403` | ❌ `403` | ❌ `403` | ✅ `/me`, ❌ `403` (управление) |
 | аноним | ✅ | ❌ `401` (guarded) | ❌ `401` | ❌ `401` | ❌ `401` | ✅ `/me` (глобальные состояния), ❌ `401` (управление) |
 
-**Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/distinct-values`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /feature-flags/me` — с **опциональной** аутентификацией (`OptionalAuthGuard`: валидный токен → флаги пользователя; без токена → глобальные состояния; невалидный/просроченный токен → `401`). `GET /auth/profile`, `POST /auth/logout` — `AuthGuard` без `@Roles` (любой аутентифицированный).
+**Публичные маршруты** (без guard'ов): `GET /sermons`, `GET /sermons/distinct-values`, `GET /sermons/:id`, `GET /playlists`, `GET /playlists/:id`, `GET /section`, `GET /section/:id`, `GET /files/:fileName`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`. `GET /feature-flags/me` — с **опциональной** аутентификацией (`OptionalAuthGuard`: валидный токен → флаги пользователя; без токена → глобальные состояния; невалидный/просроченный токен → `401`). `GET /auth/profile`, `POST /auth/logout` — `AuthGuard` без `@Roles` (любой аутентифицированный).
 
 ### Sermons
 
@@ -60,7 +62,6 @@
 | `GET /sermons` | публичный | `SermonController.findAll` | `SermonService.findAll(take, cursor, search, page, limit, sort, order)` |
 | `GET /sermons/distinct-values` | публичный | `SermonController.getDistinctValues` | `SermonService.getDistinctValues` |
 | `GET /sermons/:id` | публичный | `SermonController.findOne` | `SermonService.findOne` |
-| `GET /sermons/:id/stream-url` | публичный | `SermonController.getStreamUrl` | `SermonService.getStreamUrl` |
 | `POST /sermons` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.create` | `SermonService.create` |
 | `PATCH /sermons/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.update` | `SermonService.update` |
 | `DELETE /sermons/:id` | `AuthGuard` + `RolesGuard` (admin, moderator) | `SermonController.remove` | `SermonService.remove` |
@@ -98,13 +99,12 @@
 
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
-| `POST /files` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.uploadFile` | `MinioService.uploadFile` |
+| `POST /files` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.uploadFile` (лимит 100 MB, `fileFilter` по `MEDIA_EXTENSIONS`) | `MinioService.uploadFile` |
 | `GET /files` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.listFiles` | `MinioService.listImages` (cover-reuse, элементы с `used`) |
 | `GET /files/orphans` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.getOrphanedFiles` | `MinioService.listOrphans` (ограниченный скан `limit`, классификация против referenced-имён из БД) |
 | `POST /files/orphans/cleanup` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.cleanupOrphanedFiles` | `MinioService.listFilesWithUsage` + `removeObjectByName` (только аудио/текст, best-effort) |
 | `DELETE /files/:fileName` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.removeFile` | `MinioService.removeObjectByName` (изображения + неиспользуемые аудио/текст; `409` при использовании как обложка/в проповеди) |
-| `GET /files/:fileName` | публичный | `AppController.getFile` | `MinioService.getFileUrl` (deprecated) |
-| `GET /files/:fileName/stream-url` | публичный | `AppController.getStreamUrl` | `MinioService.getPresignedFileUrl` |
+| `GET /files/:fileName` | публичный | `AppController.getFile` (param `FileNameParamDto` — UUID + media-extension) | `MinioService.getFileUrl` (статический URL, bucket public-read) |
 
 > ✅ Orphans-эндпоинты: `GET /files/orphans` возвращает `{ orphaned: FileMetadataDto[], count }` — медиа-объекты bucket (изображения + `.mp3/.pdf/.fb2`), не привязанные к `sermon.audioUrl/textFileUrl/artwork` или `playlist.artwork`; у каждого элемента `used: false`. Принимает query `limit` (`1..5000`, default `500`): скан стримится и останавливается, как только собрано `limit` осиротевших файлов, поэтому ответ ограничен `limit` (`count === orphaned.length`), а память не растёт с размером bucket. `POST /files/orphans/cleanup` удаляет **только** осиротевшие аудио/текстовые объекты (изображения не трогает — обложки управляются вручную из каталога), ответ `{ deleted: string[], failed: { fileName, reason }[] }`, идемпотентно и best-effort; сканирует весь bucket без капа (нужно удалить все осиротевшие). `DELETE /files/{fileName}` удаляет изображение или неиспользуемый аудио/текстовый объект; `409` при использовании (обложка / привязка к проповеди); расширение вне медиа-таксономии → `400`.
 

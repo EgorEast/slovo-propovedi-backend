@@ -29,8 +29,8 @@ import { OrphanedFilesResponseDto } from './app/dto/orphaned-files-response.dto'
 import { FindOrphansQueryDto } from './app/dto/find-orphans-query.dto';
 import { CleanupOrphansResponseDto } from './app/dto/cleanup-orphans-response.dto';
 import { StatusFileResponseDto } from './app/dto/status-file-response.dto';
-import { StreamUrlResponseDto } from './app/dto/stream-url-response.dto';
 import { FileNameParamDto } from './shared/dto/file-name-param.dto';
+import { MAX_UPLOAD_BYTES, mediaFileFilter } from './app/upload-file-filter';
 
 @Controller()
 export class AppController {
@@ -46,7 +46,12 @@ export class AppController {
   @Roles(UserRole.Admin, UserRole.Moderator)
   @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: FileResponseDto })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_UPLOAD_BYTES },
+      fileFilter: mediaFileFilter,
+    }),
+  )
   async uploadFile(
     @UploadedFile('file') file: FileUploadDto,
   ): Promise<FileResponseDto> {
@@ -55,16 +60,9 @@ export class AppController {
     }
     // The param is annotated with the ZodDto solely so the strict global pipe
     // accepts it; at runtime it is still the Express.Multer.File produced by
-    // FileInterceptor (z.any() is a passthrough).
+    // FileInterceptor (z.any() is a passthrough). Type and size are enforced
+    // by the interceptor's fileFilter/limits before the body is buffered.
     const multerFile = file as Express.Multer.File;
-
-    // Reject any extension outside the allow-list before the file is stored.
-    const extension = MinioService.getFileExtension(multerFile.originalname);
-    if (!MinioService.MEDIA_EXTENSIONS.includes(extension)) {
-      throw new BadRequestException(
-        'Недопустимый тип файла. Разрешены только: JPEG, PNG, WebP, MP3, M4A, PDF, FB2.',
-      );
-    }
 
     const fileName = await this.minioService.uploadFile(multerFile);
     const fileUrl = await this.minioService.getFileUrl(fileName);
@@ -165,24 +163,15 @@ export class AppController {
   }
 
   /**
-   * @deprecated Returns a static (non-expiring) URL. Prefer
-   * `GET /files/:fileName/stream-url`, which returns a time-limited presigned
-   * URL, since the default bucket is private.
+   * Returns the static object URL. The bucket is public-read by design, so
+   * static URLs are the access mechanism for stored media — auth is required
+   * only for writes, listing and deletion.
    */
   @Get('files/:fileName')
   @ZodResponse({ type: FileResponseDto })
   async getFile(@Param() params: FileNameParamDto): Promise<FileResponseDto> {
     const fileUrl = await this.minioService.getFileUrl(params.fileName);
     return { fileName: params.fileName, fileUrl } as FileResponseDto;
-  }
-
-  @Get('files/:fileName/stream-url')
-  @ZodResponse({ type: StreamUrlResponseDto })
-  async getStreamUrl(
-    @Param() params: FileNameParamDto,
-  ): Promise<StreamUrlResponseDto> {
-    const url = await this.minioService.getPresignedFileUrl(params.fileName);
-    return { url } as StreamUrlResponseDto;
   }
 
   /**

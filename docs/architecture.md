@@ -104,7 +104,7 @@ await app.listen('3000');
 | `AuthGuard` | **по-роуту** (`@UseGuards`) | JWT-защита; парсит payload zod-схемой `{ id, email, role }` |
 | `RolesGuard` | **по-роуту** (`@UseGuards` + `@Roles`) | авторизация по ролям (fail-closed); без `@Roles` не ограничивает |
 
-> ⚠️ **Глобального auth-guard'а нет.** Защита точечная: `@UseGuards(AuthGuard)` на `/auth/profile`, `@UseGuards(AuthGuard, RolesGuard)` + `@Roles(...)` на мутирующих эндпоинтах, `GET /files`, всех `/users*` и обоих `/invidious-instances*`. Публичные чтения (без аутентификации): `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`. Единственный глобальный guard — `ThrottlerGuard` (rate limiting); он не аутентифицирует. Карта guard'ов, лимиты и `trust proxy` — в [`modules/auth.md`](./modules/auth.md); матрица ролей — в [`contracts/rest-api.md`](./contracts/rest-api.md).
+> ⚠️ **Глобального auth-guard'а нет.** Защита точечная: `@UseGuards(AuthGuard)` на `/auth/profile`, `@UseGuards(AuthGuard, RolesGuard)` + `@Roles(...)` на мутирующих эндпоинтах, `GET /files`, всех `/users*` и обоих `/invidious-instances*`. Публичные чтения (без аутентификации): `GET /sermons`, `/sermons/:id`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName`, `/health`, `/auth/login`, `/auth/refresh`. Единственный глобальный guard — `ThrottlerGuard` (rate limiting); он не аутентифицирует. Карта guard'ов, лимиты и `trust proxy` — в [`modules/auth.md`](./modules/auth.md); матрица ролей — в [`contracts/rest-api.md`](./contracts/rest-api.md).
 
 ## Модули
 
@@ -160,7 +160,7 @@ Node-скрипты, которые не проходят через Nest bootst
 | `MINIO_MAIN_PORT_IN` | — | `minio.service.ts` | внутренний порт MinIO |
 | `MINIO_ACCESS_KEY` | — | `minio.service.ts` | access key MinIO |
 | `MINIO_SECRET_KEY` | — | `minio.service.ts` | secret key MinIO |
-| `MINIO_PUBLIC_URI` | — (обязателен для presign) | `minio.service.ts` | browser-facing URI MinIO для presigned-URL |
+| `MINIO_PUBLIC_URI` | — (обязателен) | `minio.service.ts` | browser-facing URI MinIO; база статических URL `${MINIO_PUBLIC_URI}/files/<name>` |
 | `DOCS_ENABLED` | — | `main.ts` | `'true'` включает Swagger UI |
 | `DOCS_HOSTNAME` | `docs.slovo-propovedi.ru` | `main.ts` | хост docs-сайта; строит дефолт для `OPENAPI_SPEC_URL` и (в проде) `DOCS_UI_ORIGIN` |
 | `OPENAPI_SPEC_URL` | `https://$DOCS_HOSTNAME/openAPI.yaml` | `main.ts` | источник спецификации для Swagger UI |
@@ -172,7 +172,7 @@ Node-скрипты, которые не проходят через Nest bootst
 Actions переменные (см. `slovo-propovedi-admin`/`-landing`/`-mobile`/`-docs`); значения выше —
 дефолты в коде на случай, если переменная не задана.
 
-> ✅ `MINIO_PUBLIC_URI` обязателен для presign-клиента (`buildPresignClient` кидает ошибку, если не задан): host входит в SigV4-подпись, поэтому presigned-URL должен генерироваться с тем же host, что увидит браузер.
+> ✅ `MINIO_PUBLIC_URI` — browser-facing база статических URL (`getFileUrl`). Presigned-URL больше не используются: bucket `files` public-read by design, поэтому второй (presign) клиент удалён.
 
 ## Как запускать и тестировать
 
@@ -211,6 +211,10 @@ Unit-тесты (`npm test`) гоняет Jest через трансформ **`
 
 **Миграции — до деплоя.** `synchronize: false`, поэтому схема БД меняется только вручную и **до** выката тега с кодом, который рассчитывает на новую схему (иначе guarded-роуты упадут). Для релиза с `token_version` сначала применяется `sql/migrations/011_add_token_version.sql` (см. [`db.md`](./db.md)), и только затем деплоится тег.
 
+**Совместимость с фронтендом.** Контракт живёт в `slovo-propovedi-docs`, SDK админки (`slovo-propovedi-admin`) генерируется из него отдельно. Удаление маршрута из спецификации — breaking change: сначала регенерируется и выкатывается фронтенд, затем backend. В частности, `stream-url`-эндпоинты удалены в пользу статических public-read URL — SDK, который ещё зовёт `/sermons/{id}/stream-url`, должен быть обновлён **до** деплоя этого backend-релиза.
+
+**Лимит тела запроса.** Загрузка файла ограничена 100 MB в `FileInterceptor`, а Multer держит тело в памяти. Reverse proxy (Traefik/nginx в `slovo-propovedi-playbook`) должен пропускать body не меньше этого лимита, иначе легитимная загрузка будет отклонена на edge.
+
 **Безопасность пайплайна.** Хост-ключ VPS пиннится в `known_hosts` через `ssh-keyscan` (TOFU) на раннере, а SSH-соединения идут с `StrictHostKeyChecking=accept-new` — незнакомый хост ещё принимается, но подменённый ключ уже рвёт соединение. Значения из ref/переменных (в том числе `DEPLOY_TAG`) передаются на удалённую сторону через `env:` шага и экранируются для удалённого shell, а не вклеиваются в строку команды. Образ собирается строго из `package-lock.json` (`npm ci`), а финальная стадия `Dockerfile` работает под непривилегированным пользователем `node` (systemd-юнит может переопределить uid/gid на `slovo`).
 
 **Rate limiting — два уровня.** На edge Traefik применяет middleware `slovo-rate-limit@file` (label `traefik.http.routers.slovo-backend-api.middlewares` в `scripts/vps-deploy.sh`; сама конфигурация middleware живёт в playbook). В приложении дополнительно работает глобальный `ThrottlerGuard` с жёсткими лимитами на `/auth/login` и `/auth/refresh` (см. [`modules/auth.md`](./modules/auth.md)): эти лимиты версионируются вместе с кодом и не зависят от edge-конфига.
@@ -228,5 +232,5 @@ Unit-тесты (`npm test`) гоняет Jest через трансформ **`
 - [conventions.md](./conventions.md) — nestjs-zod, DTO, codegen, SQL-миграции
 - [db.md](./db.md) — TypeORM-конфиг и карта сущностей
 - [modules/auth.md](./modules/auth.md) — JWT, `AuthGuard`, token pair
-- [modules/minio.md](./modules/minio.md) — bucket, presign, public-read
+- [modules/minio.md](./modules/minio.md) — bucket, public-read, статические URL
 - [contracts/rest-api.md](./contracts/rest-api.md) — внешний REST-контракт и конвейер кодогенерации
