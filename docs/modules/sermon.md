@@ -41,7 +41,7 @@
 | Условие | Путь | Как фильтрует |
 |---------|------|----------------|
 | `page`/`limit` задан | **offset** | join-свободная страница (`skip`/`take`) + `getCount` (`countSermons`) + `assembleSermonGraph`; `count` — **общее** число совпадений, `nextCursor: null` |
-| `take` задан (без `page`) | **keyset (cursor)** | QueryBuilder: `take + 1` строк, порядок по релевантности + составной курсор `{ rank, id }` |
+| `take` задан (без `page`) | **keyset (cursor)** | QueryBuilder: `take + 1` строк; порядок по релевантности + курсор `{ rank, id }`, без поиска — порядок по дате + курсор `{ createdAt, id }` |
 | ни то, ни другое | **полная выборка** | join-свободная страница (`getMany`) + `getCount` (`countSermons`) + `assembleSermonGraph` (линейные запросы); `sermon.search_vector @@ tsquery`, порядок по релевантности |
 
 `page` и `limit` **взаимоисключительны** с `take`/`cursor` (одновременное использование → `400 Bad Request`; правило навешивается в DTO через `superRefine`). `limit` без `page` означает первую страницу (`page = 1`); `page` без `limit` — размер страницы по умолчанию `DEFAULT_PAGE_LIMIT = 100` (максимум схемы). `sort`/`order` **взаимоисключительны** с `take`/`cursor` (см. ниже).
@@ -50,13 +50,13 @@
 
 `sort` ∈ {`date`, `title`, `artist`, `playlist`}, `order` ∈ {`asc`, `desc`}. Значения по умолчанию **направленные**: `sort=date` → `order=desc`; для алфавитных сортировок (`title`/`artist`/`playlist`) отсутствующий `order` → `asc`. Направление резолвится в DTO (`.transform`), поэтому сервис всегда получает готовую пару; сигнатура сервиса хранит то же правило (`order ?? (sort === 'date' ? 'desc' : 'asc')`) как fallback для прямых вызовов без DTO.
 
-`sort`/`order` **взаимоисключительны** с `take`/`cursor`: одновременное использование → `400 Bad Request` (`'sort and order are mutually exclusive with take and cursor'` по пути `sort`). Keyset-пагинация опирается на фиксированный порядок (`id DESC` или `rank DESC, id DESC`), произвольная сортировка с ней несовместима. `sort`/`order` работают в offset-режиме и в полной выборке.
+`sort`/`order` **взаимоисключительны** с `take`/`cursor`: одновременное использование → `400 Bad Request` (`'sort and order are mutually exclusive with take and cursor'` по пути `sort`). Keyset-пагинация опирается на фиксированный порядок (`date` — `(created_at, id)`, поиск — `(rank, id)`), произвольная сортировка с ней несовместима. `sort`/`order` работают в offset-режиме и в полной выборке.
 
-`ORDER BY` (tiebreak — всегда `sermon.id DESC`, чтобы равные значения оставались детерминированными):
+`ORDER BY` (tiebreak — `sermon.id`; для даты направление tiebreak-а совпадает с направлением сортировки, для остальных — фиксированный `DESC`):
 
 | `sort` | `ORDER BY` |
 |--------|------------|
-| `date` | `sermon.id <dir>` |
+| `date` | `date_trunc('milliseconds', sermon.created_at) <dir>, sermon.id <dir>` |
 | `title` | `LOWER(sermon.title) <dir>, sermon.id DESC` |
 | `artist` | `LOWER(sermon.artist) <dir>, sermon.id DESC` |
 | `playlist` | `LOWER(playlist.title) <dir> NULLS LAST, playlistSermonJoin.position <dir>, sermon.id DESC` |
@@ -122,7 +122,14 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 ### Keyset-пагинация
 
-- **Без search** — поведение не меняется: `ORDER BY sermon.id DESC`, курсор `sermon.id < :cursor`, `nextCursor` = `id` (регрессия не поисковой пагинации не допускается).
+- **Без search** — порядок `(date_trunc('milliseconds', created_at) <dir>, sermon.id <dir>)`, курсор непрозрачный `{ createdAt, id }` (base64 JSON, ISO-строка с миллисекундами), сравнение — row-value по той же trunc-выраженной паре:
+
+  ```sql
+  (date_trunc('milliseconds', sermon.created_at), sermon.id) < (:createdAt::timestamptz, :id)
+  ```
+
+  Оператор зависит от направления: `<` для `desc`, `>` для `asc`. Старые голые uuid-курсоры инвалидированы (`invalid or stale cursor`).
+- **Инвариант точности.** `nextCursor` строится из `entity.createdAt.toISOString()` (JS Date = миллисекунды), а `ORDER BY`/предикат используют `date_trunc('milliseconds', created_at)`. Поэтому хранимые значения `created_at` должны быть миллисекундно-точными: при µs-точном значении `trunc_ms != entity_ms`. Бэкфилл `scripts/backfill-created-at.mjs` поэтому усекает все кандидаты (mtime объектов MinIO и `MIN(created_at)` связанных проповедей) до целых миллисекунд. Драйвер `pg` парсит `timestamptz` (OID 1184) с **floor** суб-миллисекундного остатка — это закреплено спекой `src/db/pg-timestamptz-parsing.spec.ts`; если будущая версия `pg` начнёт округлять, курсор нужно перевести на raw-значение `date_trunc('milliseconds', created_at)::text` (шаблон — rank-raw в поисковом режиме).
 - **С search** — порядок `(rank DESC, sermon.id DESC)`, поэтому **голый id-курсор неверен**: курсор составной `{ rank, id }`, непрозрачный для клиента (base64 JSON). Пагинация — row-value сравнением:
 
   ```sql

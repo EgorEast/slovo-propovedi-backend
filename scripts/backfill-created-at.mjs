@@ -5,7 +5,7 @@
  * mtimes (a sermon's audio file, else its text file, else its artwork; a
  * playlist's artwork, else the earliest created_at of its sermons).
  *
- * Migration 013a seeds every existing row with one identical placeholder
+ * Migration 013 seeds every existing row with one identical placeholder
  * timestamp, so this script restores real per-row dates. It is DRY-RUN by
  * default: it prints what it would change and only writes with --apply.
  * Idempotent by construction — object mtimes are stable.
@@ -91,6 +91,16 @@ function createMinioClient() {
   });
 }
 
+// The date sort and the keyset cursor require stored created_at to be
+// millisecond-exact: ORDER BY compares date_trunc('milliseconds', created_at)
+// while the cursor is built from the entity's JS Date (toISOString(), ms).
+// MinIO mtimes (and ext4) carry sub-millisecond precision, so a µs-exact stored
+// value would make trunc_ms(created_at) != entity_ms and a page boundary could
+// skip or duplicate a row. JS Date holds whole milliseconds only, so flooring
+// getTime() strips any fractional component before the value reaches the DB.
+const toMillisecondPrecision = (date) =>
+  new Date(Math.floor(date.getTime()));
+
 // Returns the object key for a stored file URL, or null when the URL is empty,
 // malformed, or points outside the bucket.
 function objectKeyFromUrl(fileUrl) {
@@ -122,7 +132,8 @@ async function buildLastModifiedIndex(minioClient) {
 
 function modifiedAt(index, fileUrl) {
   const objectKey = objectKeyFromUrl(fileUrl);
-  return objectKey ? index.get(objectKey) : undefined;
+  const lastModified = objectKey ? index.get(objectKey) : undefined;
+  return lastModified ? toMillisecondPrecision(lastModified) : undefined;
 }
 
 const formatDate = (date) => (date ? date.toISOString() : '—');
@@ -184,7 +195,10 @@ async function backfillPlaylists(pgClient, index, { apply, samples }) {
           WHERE j."playlistId" = $1`,
         [row.id],
       );
-      candidate = fallbackRows[0]?.minCreatedAt ?? undefined;
+      const minCreatedAt = fallbackRows[0]?.minCreatedAt;
+      candidate = minCreatedAt
+        ? toMillisecondPrecision(minCreatedAt)
+        : undefined;
       source = 'members';
     }
 

@@ -473,6 +473,78 @@ describe('SermonService', () => {
     return queryBuilder;
   }
 
+  // In-memory stand-in for the date-ordered page query: it applies the tuple
+  // predicate the service itself builds (the operator is read back from the
+  // generated SQL) and the direction captured from ORDER BY. This exercises the
+  // direction-dependent cursor logic against real fixtures instead of only
+  // asserting the SQL string.
+  function dateCursorPageBuilder(
+    rows: Array<{
+      id: string;
+      createdAt: Date;
+      playlistJoins: never[];
+    }>,
+  ) {
+    const pageBuilder = mockBuilder();
+    let direction: 'ASC' | 'DESC' = 'DESC';
+    let takeCount = rows.length;
+    const predicates: Array<{
+      sql: string;
+      params: { createdAt: string; id: string };
+    }> = [];
+
+    pageBuilder.orderBy.mockImplementation(
+      (expression: string, dir: 'ASC' | 'DESC') => {
+        if (expression === DATE_ORDER_EXPRESSION) {
+          direction = dir;
+        }
+        return pageBuilder;
+      },
+    );
+    pageBuilder.andWhere.mockImplementation(
+      (sql: string, params: { createdAt: string; id: string }) => {
+        predicates.push({ sql, params });
+        return pageBuilder;
+      },
+    );
+    pageBuilder.take.mockImplementation((count: number) => {
+      takeCount = count;
+      return pageBuilder;
+    });
+    pageBuilder.getMany.mockImplementation(async () => {
+      const compareRows = (
+        a: { id: string; createdAt: Date },
+        b: { id: string; createdAt: Date },
+      ): number => {
+        const byDate = a.createdAt.getTime() - b.createdAt.getTime();
+        if (byDate !== 0) {
+          return byDate;
+        }
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      };
+
+      const matches = rows.filter((row) =>
+        predicates.every(({ sql, params }) => {
+          const match = /\)\s*([<>])\s*\(:createdAt/.exec(sql);
+          if (!match) {
+            throw new Error(`unexpected date cursor predicate: ${sql}`);
+          }
+          const [, op] = match;
+          const byDate = row.createdAt.getTime() - Date.parse(params.createdAt);
+          const byId = row.id < params.id ? -1 : row.id > params.id ? 1 : 0;
+          const comparison = byDate !== 0 ? byDate : byId;
+          return op === '>' ? comparison > 0 : comparison < 0;
+        }),
+      );
+
+      const sign = direction === 'ASC' ? 1 : -1;
+      return [...matches]
+        .sort((a, b) => sign * compareRows(a, b))
+        .slice(0, takeCount);
+    });
+    return pageBuilder;
+  }
+
   describe('findAll', () => {
     // Wires the graph queries so a non-empty page comes back with no playlists
     // (assembleSermonGraph resolves every array to empty).
@@ -622,6 +694,66 @@ describe('SermonService', () => {
         expect(result.nextCursor).toBe(
           encodeDateCursor(sermonB.createdAt, sermonB.id),
         );
+      });
+
+      it('pages both directions across a shared-millisecond cursor without skipping or duplicating rows', async () => {
+        // All three rows share one millisecond, so only the id tiebreaker
+        // separates them — exactly the case where a wrong cursor operator or a
+        // lost timestamp precision would skip a row at the page boundary.
+        const sharedInstant = new Date('2026-10-23T12:00:00.000Z');
+        const sermonA = {
+          id: 'aaaaaaaa-0000-0000-0000-000000000001',
+          createdAt: sharedInstant,
+          playlistJoins: [],
+        };
+        const sermonB = {
+          id: 'bbbbbbbb-0000-0000-0000-000000000002',
+          createdAt: sharedInstant,
+          playlistJoins: [],
+        };
+        const sermonC = {
+          id: 'cccccccc-0000-0000-0000-000000000003',
+          createdAt: sharedInstant,
+          playlistJoins: [],
+        };
+        const rows = [sermonA, sermonB, sermonC];
+        mockEmptyGraphQueries();
+
+        const paginations: Array<{
+          order: 'asc' | 'desc';
+          expected: string[];
+        }> = [
+          { order: 'desc', expected: [sermonC.id, sermonB.id, sermonA.id] },
+          { order: 'asc', expected: [sermonA.id, sermonB.id, sermonC.id] },
+        ];
+
+        for (const { order, expected } of paginations) {
+          const seen: string[] = [];
+          let cursor: string | undefined;
+
+          for (let page = 0; page < rows.length; page++) {
+            sermonRepository.createQueryBuilder.mockReturnValue(
+              dateCursorPageBuilder(rows),
+            );
+            const result = await service.findAll(
+              1,
+              cursor,
+              undefined,
+              undefined,
+              undefined,
+              'date',
+              order,
+            );
+            seen.push(...result.sermons.map((sermon) => sermon.id));
+            if (!result.nextCursor) {
+              break;
+            }
+            cursor = result.nextCursor;
+          }
+
+          expect(seen).toEqual(expected);
+          expect(new Set(seen).size).toBe(rows.length);
+        }
       });
 
       it('filters by FTS, orders by relevance and builds a composite next cursor when search is present', async () => {
