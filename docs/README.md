@@ -48,7 +48,7 @@
 | Путь (от корня репозитория) | Назначение |
 |----------------------|------------|
 | `src/main.ts` | Bootstrap: CORS, `createZodValidationPipe(strict)`, MinIO bucket, Swagger UI, порт 3000 |
-| `src/app.module.ts` | Корневой модуль: регистрирует все модули + глобальный `ZodSerializerInterceptor` |
+| `src/app.module.ts` | Корневой модуль: регистрирует все модули + глобальные `ZodSerializerInterceptor` и `ThrottlerGuard` |
 | `src/app.controller.ts` | `POST/GET /files`, `GET /files/orphans`, `POST /files/orphans/cleanup`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `DELETE /files/:fileName` |
 | `src/db/typeorm.module.ts` | Подключение к PostgreSQL (конфиг, `synchronize: false`, PgBouncer) |
 | `src/auth/` | `AuthGuard`, auth-контроллер, DTO |

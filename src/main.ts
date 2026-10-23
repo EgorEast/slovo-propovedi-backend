@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from '@nestjs/common';
 import { createZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from './app.module';
@@ -8,7 +9,16 @@ import * as yaml from 'js-yaml';
 import type { OpenAPIObject } from '@nestjs/swagger';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Traefik is the single hop in front of the container. Trust exactly one
+  // proxy hop so req.ip is the address Traefik appends to X-Forwarded-For
+  // (the real client) rather than the container-network gateway. Trusting no
+  // hops would collapse every client onto the proxy IP (one shared rate-limit
+  // bucket); trusting the whole chain would let a client spoof X-Forwarded-For
+  // and evade per-IP limits. With no proxy (local dev) a client that sends no
+  // X-Forwarded-For still resolves to its socket address.
+  app.set('trust proxy', 1);
 
   // Hostnames are deployment-specific — no prod defaults. Fail fast on boot.
   const requiredHostname = (envVar: string): string => {

@@ -6,6 +6,10 @@ import { UsersService } from '../users/users.service';
 import { AuthGuard } from './guard/auth.guard';
 import { UserRole } from '../users/user-role.enum';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import {
+  THROTTLER_LIMIT,
+  THROTTLER_TTL,
+} from '@nestjs/throttler/dist/throttler.constants';
 import { RevokedRefreshToken } from './entities/revoked-refresh-token.entity';
 
 jest.mock('bcrypt', () => ({
@@ -156,5 +160,35 @@ describe('AuthController', () => {
     } as never);
 
     expect(result.role).toBe(UserRole.Admin);
+  });
+
+  describe('rate limits', () => {
+    const throttleMetadata = (handler: object) => ({
+      limit: Reflect.getMetadata(`${THROTTLER_LIMIT}default`, handler),
+      ttl: Reflect.getMetadata(`${THROTTLER_TTL}default`, handler),
+    });
+
+    it('limits login to 10 attempts per minute', () => {
+      expect(throttleMetadata(AuthController.prototype.signIn)).toEqual({
+        limit: 10,
+        ttl: 60_000,
+      });
+    });
+
+    it('limits refresh to 30 attempts per minute', () => {
+      expect(throttleMetadata(AuthController.prototype.refresh)).toEqual({
+        limit: 30,
+        ttl: 60_000,
+      });
+    });
+
+    it('leaves logout and profile on the global default', () => {
+      expect(
+        throttleMetadata(AuthController.prototype.logout).limit,
+      ).toBeUndefined();
+      expect(
+        throttleMetadata(AuthController.prototype.getProfile).limit,
+      ).toBeUndefined();
+    });
   });
 });

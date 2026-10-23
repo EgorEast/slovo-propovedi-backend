@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { TypeOrmModule as NestTypeOrmModule } from '@nestjs/typeorm';
+import { ThrottlerGuard, ThrottlerModule, minutes } from '@nestjs/throttler';
 import { ZodSerializerInterceptor } from 'nestjs-zod';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -22,6 +23,13 @@ import { PlaylistEntity } from './playlist/entities/playlist.entity';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    // Generous global baseline so the public catalog (sermons, playlists,
+    // sections, files) is untouched in normal use. The auth controller
+    // overrides this with stricter per-route limits (see AuthController).
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: minutes(1), limit: 300 }],
+      errorMessage: 'Too many requests. Please try again later.',
+    }),
     HealthModule,
     SectionModule,
     AuthModule,
@@ -40,6 +48,8 @@ import { PlaylistEntity } from './playlist/entities/playlist.entity';
   providers: [
     AppService,
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
+    // Throttling is the only global guard; auth authorization stays per-route.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

@@ -30,6 +30,43 @@
 
 > ✅ `/auth/profile` и `/auth/logout` намеренно **без `RolesGuard`**: любой вошедший (в т.ч. роль `user`) может читать свой профиль и выйти из системы. Роли применяются только к мутирующим/админским роутам (см. [`../contracts/rest-api.md`](../contracts/rest-api.md)).
 
+## Ограничение частоты запросов (rate limiting)
+
+Онлайн-подбор пароля на `/auth/login` и `/auth/refresh` ограничен на уровне приложения через `@nestjs/throttler`. `ThrottlerModule.forRoot(...)` подключён в `src/app.module.ts`, а `ThrottlerGuard` зарегистрирован **глобально** через `APP_GUARD` — это единственный глобальный guard (авторизация по-прежнему per-route, см. [`../architecture.md`](../architecture.md)).
+
+| Роут | Лимит | Как задан |
+|------|-------|-----------|
+| все роуты (базовый лимит) | **300 запросов / мин** на IP | `ThrottlerModule.forRoot({ throttlers: [{ ttl: minutes(1), limit: 300 }] })` |
+| `POST /auth/login` | **10 запросов / мин** на IP | `@Throttle({ default: { limit: 10, ttl: minutes(1) } })` |
+| `POST /auth/refresh` | **30 запросов / мин** на IP | `@Throttle({ default: { limit: 30, ttl: minutes(1) } })` |
+| `POST /auth/logout`, `GET /auth/profile` | базовый лимит (300/мин) | без `@Throttle` |
+
+- Базовый лимит намеренно щедрый: публичный каталог (`GET /sermons`, `/playlists`, `/section`, `/files/:fileName` и т.д.) при обычной нагрузке его не достигает.
+- `refresh` мягче логина, потому что SPA штатно делает refresh-retry после `401`; при этом 30/мин всё равно не даёт перебирать refresh-токены.
+- Ключ лимита — **IP + handler** (`ThrottlerGuard.getTracker` → `req.ip`, IPv6 нормализуется до подсети). Лимит **не** учитывает username: несколько логинов с одного IP (в т.ч. разные учётные записи за общим NAT) делят один счётчик login-роута.
+- Превышение → `429 Too Many Requests` с телом `{ "statusCode": 429, "message": "Too many requests. Please try again later." }`; guard также выставляет `Retry-After` и `X-RateLimit-*`. Внутренние детали (имена классов/ключей) наружу не попадают.
+- Хранилище — **in-memory** (`ThrottlerStorageService`, без Redis): сервис живёт в одном контейнере, счётчики сбрасываются при рестарте. При горизонтальном масштабировании (несколько реплик) потребовалось бы общее хранилище.
+- Rate limiting приложения **дополняет** edge-лимит Traefik (`slovo-rate-limit@file` в `scripts/vps-deploy.sh`), а не заменяет его: app-лимит работает и при отключённом/неверно настроенном edge-middleware.
+
+### `trust proxy` и реальный IP клиента
+
+В `src/main.ts` приложение создаётся как `NestExpressApplication` и вызывает `app.set('trust proxy', 1)`. В проде перед контейнером ровно один hop — Traefik: он добавляет реальный адрес клиента в `X-Forwarded-For`, а `trust proxy = 1` заставляет Express доверять только сокету (самому Traefik) и брать из цепочки **правый непроверенный** адрес — реальный клиент.
+
+- Без `trust proxy` `req.ip` был бы адресом gateway/контейнерной сети, и все клиенты попадали бы в один rate-limit bucket (лимит «на IP» выродился бы в глобальный).
+- `trust proxy = true` (доверять всей цепочке) позволил бы клиенту подделать `X-Forwarded-For` и обходить лимиты.
+- Локальная разработка идёт без прокси: если клиент не присылает `X-Forwarded-For`, Express берёт адрес сокета, т.е. `req.ip` корректен. Ручная подделка заголовка возможна только при прямом доступе к приложению (dev), в проде её отсекает единственный доверенный hop Traefik.
+
+### Аудит неудачных входов
+
+`AuthService` логирует неудачную попытку входа (`Logger` с контекстом `AuthService`) **и для неизвестного username, и для неверного пароля**:
+
+```text
+WARN [AuthService] Failed sign-in attempt for username="someone"
+```
+
+- Логируется **только username** (через `JSON.stringify`, чтобы кавычки/переводы строк в имени не подделывали строки лога); пароль, токены и прочие креды в лог не попадают.
+- Ответ не меняется: остаётся generic `401 Invalid credentials` для обоих случаев — перечисление пользователей (enumeration) не вводится. Лог служит для обнаружения атак, блокировку обеспечивает rate limiting выше.
+
 ## `AuthService` (`src/auth/auth.service.ts`)
 
 ### `signIn(username, password)`
@@ -185,6 +222,6 @@ export const accessTokenPayloadSchema = z.object({
 
 - [README.md](./README.md) — индекс модулей
 - [users.md](./users.md) — сущность `user`, роли, `UsersService` (findOneByUsername/findOneById/updatePassword)
-- [../architecture.md](../architecture.md) — env (`JWT_SECRET`, `JWT_REFRESH_SECRET`), отсутствие глобального guard
+- [../architecture.md](../architecture.md) — env (`JWT_SECRET`, `JWT_REFRESH_SECRET`), глобальный `ThrottlerGuard` и per-route auth-guard'ы
 - [../contracts/rest-api.md](../contracts/rest-api.md) — контракт `AuthController*`, матрица ролей, 401-refresh во фронтенде
 - Аутентификация на фронте (login, restore, refresh) — репозиторий `slovo-propovedi-admin`

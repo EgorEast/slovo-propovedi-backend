@@ -100,10 +100,11 @@ await app.listen('3000');
 |----------|-------------|------------|
 | `ZodValidationPipe` (strict) | `main.ts` (глобально) | валидирует все входные body/query/params по Zod-DTO |
 | `ZodSerializerInterceptor` | `app.module.ts` (`APP_INTERCEPTOR`) | валидирует/сериализует исходящие ответы по `@ZodResponse` |
-| `AuthGuard` | **по-роуту** (`@UseGuards`) | JWT-защита; парсит payload zod-схемой `{ id, email, role }`; **глобального guard нет** |
+| `ThrottlerGuard` | `app.module.ts` (`APP_GUARD`, **глобально**) + `@Throttle` на auth-роутах | rate limiting по IP: 300/мин базово, `POST /auth/login` — 10/мин, `POST /auth/refresh` — 30/мин; превышение → `429` |
+| `AuthGuard` | **по-роуту** (`@UseGuards`) | JWT-защита; парсит payload zod-схемой `{ id, email, role }` |
 | `RolesGuard` | **по-роуту** (`@UseGuards` + `@Roles`) | авторизация по ролям (fail-closed); без `@Roles` не ограничивает |
 
-> ⚠️ **Глобального guard нет.** Защита точечная: `@UseGuards(AuthGuard)` на `/auth/profile`, `@UseGuards(AuthGuard, RolesGuard)` + `@Roles(...)` на мутирующих эндпоинтах, `GET /files`, всех `/users*` и обоих `/invidious-instances*`. Публичные чтения (без аутентификации): `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`. Карта guard'ов и матрица ролей — в [`modules/auth.md`](./modules/auth.md) и [`contracts/rest-api.md`](./contracts/rest-api.md).
+> ⚠️ **Глобального auth-guard'а нет.** Защита точечная: `@UseGuards(AuthGuard)` на `/auth/profile`, `@UseGuards(AuthGuard, RolesGuard)` + `@Roles(...)` на мутирующих эндпоинтах, `GET /files`, всех `/users*` и обоих `/invidious-instances*`. Публичные чтения (без аутентификации): `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`. Единственный глобальный guard — `ThrottlerGuard` (rate limiting); он не аутентифицирует. Карта guard'ов, лимиты и `trust proxy` — в [`modules/auth.md`](./modules/auth.md); матрица ролей — в [`contracts/rest-api.md`](./contracts/rest-api.md).
 
 ## Модули
 
@@ -112,6 +113,9 @@ await app.listen('3000');
 ```ts
 imports: [
   ConfigModule.forRoot({ isGlobal: true }),
+  ThrottlerModule.forRoot({
+    throttlers: [{ name: 'default', ttl: minutes(1), limit: 300 }],
+  }),
   HealthModule,
   SectionModule,
   AuthModule,
@@ -126,10 +130,12 @@ controllers: [AppController],
 providers: [
   AppService,
   { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
+  { provide: APP_GUARD, useClass: ThrottlerGuard },
 ],
 ```
 
 - `ConfigModule.forRoot({ isGlobal: true })` — env читается через `ConfigService` / `process.env`; отдельного `config/*`-модуля нет.
+- `ThrottlerModule.forRoot(...)` + `APP_GUARD` (`ThrottlerGuard`) — глобальный rate limiting по IP; строгие лимиты auth-роутов задаются `@Throttle` в контроллере (см. [`modules/auth.md`](./modules/auth.md)).
 - `TypeOrmModule` здесь — локальный модуль `src/db/typeorm.module.ts` (подключение к PostgreSQL), не путать с `@nestjs/typeorm`.
 
 ## Переменные окружения
@@ -206,6 +212,8 @@ Unit-тесты (`npm test`) гоняет Jest через трансформ **`
 **Миграции — до деплоя.** `synchronize: false`, поэтому схема БД меняется только вручную и **до** выката тега с кодом, который рассчитывает на новую схему (иначе guarded-роуты упадут). Для релиза с `token_version` сначала применяется `sql/migrations/011_add_token_version.sql` (см. [`db.md`](./db.md)), и только затем деплоится тег.
 
 **Безопасность пайплайна.** Хост-ключ VPS пиннится в `known_hosts` через `ssh-keyscan` (TOFU) на раннере, а SSH-соединения идут с `StrictHostKeyChecking=accept-new` — незнакомый хост ещё принимается, но подменённый ключ уже рвёт соединение. Значения из ref/переменных (в том числе `DEPLOY_TAG`) передаются на удалённую сторону через `env:` шага и экранируются для удалённого shell, а не вклеиваются в строку команды. Образ собирается строго из `package-lock.json` (`npm ci`), а финальная стадия `Dockerfile` работает под непривилегированным пользователем `node` (systemd-юнит может переопределить uid/gid на `slovo`).
+
+**Rate limiting — два уровня.** На edge Traefik применяет middleware `slovo-rate-limit@file` (label `traefik.http.routers.slovo-backend-api.middlewares` в `scripts/vps-deploy.sh`; сама конфигурация middleware живёт в playbook). В приложении дополнительно работает глобальный `ThrottlerGuard` с жёсткими лимитами на `/auth/login` и `/auth/refresh` (см. [`modules/auth.md`](./modules/auth.md)): эти лимиты версионируются вместе с кодом и не зависят от edge-конфига.
 
 **Граница ответственности.** `vps-deploy.sh` владеет только контейнером `slovo-backend` и своей Docker-сетью `slovo-backend`. Вся общая инфраструктура — Docker, пользователь/группа `slovo`, buildx-билдер `slovo-constrained`, Traefik (`slovo-traefik.service`), PostgreSQL / PgBouncer / MinIO и их Docker-сети (`traefik`, `slovo-postgres`, `slovo-minio`) — принадлежит внешнему `slovo-propovedi-playbook` (Ansible, отдельный репозиторий) и должна быть развёрнута заранее (`just setup-all`). Скрипт её **не создаёт**: при отсутствии любого из этих компонентов деплой падает с явной ошибкой, а не доводит сервер до полусобранного состояния.
 

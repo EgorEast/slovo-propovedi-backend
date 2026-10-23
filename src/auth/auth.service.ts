@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import { LessThan, Repository } from 'typeorm';
@@ -15,6 +15,8 @@ const BCRYPT_PREFIXES = ['$2a$', '$2b$', '$2y$'];
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
@@ -42,12 +44,14 @@ export class AuthService {
     const user = await this.usersService.findOneByUsername(username);
 
     if (!user) {
+      this.logFailedSignIn(username);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const isValid = await this.validatePassword(password, user);
 
     if (!isValid) {
+      this.logFailedSignIn(username);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -74,6 +78,16 @@ export class AuthService {
         role: user.role,
       },
     };
+  }
+
+  // Audit trail for brute-force detection. The attempted username is the only
+  // credential-adjacent value logged: passwords and tokens must never reach the
+  // logs. JSON.stringify escapes quotes/newlines so a crafted username cannot
+  // forge log lines. The 401 response stays generic — no user enumeration.
+  private logFailedSignIn(username: string): void {
+    this.logger.warn(
+      `Failed sign-in attempt for username=${JSON.stringify(username)}`,
+    );
   }
 
   async refreshTokens(refreshToken: string): Promise<RefreshResponseDto> {
