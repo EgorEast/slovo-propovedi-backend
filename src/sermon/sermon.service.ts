@@ -163,6 +163,45 @@ const decodeCompositeCursor = (
 };
 export { encodeCompositeCursor, decodeCompositeCursor };
 
+// Keyset cursor for date-ordered pages: the sort key is (created_at, id). The
+// cursor is opaque (base64 JSON) and carries the entity's JS Date, which has
+// millisecond precision — the same precision the ORDER BY uses via
+// date_trunc('milliseconds', …), so the bound value equals the sort key BY
+// CONSTRUCTION (now() writes microseconds; comparing them raw would silently
+// skip rows). Old plain-uuid cursors are invalidated and fail fast.
+const ISO_DATE_CURSOR_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
+
+const encodeDateCursor = (createdAt: Date, id: string): string =>
+  Buffer.from(
+    JSON.stringify({ createdAt: createdAt.toISOString(), id }),
+  ).toString('base64');
+
+const decodeDateCursor = (
+  cursor: string,
+): { createdAt: string; id: string } => {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8'));
+  } catch {
+    throw new BadRequestException('invalid or stale cursor');
+  }
+  if (typeof decoded !== 'object' || decoded === null) {
+    throw new BadRequestException('invalid or stale cursor');
+  }
+  const { createdAt, id } = decoded as { createdAt?: unknown; id?: unknown };
+  if (
+    typeof createdAt !== 'string' ||
+    !ISO_DATE_CURSOR_PATTERN.test(createdAt) ||
+    Number.isNaN(Date.parse(createdAt)) ||
+    typeof id !== 'string'
+  ) {
+    throw new BadRequestException('invalid or stale cursor');
+  }
+  return { createdAt, id };
+};
+export { encodeDateCursor, decodeDateCursor };
+
 @Injectable()
 export class SermonService {
   private readonly logger = new Logger(SermonService.name);
@@ -243,8 +282,8 @@ export class SermonService {
 
       // Relevance-ranked search orders by (rank DESC, id DESC) and IGNORES
       // sort/order — the spec: «при поиске сортировка игнорируется». Without
-      // search the plain sort orders apply (id DESC for the default date
-      // sort, so non-search pagination does not regress).
+      // search the plain sort orders apply (date sorts by created_at with an
+      // id tiebreaker; the keyset cursor carries that same pair).
       const primaryOrders: Array<
         [
           order: string,
@@ -364,7 +403,18 @@ export class SermonService {
           );
         }
       } else if (cursor) {
-        pageQueryBuilder.andWhere('sermon.id < :cursor', { cursor });
+        // Date-ordered pages are the only non-search keyset mode, so the
+        // cursor carries (created_at, id). The comparison uses the SAME
+        // date_trunc('milliseconds', …) expression as the ORDER BY plus the id
+        // tiebreaker, so a tie on the timestamp cannot skip or duplicate rows.
+        // Both directions are handled: the service receives the resolved sort
+        // direction for direct callers too.
+        const { createdAt, id } = decodeDateCursor(cursor);
+        const op = direction === 'asc' ? '>' : '<';
+        pageQueryBuilder.andWhere(
+          `(date_trunc('milliseconds', sermon.created_at), sermon.id) ${op} (:createdAt::timestamptz, :id)`,
+          { createdAt, id },
+        );
       }
 
       pageQueryBuilder.take(take + 1);
@@ -398,7 +448,7 @@ export class SermonService {
             lastSermon.id,
           );
         } else {
-          nextCursor = lastSermon.id;
+          nextCursor = encodeDateCursor(lastSermon.createdAt, lastSermon.id);
         }
       }
 
@@ -418,7 +468,10 @@ export class SermonService {
 
   // ORDER BY expressions for the non-search sort keys. The direction is the
   // resolved default from the DTO (asc for the alphabetical sorts, desc for
-  // date); the tiebreak is always id DESC so equal titles stay deterministic.
+  // date); the tiebreak is id so equal keys stay deterministic (direction-
+  // aware for date, since the cursor comparison follows the same direction).
+  // date orders by created_at truncated to milliseconds — the exact precision
+  // of the JS Date carried in the keyset cursor — with id as the tiebreaker.
   // playlist bases the order on the LOWEST-position playlist title with
   // NULLS LAST (sermons without playlists stay at the end in both directions)
   // and then the join position within that playlist.
@@ -451,7 +504,10 @@ export class SermonService {
           ['sermon.id', 'DESC'],
         ];
       case 'date':
-        return [['sermon.id', dir]];
+        return [
+          [`date_trunc('milliseconds', sermon.created_at)`, dir],
+          ['sermon.id', dir],
+        ];
     }
   }
 
@@ -940,6 +996,7 @@ export class SermonService {
       playlists: (sermon.playlistJoins ?? []).map((join) =>
         this.normalizePlaylistRelations(join.playlist),
       ),
+      createdAt: sermon.createdAt.toISOString(),
     };
   }
 
@@ -987,6 +1044,7 @@ export class SermonService {
           }),
         ),
       })),
+      createdAt: playlist.createdAt.toISOString(),
     };
   }
 

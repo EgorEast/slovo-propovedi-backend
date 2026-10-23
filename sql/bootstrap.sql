@@ -119,7 +119,10 @@ CREATE TABLE sermon (
         || setweight(to_tsvector('russian', coalesce(artist, '')), 'B')
         || setweight(to_tsvector('russian', coalesce(book, '')), 'B')
         || setweight(to_tsvector('russian', coalesce(description, '')), 'D')
-    ) STORED
+    ) STORED,
+    -- Creation date — sort=date orders by it (truncated to milliseconds to
+    -- match the keyset cursor precision). Mirrors migration 013a.
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 -- ---------------------------------------------------------------------------
@@ -154,7 +157,10 @@ CREATE TABLE playlist (
     search_vector tsvector GENERATED ALWAYS AS (
         setweight(to_tsvector('russian', coalesce(title, '')), 'A')
         || setweight(to_tsvector('russian', coalesce(description, '')), 'D')
-    ) STORED
+    ) STORED,
+    -- Creation date — sort=date orders by it (truncated to milliseconds to
+    -- match the keyset cursor precision). Mirrors migration 013a.
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 -- ---------------------------------------------------------------------------
