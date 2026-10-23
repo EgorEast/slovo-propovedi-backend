@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { SectionService } from './section.service';
@@ -7,8 +8,11 @@ import { PlaylistService } from 'src/playlist/playlist.service';
 
 describe('SectionService', () => {
   let service: SectionService;
+  let dataSource: { transaction: jest.Mock };
 
   beforeEach(async () => {
+    dataSource = { transaction: jest.fn() };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SectionService,
@@ -26,7 +30,7 @@ describe('SectionService', () => {
         },
         {
           provide: getDataSourceToken(),
-          useValue: {},
+          useValue: dataSource,
         },
       ],
     }).compile();
@@ -36,5 +40,14 @@ describe('SectionService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('reorderSections', () => {
+    it('rejects a non-uuid id before touching the database', async () => {
+      await expect(
+        service.reorderSections(['not-a-uuid']),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
   });
 });

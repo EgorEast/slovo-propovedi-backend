@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   UploadedFile,
+  UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -31,6 +32,20 @@ import { CleanupOrphansResponseDto } from './app/dto/cleanup-orphans-response.dt
 import { StatusFileResponseDto } from './app/dto/status-file-response.dto';
 import { FileNameParamDto } from './shared/dto/file-name-param.dto';
 import { MAX_UPLOAD_BYTES, mediaFileFilter } from './app/upload-file-filter';
+import { MulterExceptionFilter } from './app/multer-exception.filter';
+
+/**
+ * Failure reasons are admin-only diagnostics, but raw MinIO/driver text can
+ * carry infrastructure details and arbitrarily long payloads. Keep the first
+ * line, bounded — enough to act on, no stack traces or credentials.
+ */
+const MAX_FAILURE_REASON_LENGTH = 200;
+
+function boundedFailureReason(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const firstLine = raw.split(/\r?\n/, 1)[0];
+  return firstLine.slice(0, MAX_FAILURE_REASON_LENGTH);
+}
 
 @Controller()
 export class AppController {
@@ -46,6 +61,9 @@ export class AppController {
   @Roles(UserRole.Admin, UserRole.Moderator)
   @UseGuards(AuthGuard, RolesGuard)
   @ZodResponse({ type: FileResponseDto })
+  // Scoped to this route: only multer's limit errors are rewritten, every
+  // other failure keeps Nest's default handling.
+  @UseFilters(MulterExceptionFilter)
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: MAX_UPLOAD_BYTES },
@@ -155,8 +173,10 @@ export class AppController {
         await this.minioService.removeObjectByName(file.fileName);
         deleted.push(file.fileName);
       } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        failed.push({ fileName: file.fileName, reason });
+        failed.push({
+          fileName: file.fileName,
+          reason: boundedFailureReason(error),
+        });
       }
     }
     return { deleted, failed } as CleanupOrphansResponseDto;

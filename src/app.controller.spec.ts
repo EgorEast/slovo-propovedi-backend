@@ -20,6 +20,7 @@ describe('AppController', () => {
   let uploadFile: jest.Mock;
   let getFileUrl: jest.Mock;
   let removeObjectByName: jest.Mock;
+  let listFilesWithUsage: jest.Mock;
   let sermonFind: jest.Mock;
   let playlistFind: jest.Mock;
 
@@ -29,6 +30,7 @@ describe('AppController', () => {
       .fn()
       .mockResolvedValue('http://localhost:9000/files/uuid.m4a');
     removeObjectByName = jest.fn().mockResolvedValue(undefined);
+    listFilesWithUsage = jest.fn().mockResolvedValue([]);
     sermonFind = jest.fn().mockResolvedValue([]);
     playlistFind = jest.fn().mockResolvedValue([]);
 
@@ -41,6 +43,7 @@ describe('AppController', () => {
             uploadFile,
             getFileUrl,
             removeObjectByName,
+            listFilesWithUsage,
             isReferencedAudioOrText: (
               fileName: string,
               referenced: ReferencedFileNames,
@@ -88,6 +91,24 @@ describe('AppController', () => {
         new BadRequestException('No file uploaded'),
       );
       expect(uploadFile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /files/orphans/cleanup', () => {
+    it('bounds stored failure reasons to the first line and 200 chars', async () => {
+      listFilesWithUsage.mockResolvedValue([
+        { fileName: 'broken.m4a', used: false },
+      ]);
+      removeObjectByName.mockRejectedValue(
+        new Error(`${'x'.repeat(300)}\nSECRET-INTERNALS`),
+      );
+
+      const result = await appController.cleanupOrphanedFiles();
+
+      expect(result.deleted).toEqual([]);
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0].reason).toHaveLength(200);
+      expect(result.failed[0].reason).not.toContain('SECRET-INTERNALS');
     });
   });
 

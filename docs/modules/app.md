@@ -35,7 +35,7 @@ async uploadFile(@UploadedFile('file') file: FileUploadDto): Promise<FileRespons
 ```
 
 - Multipart-поле `file`, перехватывается `FileInterceptor('file')` с опциями (`src/app/upload-file-filter.ts`).
-- **Лимит размера — 100 MB** (`MAX_UPLOAD_BYTES = 100 * 1024 * 1024`). Multer использует **memory storage**: тело целиком лежит в Node-heap, поэтому лимит обязателен — иначе одиночная многогигабайтная загрузка исчерпывает heap контейнера. Превышение Multer (`LIMIT_FILE_SIZE`) Nest отдаёт как `413 Payload Too Large`.
+- **Лимит размера — 100 MB** (`MAX_UPLOAD_BYTES = 100 * 1024 * 1024`). Multer использует **memory storage**: тело целиком лежит в Node-heap, поэтому лимит обязателен — иначе одиночная многогигабайтная загрузка исчерпывает heap контейнера. Превышение Multer (`LIMIT_FILE_SIZE`) обрабатывает scoped-фильтр `MulterExceptionFilter` (`src/app/multer-exception.filter.ts`) → `413 Payload Too Large` с лимитом в MB; прочие ошибки Multer → `400 Bad Request`, не-multer ошибки идут через стандартную обработку Nest.
 - **Allow-list расширений** проверяется в `fileFilter` **до буферизации тела** — как только разобраны заголовки multipart-части. Список — `MEDIA_EXTENSIONS` из `src/shared/media.ts` (единый источник истины с classification бакета): `.jpeg .jpg .png .webp .mp3 .m4a .pdf .fb2`. Иное расширение → `BadRequestException` («Недопустимый тип файла…»), в контроллере дублирующей проверки нет. Регистр расширения не важен: `SERMON.MP3` проходит, а `uploadFile` сохраняет расширение в нижнем регистре.
 - Параметр аннотирован `FileUploadDto` (`createZodDto(z.any())`) — passthrough для `Express.Multer.File`, нужен только чтобы удовлетворить strict-пайп (см. [`../conventions.md`](../conventions.md)). Guard-clause «файл не приложен» остаётся в контроллере.
 - Вызывает `minioService.uploadFile(multerFile)` (имя файла = `randomUUID() + ext`), затем `getFileUrl` → `{ fileName, fileUrl }`.
@@ -82,7 +82,7 @@ async cleanupOrphanedFiles(): Promise<CleanupOrphansResponseDto>
 
 - Та же классификация, что в `GET /files/orphans`, но удаляются **только** осиротевшие аудио/текстовые объекты (`removeObjectByName`, best-effort). **Изображения не удаляются никогда** — обложками управляют вручную из каталога.
 - Очистка намеренно сканирует **весь** bucket через `listFilesWithUsage(referenced)` (без капа): чтобы удалить *все* осиротевшие аудио/текст, нужно перечислить весь bucket. Это редкая admin-операция, а не read-путь, поэтому ограничение `limit` к ней не применяется (read-эндпоинт выше ограничен).
-- Ошибка удаления отдельного объекта не роняет запрос: объект попадает в `failed` с `reason`, остальные продолжают удаляться. Ответ `{ deleted: string[], failed: { fileName, reason }[] }`. Идемпотентен: повторный вызов не найдёт уже удалённых объектов (S3 DeleteObject идемпотентен).
+- Ошибка удаления отдельного объекта не роняет запрос: объект попадает в `failed` с `reason`, остальные продолжают удаляться. `reason` — admin-only диагностика, усечённая до первой строки и 200 символов, чтобы не отдавать в UI сырой текст MinIO/драйвера и не раздувать ответ. Ответ `{ deleted: string[], failed: { fileName, reason }[] }`. Идемпотентен: повторный вызов не найдёт уже удалённых объектов (S3 DeleteObject идемпотентен).
 
 ## `DELETE /files/:fileName` — удаление файла
 

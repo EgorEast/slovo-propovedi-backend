@@ -18,6 +18,7 @@ import {
 } from './interfacies/interface';
 import { PlaylistService } from 'src/playlist/playlist.service';
 import { toInternalServerError } from 'src/shared/internal-error';
+import { ReorderSectionsBody } from 'src/generated';
 
 // TypeORM 1.0 dropped the string-array form of `relations`; the object form
 // below encodes the same nested relation graph.
@@ -225,10 +226,19 @@ export class SectionService {
   }
 
   async reorderSections(ids: string[]): Promise<{ status: string }> {
-    if (!ids.length) {
+    // Local invariant: ids are interpolated into the CASE expression below, so
+    // they are parsed here even though the HTTP DTO already enforces uuid().
+    // The service must never trust its caller.
+    const parsed = ReorderSectionsBody.safeParse({ ids });
+    if (!parsed.success) {
+      throw new BadRequestException('Section IDs must be valid UUIDs');
+    }
+    const validatedIds = parsed.data.ids;
+
+    if (!validatedIds.length) {
       throw new BadRequestException('IDs array cannot be empty');
     }
-    if (new Set(ids).size !== ids.length) {
+    if (new Set(validatedIds).size !== validatedIds.length) {
       throw new BadRequestException('Duplicate IDs detected');
     }
 
@@ -238,31 +248,31 @@ export class SectionService {
       // The client must send the complete in-scope set; a partial list would
       // silently collide positions for the omitted sections.
       const total = await sectionRepository.count();
-      if (ids.length !== total) {
+      if (validatedIds.length !== total) {
         throw new BadRequestException(
-          `Reorder list must contain all ${total} items in scope, received ${ids.length}`,
+          `Reorder list must contain all ${total} items in scope, received ${validatedIds.length}`,
         );
       }
 
       const existing = await sectionRepository.find({
-        where: { id: In(ids) },
+        where: { id: In(validatedIds) },
         select: { id: true },
       });
-      if (existing.length !== ids.length) {
+      if (existing.length !== validatedIds.length) {
         throw new NotFoundException('Some sections do not exist');
       }
 
       // A single CASE UPDATE replaces the previous per-id loop (N queries).
-      // IDs are UUIDs validated by the reorder DTO (zod.uuid()), so
-      // interpolating them into the CASE expression is injection-safe.
-      const positionCase = ids
+      // IDs are UUIDs (parsed above), so interpolating them into the CASE
+      // expression is injection-safe.
+      const positionCase = validatedIds
         .map((id, index) => `WHEN '${id}' THEN ${index}`)
         .join(' ');
       await sectionRepository
         .createQueryBuilder()
         .update(SectionEntity)
         .set({ position: () => `CASE id ${positionCase} END` })
-        .where('id IN (:...ids)', { ids })
+        .where('id IN (:...ids)', { ids: validatedIds })
         .execute();
 
       return { status: 'success' };

@@ -71,6 +71,7 @@
 ### `reorderSections(ids)` — глобальный порядок разделов
 
 - Валидирует: не пусто, без дубликатов, **полный in-scope набор** (`ids.length === total` по таблице `section`) — иначе `BadRequestException`.
+- **Локальный инвариант сервиса:** `ids` заново парсятся сгенерированной схемой `ReorderSectionsBody` (`zod.array(zod.uuid())`) до построения SQL — невалидный id → `400` без обращения к БД, даже если сервис вызван в обход DTO.
 - **Одиночный `CASE id` UPDATE** позиций (вместо N запросов):
 
 ```ts
@@ -84,7 +85,7 @@ await sectionRepository.createQueryBuilder()
   .execute();
 ```
 
-> ✅ Безопасность: `id` — uuid, провалидирован `zod.uuid()` в `ReorderSectionsDto`, интерполяция в CASE безопасна.
+> ✅ Безопасность: `id` — uuid; проверяется и в `ReorderSectionsDto` (граница HTTP), и локально в сервисе перед интерполяцией в CASE.
 
 ### `reorderPlaylistsInSection(sectionId, playlistIds)`
 
