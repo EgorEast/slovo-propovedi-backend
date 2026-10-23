@@ -4,7 +4,7 @@
 
 ## 1. `GET /playlists` — тот же паттерн full-fetch + deep join
 
-`src/playlist/playlist.service.ts:195-257` — `findAll` использует тот же full-fetch + 6-уровневый `leftJoinAndSelect` (deep relation graph), который приводил к OOM на `GET /sermons` (см. инцидент ниже). Пока каталог небольшой — терпимо, но до роста каталога нужен тот же рефакторинг, что и в `SermonService.findAll`: join-свободная страница + линейная сборка графа.
+`src/playlist/playlist.service.ts` — `findAll` в режиме **полной выборки** (без `search`/`page`/`limit`, дефолт `date`/`desc`) грузит весь каталог через `findAndCount` с глубоким графом `PLAYLIST_RELATIONS` — тот же паттерн full-fetch + deep relation join, который приводил к OOM на `GET /sermons` (см. инцидент ниже). Пока каталог небольшой — терпимо, но до роста каталога нужен тот же рефакторинг, что и в `SermonService.findAll`: join-свободная страница + линейная сборка графа.
 
 ## 2. `GET /health` — no-op
 

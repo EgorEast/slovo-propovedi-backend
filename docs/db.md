@@ -16,15 +16,15 @@
 | `port` | `POSTGRES_PORT` (def `5432`) | в проде — `6432`; валидируется как integer |
 | `username` / `password` / `database` | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | подключение |
 | `synchronize` | `false` | DDL не идёт через пулер |
-| `installExtensions` | `false` | расширения не создаются рантаймом; схема и функции — из `sql/bootstrap.sql` |
+| `installExtensions` | `false` | расширения не нужны и не создаются рантаймом: uuid-PK по умолчанию — нативный `uuidv7()` (PostgreSQL ≥ 18 для свежей установки), схема — только из `sql/bootstrap.sql` |
 | `poolSize` | `5` | маленький клиентский пул (PgBouncer уже пулит) |
 | `entities` | `src/**/*.entity.{js,ts}` + `node_modules/nestjs-admin/**/*.entity.js` | glob-автозагрузка сущностей |
 
-> ⚠️ Три флага (`synchronize: false`, `installExtensions: false`, `poolSize: 5`) — осознанная настройка под **PgBouncer (transaction mode)**. Через пулер нельзя гонять DDL, поэтому схема провижионируется из SQL-файлов, а не из ORM-миграций. Подробная мотивация — комментарий в `typeorm.module.ts` и [`architecture.md`](./architecture.md).
+> ⚠️ Три флага (`synchronize: false`, `installExtensions: false`, `poolSize: 5`) — осознанная настройка под **PgBouncer (transaction mode)**. Через пулер нельзя гонять DDL, поэтому схема провижионируется из SQL-файлов, а не из ORM-миграций. Расширения не устанавливаются вовсе: uuid по умолчанию генерирует встроенная функция `uuidv7()`, поэтому `uuid-ossp` не нужен ни на свежей, ни на существующей БД. Подробная мотивация — комментарий в `typeorm.module.ts` и [`architecture.md`](./architecture.md).
 
 ## Сущности и связи
 
-Десять сущностей загружаются по glob-шаблону. Все, кроме `InvidiousInstanceEntity`, — с uuid-PK (`@PrimaryGeneratedColumn('uuid')`); у `InvidiousInstanceEntity` PK — автоинкрементный integer.
+Десять сущностей загружаются по glob-шаблону. Все, кроме `InvidiousInstanceEntity`, — с uuid-PK (`@PrimaryGeneratedColumn('uuid')`); на уровне БД default — нативный `uuidv7()` (time-ordered, PostgreSQL ≥ 18; расширение `uuid-ossp` не используется). У `InvidiousInstanceEntity` PK — автоинкрементный integer.
 
 ### `User` — таблица `user`
 
@@ -71,7 +71,7 @@
 | `book` | varchar | nullable |
 | `chapter` | json | nullable (`number \| number[]`) — одиночная глава или диапазон `[start, end]` |
 | `verse` | json | nullable (`number \| number[] \| (number \| number[])[]`) — стих, диапазон или список отрезков `[[9,18],20]` |
-| `created_at` | timestamptz | NOT NULL, default `now()` — дата добавления; ключ `sort=date` и keyset-курсора |
+| `created_at` | timestamptz | NOT NULL, default `now()` (`@CreateDateColumn`) — дата добавления; ключ `sort=date` и keyset-курсора |
 
 Связь: `@OneToMany(() => PlaylistSermonJoinEntity, join => join.sermon, { cascade: true })` → `playlistJoins`.
 
@@ -85,7 +85,7 @@
 | `title` | varchar | NOT NULL |
 | `description` | varchar | NOT NULL |
 | `artwork` | varchar | NOT NULL |
-| `created_at` | timestamptz | NOT NULL, default `now()` — дата добавления; ключ `sort=date` |
+| `created_at` | timestamptz | NOT NULL, default `now()` (`@CreateDateColumn`) — дата добавления; ключ `sort=date` |
 
 Связи: `@OneToMany → SectionPlaylistJoinEntity` (`sectionJoins`, cascade), `@OneToMany → PlaylistSermonJoinEntity` (`sermonJoins`, cascade).
 
@@ -240,6 +240,16 @@
 
 > ✅ Сервисы нормализуют отношения на уровне БД: `order`-объекты в `find`/QueryBuilder сортируют join-ы по `position` ASC, чтобы не пересортировывать в памяти (`SERMON_ORDER`, `PLAYLIST_ORDER`, `SECTION_ORDER`).
 
+## Дата добавления и точность `created_at`
+
+`sort=date` и keyset-курсор опираются на **миллисекундную точность** `created_at`:
+
+- `ORDER BY` сортирует по `date_trunc('milliseconds', created_at)`, а `nextCursor` собирается из `entity.createdAt.toISOString()` (JS `Date` — всегда целые миллисекунды). Поэтому усечённое значение в БД и значение из сущности совпадают **по построению**.
+- Хранимые значения обязаны быть ms-точными: `now()` пишет микросекунды, и сравнение µs-значения с ms-курсором молча пропускало бы строки. Бэкфилл [`scripts/backfill-created-at.mjs`](../scripts/backfill-created-at.mjs) поэтому усекает всех кандидатов (mtime объектов MinIO и `MIN(created_at)` связанных проповедей) до целых миллисекунд.
+- Драйвер `pg` парсит `timestamptz` (OID 1184) с **floor** суб-миллисекундного остатка — это закреплено спекой [`src/db/pg-timestamptz-parsing.spec.ts`](../src/db/pg-timestamptz-parsing.spec.ts). Если будущая версия `pg` начнёт округлять, `nextCursor` нужно перевести на raw-значение `date_trunc('milliseconds', created_at)::text` (шаблон — rank-raw в поисковом режиме).
+
+> ⚠️ **Известная цена:** btree-индекса на `created_at` нет, поэтому `ORDER BY date_trunc('milliseconds', created_at), id` в keyset-режиме выполняется сортировкой отфильтрованного набора, а не index scan. При текущем масштабе каталога (сотни строк) это дёшево и принято осознанно; при росте каталога понадобится выраженный индекс по `(date_trunc('milliseconds', created_at), id)`.
+
 ## Ручной SQL вместо миграций TypeORM
 
 Поскольку `synchronize: false`, DDL выполняется вручную. Полный набор:
@@ -297,6 +307,8 @@ psql -h <host> -U <user> -d <db> -f sql/migrations/015_rekey_uuid_v7.sql
 > ⚠️ **Миграция 014 требует PostgreSQL 18+.** На кластере старше 18 она останавливается на precheck с явной ошибкой и ничего не меняет — это осознанный fail-fast, а не fallback на `uuid_generate_v4()`. Сначала обновите PostgreSQL, затем примените 014. Fresh-bootstrap (`sql/bootstrap.sql`) также требует PostgreSQL 18+.
 
 > ⚠️ **Миграция 015 меняет все существующие id, и SQL-отката у неё нет.** Перед запуском снимите и проверьте бэкап (`pg_dump`/снапшот) — это единственный путь восстановления; старые id уничтожаются. Остановите приложение: файл берёт ACCESS EXCLUSIVE-локи на все таблицы и переписывает все строки. После 015 пользователи залогинятся заново, а сохранённые старые id/deep-link перестанут работать. Порядок: 013 → 014 → 015 → `npm run backfill-created-at` → деплой.
+
+> 💾 **Бэкапы.** Штатное резервное копирование выполняет контейнер `postgres-backup-local`: расписание задано внутри контейнера (ежедневный запуск около 04:30 UTC), отдельного systemd-таймера нет — в `systemctl list-timers` его не ищите. Ручные дампы, снятые перед rekey, лежат в `/slovo/postgres-backup/data/pre-rekey/` и **вне retention-свипа** контейнера: ротация их не удаляет, чистить нужно вручную после проверки восстановления.
 
 > ⚠️ **Нет TypeORM migration runner и нет npm-скрипта миграций.** Применение — строго ручное через `psql`. Новые изменения схемы оформлять идемпотентным SQL-файлом и синхронно отражать в `bootstrap.sql`.
 
