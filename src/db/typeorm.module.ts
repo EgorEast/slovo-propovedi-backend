@@ -35,9 +35,9 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
           //
           // - synchronize: false — DDL must not run through the pooler. The
           //   schema is created once from sql/bootstrap.sql instead.
-          // - installExtensions: false — extension provisioning ("CREATE
-          //   EXTENSION uuid-ossp") is done in bootstrap.sql, not at runtime
-          //   through the pooler.
+          // - installExtensions: false — no runtime extension provisioning is
+          //   needed (uuid PKs default to the native uuidv7()); the schema is
+          //   created once from sql/bootstrap.sql, not through the pooler.
           // - poolSize: 5 — PgBouncer already pools connections, so the backend
           //   only needs a small client pool. This also keeps the Node.js heap
           //   footprint low on the 1 vCPU / 2GB VPS.

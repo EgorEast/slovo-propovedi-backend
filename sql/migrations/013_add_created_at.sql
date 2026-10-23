@@ -1,5 +1,5 @@
 -- =============================================================================
--- Migration 013a: sermon.created_at + playlist.created_at (2026-10-23)
+-- Migration 013: sermon.created_at + playlist.created_at (2026-10-23)
 -- =============================================================================
 --
 -- Adds the created_at column to sermon and playlist. It backs the published
@@ -26,7 +26,7 @@
 -- this migration there is a no-op.
 --
 -- Run as the DB owner, e.g.:
---   psql -h <host> -U <user> -d <db> -f sql/migrations/013a_add_created_at.sql
+--   psql -h <host> -U <user> -d <db> -f sql/migrations/013_add_created_at.sql
 --
 -- REVERT (rollback on a broken deploy):
 --   ALTER TABLE sermon DROP COLUMN IF EXISTS created_at;
