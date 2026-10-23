@@ -1,4 +1,8 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { In } from 'typeorm';
@@ -992,20 +996,20 @@ describe('SermonService', () => {
           { id: 'sermon-1', playlistJoins: [] },
         ]);
         mockEmptyGraphQueries();
+        const loggerSpy = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation(() => undefined);
 
-        await expect(
-          service.findAll(
-            undefined,
-            undefined,
-            undefined,
-            1,
-            20,
-            'playlist',
-            'asc',
-          ),
-        ).rejects.toThrow(
+        const error = await service
+          .findAll(undefined, undefined, undefined, 1, 20, 'playlist', 'asc')
+          .catch((caught) => caught);
+
+        expect(error).toBeInstanceOf(InternalServerErrorException);
+        expect(error.message).toBe('Internal server error');
+        expect(loggerSpy.mock.calls[0][0]).toContain(
           'Sermon "sermon-missing" missing from hydration query',
         );
+        loggerSpy.mockRestore();
       });
     });
   });
@@ -1563,9 +1567,18 @@ describe('SermonService', () => {
         sections: [],
       });
 
-      await expect(service.findAll()).rejects.toThrow(
+      const loggerSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+
+      const error = await service.findAll().catch((caught) => caught);
+
+      expect(error).toBeInstanceOf(InternalServerErrorException);
+      expect(error.message).toBe('Internal server error');
+      expect(loggerSpy.mock.calls[0][0]).toContain(
         'Playlist "playlist-missing" of sermon "sermon-2" not found',
       );
+      loggerSpy.mockRestore();
     });
 
     it('orders every join query by position ASC with an id ASC tiebreaker', async () => {

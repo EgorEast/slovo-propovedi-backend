@@ -1,4 +1,8 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { In } from 'typeorm';
@@ -460,10 +464,20 @@ describe('PlaylistService', () => {
           .mockReturnValueOnce(idBuilder)
           .mockReturnValueOnce(countBuilder);
         playlistRepository.find.mockResolvedValue([playlistEntity('pl-1')]);
+        const loggerSpy = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation(() => undefined);
 
-        await expect(service.findAll(undefined, 1, 10)).rejects.toThrow(
+        const error = await service
+          .findAll(undefined, 1, 10)
+          .catch((caught) => caught);
+
+        expect(error).toBeInstanceOf(InternalServerErrorException);
+        expect(error.message).toBe('Internal server error');
+        expect(loggerSpy.mock.calls[0][0]).toContain(
           'Playlist "pl-missing" missing from hydration query',
         );
+        loggerSpy.mockRestore();
       });
 
       it('orders the id page by LOWER(title) ASC then id DESC for offset sort=title', async () => {

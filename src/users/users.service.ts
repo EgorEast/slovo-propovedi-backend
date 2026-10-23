@@ -2,8 +2,8 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
-  HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -15,6 +15,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
+import { toInternalServerError } from 'src/shared/internal-error';
 
 const BCRYPT_ROUNDS = 10;
 
@@ -48,6 +49,8 @@ export interface AllUsersResponse {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
@@ -62,11 +65,7 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findOneByUsername ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findOneByUsername', error);
     }
   }
 
@@ -77,11 +76,7 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findOneById ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findOneById', error);
     }
   }
 
@@ -99,11 +94,7 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findByIdForAuth ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findByIdForAuth', error);
     }
   }
 
@@ -136,11 +127,7 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findAll ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findAll', error);
     }
   }
 
@@ -155,11 +142,7 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findOne ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findOne', error);
     }
   }
 
@@ -184,11 +167,7 @@ export class UsersService {
           'Пользователь с таким email или username уже существует',
         );
       }
-      throw new HttpException(
-        'from:create ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'create', error);
     }
   }
 
@@ -255,11 +234,7 @@ export class UsersService {
           'Пользователь с таким email или username уже существует',
         );
       }
-      throw new HttpException(
-        'from:update ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'update', error);
     }
   }
 
@@ -280,11 +255,7 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:changePassword ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'changePassword', error);
     }
   }
 
@@ -322,11 +293,7 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:remove ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'remove', error);
     }
   }
 

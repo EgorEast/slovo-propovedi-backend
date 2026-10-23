@@ -3,6 +3,8 @@ import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import {
   ConflictException,
   ForbiddenException,
+  InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
@@ -97,10 +99,39 @@ describe('UsersService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('findOneByUsername', () => {
+    it('logs the driver detail and rejects with a generic 500', async () => {
+      const loggerSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      repository.findOne.mockRejectedValue(
+        new Error('relation "user" does not exist'),
+      );
+
+      const error = await service
+        .findOneByUsername('testuser')
+        .catch((caught) => caught);
+
+      expect(error).toBeInstanceOf(InternalServerErrorException);
+      expect(error.message).toBe('Internal server error');
+      expect(JSON.stringify(error.getResponse())).not.toContain('relation');
+
+      // Full detail stays server-side, tagged with the operation prefix.
+      expect(loggerSpy).toHaveBeenCalledWith(
+        expect.stringContaining('from:findOneByUsername'),
+        expect.any(String),
+      );
+      expect(loggerSpy.mock.calls[0][0]).toContain(
+        'relation "user" does not exist',
+      );
+    });
   });
 
   describe('findAll', () => {

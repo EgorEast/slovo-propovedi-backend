@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
@@ -137,12 +138,33 @@ describe('AuthService', () => {
       });
     });
 
-    it('rejects with UnauthorizedException when the user is unknown', async () => {
+    it('rejects an unknown username with the generic 401 after a dummy bcrypt compare', async () => {
       usersService.findOneByUsername.mockResolvedValue(null);
+      jest.mocked(bcrypt.compare).mockResolvedValueOnce(false);
 
-      await expect(service.signIn('nobody', 'password')).rejects.toThrow(
-        UnauthorizedException,
+      await expect(service.signIn('nobody', 'password')).rejects.toMatchObject({
+        message: 'Invalid credentials',
+        status: 401,
+      });
+
+      // The dummy compare equalizes timing with the known-username path; the
+      // hash is a cost-10 bcrypt value, same as real password hashes.
+      expect(bcrypt.compare).toHaveBeenCalledWith(
+        'password',
+        expect.stringMatching(/^\$2[aby]\$10\$/),
       );
+    });
+
+    it('rejects a wrong password with the same generic 401', async () => {
+      usersService.findOneByUsername.mockResolvedValue(mockUser);
+      jest.mocked(bcrypt.compare).mockResolvedValueOnce(false);
+
+      await expect(
+        service.signIn('testuser', 'wrong-password'),
+      ).rejects.toMatchObject({
+        message: 'Invalid credentials',
+        status: 401,
+      });
     });
   });
 

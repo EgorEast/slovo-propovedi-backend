@@ -13,6 +13,13 @@ import { RevokedRefreshToken } from './entities/revoked-refresh-token.entity';
 
 const BCRYPT_PREFIXES = ['$2a$', '$2b$', '$2y$'];
 
+// Bcrypt hash (cost 10, same as BCRYPT_ROUNDS in UsersService) of a random
+// throwaway string. A committed constant is used instead of hashing at module
+// load: no startup CPU, no import-time side effect for tests, and the value
+// guards nothing — it only burns the same ~bcrypt cost as a real check.
+const DUMMY_PASSWORD_HASH =
+  '$2b$10$96rsAYi/v./SGUcJ9JHoDOkR8tt0qWivRBwqIG0M6n56i1HBNwHlS';
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -44,6 +51,11 @@ export class AuthService {
     const user = await this.usersService.findOneByUsername(username);
 
     if (!user) {
+      // Unknown username must cost the same as a wrong password: without this
+      // bcrypt.compare the 401 would return ~immediately and reveal whether
+      // the username exists. The result is discarded — the dummy hash never
+      // matches.
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
       this.logFailedSignIn(username);
       throw new UnauthorizedException('Invalid credentials');
     }

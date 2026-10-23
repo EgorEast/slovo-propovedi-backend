@@ -1,8 +1,8 @@
 import {
   BadRequestException,
   HttpException,
-  HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateSectionDto } from './dto/create-section.dto';
@@ -17,6 +17,7 @@ import {
   NormalizedSection,
 } from './interfacies/interface';
 import { PlaylistService } from 'src/playlist/playlist.service';
+import { toInternalServerError } from 'src/shared/internal-error';
 
 // TypeORM 1.0 dropped the string-array form of `relations`; the object form
 // below encodes the same nested relation graph.
@@ -49,6 +50,8 @@ const SECTION_ORDER = {
 
 @Injectable()
 export class SectionService {
+  private readonly logger = new Logger(SectionService.name);
+
   constructor(
     private playlistService: PlaylistService,
     @InjectRepository(SectionEntity)
@@ -89,11 +92,7 @@ export class SectionService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:createSectionItem ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'createSectionItem', error);
     }
   }
 
@@ -107,11 +106,7 @@ export class SectionService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findByIds section ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findByIds section', error);
     }
   }
 
@@ -129,11 +124,7 @@ export class SectionService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findAllSectionItems ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findAllSectionItems', error);
     }
   }
 
@@ -152,11 +143,7 @@ export class SectionService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findOneSectionItem ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findOneSectionItem', error);
     }
   }
 
@@ -221,11 +208,7 @@ export class SectionService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:update ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'update', error);
     }
   }
 
@@ -237,11 +220,7 @@ export class SectionService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:remove ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'remove', error);
     }
   }
 

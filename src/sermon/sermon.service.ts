@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   HttpException,
-  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -27,6 +26,7 @@ import {
 import { MinioService } from 'src/minio/minio.service';
 import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
 import { SortOrder } from 'src/shared/sort';
+import { toInternalServerError } from 'src/shared/internal-error';
 
 // TypeORM 1.0 dropped the string-array form of `relations`; the object form
 // below encodes the same nested relation graph.
@@ -202,11 +202,7 @@ export class SermonService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:createSermon ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'createSermon', error);
     }
   }
 
@@ -405,11 +401,7 @@ export class SermonService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findAllSermonItems ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findAllSermonItems', error);
     }
   }
 
@@ -764,11 +756,7 @@ export class SermonService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:getDistinctValues ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'getDistinctValues', error);
     }
   }
 
@@ -784,11 +772,7 @@ export class SermonService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findOneSermonItem ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findOneSermonItem', error);
     }
   }
 
@@ -802,11 +786,7 @@ export class SermonService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findByIds sermon ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findByIds sermon', error);
     }
   }
 
@@ -892,11 +872,7 @@ export class SermonService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:update ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'update', error);
     }
   }
 
@@ -917,11 +893,7 @@ export class SermonService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:remove ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'remove', error);
     }
   }
 

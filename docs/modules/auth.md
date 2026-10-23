@@ -65,13 +65,15 @@ WARN [AuthService] Failed sign-in attempt for username="someone"
 ```
 
 - Логируется **только username** (через `JSON.stringify`, чтобы кавычки/переводы строк в имени не подделывали строки лога); пароль, токены и прочие креды в лог не попадают.
-- Ответ не меняется: остаётся generic `401 Invalid credentials` для обоих случаев — перечисление пользователей (enumeration) не вводится. Лог служит для обнаружения атак, блокировку обеспечивает rate limiting выше.
+- Ответ не меняется: остаётся generic `401 Invalid credentials` для обоих случаев — перечисление пользователей (enumeration) не вводится. Время ответа тоже выровнено: для неизвестного username выполняется dummy-сравнение bcrypt (см. `signIn` ниже). Лог служит для обнаружения атак, блокировку обеспечивает rate limiting выше.
 
 ## `AuthService` (`src/auth/auth.service.ts`)
 
 ### `signIn(username, password)`
 
-1. `usersService.findOneByUsername(username)` → нет пользователя → `UnauthorizedException`.
+1. `usersService.findOneByUsername(username)` → нет пользователя → **dummy `bcrypt.compare(password, DUMMY_PASSWORD_HASH)`** → `UnauthorizedException('Invalid credentials')`.
+   - Зачем: неизвестный username не должен отвечать быстрее неверного пароля. Иначе `401` для несуществующего пользователя возвращался бы мгновенно, а для существующего тратил бы ~50–100 мс на bcrypt — устойчивый timing-oracle для перечисления аккаунтов (finding AUTH M-2).
+   - `DUMMY_PASSWORD_HASH` — **статическая константа** в `auth.service.ts`: bcrypt-хэш (cost 10, как реальные пароли) случайной строки. Выбрана статика, а не `bcrypt.hashSync` на старте модуля: нет блокирующей CPU-работы при загрузке и нет побочного эффекта при импорте в тестах. Хэш ничего не защищает — его значение не секрет и наружу не попадает, результат сравнения отбрасывается.
 2. `validatePassword(password, user)`:
    - если пароль — bcrypt-хэш (префиксы `$2a$`, `$2b$`, `$2y$`) → `bcrypt.compare`;
    - если legacy-plaintext — прямое сравнение; при совпадении **пере-хэширует** в bcrypt (10 раундов) и сохраняет через `usersService.updatePassword` (**auto-rehash**).

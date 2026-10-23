@@ -42,6 +42,18 @@ export class FileNameParamDto extends createZodDto(FileNameParamSchema) {}
 
 Единый источник истины таксономии медиа: `IMAGE_EXTENSIONS`, `AUDIO_TEXT_EXTENSIONS`, `MEDIA_EXTENSIONS`, `getFileExtension()`, `STORED_FILE_NAME_PATTERN`. Из него выводятся upload allow-list (`src/app/upload-file-filter.ts`), classification бакета (`MinioService`) и валидация `:fileName` — добавили формат в одном месте, обновились все три.
 
+### `internal-error.ts` (`src/shared/internal-error.ts`)
+
+Единый контракт для непредвиденных ошибок сервисов:
+
+```ts
+toInternalServerError(logger, operation, error): InternalServerErrorException
+```
+
+- Пишет полный `error.message` + stack в серверный лог через `Logger.error` с префиксом `from:<operation>` (correlation context).
+- Возвращает `InternalServerErrorException('Internal server error')` — тело ответа не содержит SQL, имён relation/constraint'ов и stack trace (finding AUTH M-3).
+- Используется в `users`, `sermon`, `playlist`, `section`, `feature-flags`, `invidious-instances`; клиентские 4xx (`404`/`409`/`403`) пробрасываются до хелпера и не маскируются.
+
 ### `SortOrder` (`src/shared/sort.ts`)
 
 Общий тип направления сортировки списков:

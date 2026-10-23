@@ -52,7 +52,7 @@
 
 ## `UsersService` (`src/users/users.service.ts`)
 
-Публичные методы (ошибки оборачиваются в `HttpException`):
+Публичные методы (непредвиденные ошибки → generic `500`, детали только в серверном логе; см. «Контракт ошибок» ниже):
 
 | Метод | Назначение |
 |-------|------------|
@@ -74,6 +74,13 @@
   2. строгие Zod-схемы `UserResponseDto`/`UserListResponseDto` на границе (`@ZodResponse`) — даже случайно добавленный ключ отбросит `ZodSerializerInterceptor`.
 - **`toUserRole(role)`** — парсинг роли на границе сервиса: zod гарантирует `'admin' | 'moderator' | 'user'`, функция маппит строку в TS-енум `UserRole` (литеральный union не присваивается енуму напрямую).
 - **Конфликт уникальности** (`email`/`username`, PG-код `23505`) → `ConflictException` «Пользователь с таким email или username уже существует».
+
+### Контракт ошибок
+
+- **Клиентские 4xx** — часть API-контракта, отдаются как есть: `404` «Пользователь не найден», `409` конфликт уникальности, `403` защита ролей/self-delete.
+- **Непредвиденные ошибки** (PostgreSQL/TypeORM driver, MinIO, прочие исключения) **логируются** через `Logger.error` с префиксом `from:<operation>` (например, `from:findOneByUsername`) и полным текстом ошибки + stack. Клиенту возвращается только `500 Internal server error`.
+- В тело ответа **никогда** не попадают `error.message`, SQL-фрагменты, имена таблиц/constraint'ов/relation'ов и stack trace: раньше строка вида `from:findOneByUsername <pg error>` уходила клиенту и раскрывала внутренности БД (finding AUTH M-3).
+- Логика вынесена в общий хелпер `toInternalServerError(logger, operation, error)` (`src/shared/internal-error.ts`) и используется во всех сервисах (`users`, `auth`, `sermon`, `playlist`, `section`, `feature-flags`, `invidious-instances`).
 
 ### Защита ролей (`update` / `remove`) → 403
 

@@ -1,8 +1,8 @@
 import {
   BadRequestException,
   HttpException,
-  HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
@@ -22,6 +22,7 @@ import {
 import { buildSearchTsQuery, SermonService } from 'src/sermon/sermon.service';
 import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
 import { SortOrder } from 'src/shared/sort';
+import { toInternalServerError } from 'src/shared/internal-error';
 
 // TypeORM 1.0 dropped the string-array form of `relations`; the object form
 // below encodes the same nested relation graph.
@@ -104,6 +105,8 @@ const buildPlaylistRankExpression = (): string =>
 
 @Injectable()
 export class PlaylistService {
+  private readonly logger = new Logger(PlaylistService.name);
+
   constructor(
     private sermonService: SermonService,
     @InjectRepository(PlaylistEntity)
@@ -192,11 +195,7 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:createPlaylist ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'createPlaylist', error);
     }
   }
 
@@ -276,11 +275,7 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findAllPlaylistItems ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findAllPlaylistItems', error);
     }
   }
 
@@ -466,11 +461,7 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findByIds playlist ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findByIds playlist', error);
     }
   }
 
@@ -486,11 +477,7 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findOnePlaylistItem ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findOnePlaylistItem', error);
     }
   }
 
@@ -544,11 +531,7 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:update ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'update', error);
     }
   }
 
@@ -560,11 +543,7 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:remove ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'remove', error);
     }
   }
 
