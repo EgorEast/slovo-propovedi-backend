@@ -5,7 +5,7 @@
  * REST API сервиса «Слово.Проповеди».
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.22.2
+ * OpenAPI spec version: 0.23.0
  */
 import * as zod from 'zod';
 
@@ -935,6 +935,9 @@ export const PlaylistControllerCreateResponse = zod.strictObject({
       ),
     }),
   ),
+  createdAt: zod.iso
+    .datetime({ offset: true })
+    .describe('Дата добавления плейлиста'),
 });
 
 /**
@@ -974,7 +977,7 @@ export const PlaylistControllerFindAllQueryParams = zod.strictObject({
     .enum(['date', 'title', 'section'])
     .default(playlistControllerFindAllQuerySortDefault)
     .describe(
-      'Вариант сортировки. `date` — по убыванию id (порядок загрузки), `title` — по названию, `section` — по названию раздела (плейлисты без раздела — в конце). Игнорируется при поиске (сортировка по релевантности). Применяется только к страничной выдаче (page/limit) и полной выдаче; несовместимо с take/cursor.',
+      'Вариант сортировки. `date` — по дате добавления (created_at), при равенстве — по id, `title` — по названию, `section` — по названию раздела (плейлисты без раздела — в конце). Игнорируется при поиске (сортировка по релевантности). Применяется только к страничной выдаче (page/limit) и полной выдаче.',
     ),
   order: zod
     .enum(['asc', 'desc'])
@@ -1182,6 +1185,9 @@ export const PlaylistControllerFindAllResponse = zod.strictObject({
           ),
         }),
       ),
+      createdAt: zod.iso
+        .datetime({ offset: true })
+        .describe('Дата добавления плейлиста'),
     }),
   ),
   count: zod.number(),
@@ -1382,6 +1388,9 @@ export const PlaylistControllerFindOneResponse = zod.strictObject({
       ),
     }),
   ),
+  createdAt: zod.iso
+    .datetime({ offset: true })
+    .describe('Дата добавления плейлиста'),
 });
 
 /**
@@ -1605,6 +1614,9 @@ export const PlaylistControllerUpdateResponse = zod.strictObject({
       ),
     }),
   ),
+  createdAt: zod.iso
+    .datetime({ offset: true })
+    .describe('Дата добавления плейлиста'),
 });
 
 /**
@@ -1981,8 +1993,14 @@ export const SermonControllerCreateResponse = zod.strictObject({
           ),
         }),
       ),
+      createdAt: zod.iso
+        .datetime({ offset: true })
+        .describe('Дата добавления плейлиста'),
     }),
   ),
+  createdAt: zod.iso
+    .datetime({ offset: true })
+    .describe('Дата добавления проповеди'),
 });
 
 /**
@@ -2001,7 +2019,12 @@ export const sermonControllerFindAllQueryOrderDefault = `desc`;
 
 export const SermonControllerFindAllQueryParams = zod.strictObject({
   take: zod.int().min(1).max(sermonControllerFindAllQueryTakeMax).optional(),
-  cursor: zod.uuid().optional(),
+  cursor: zod
+    .string()
+    .optional()
+    .describe(
+      'Непрозрачный курсор keyset-пагинации: используйте значение nextCursor из предыдущей страницы (составной курсор: дата добавления + id). Курсоры старого формата (uuid) считаются недействительными и возвращают 400.',
+    ),
   search: zod
     .string()
     .min(1)
@@ -2028,7 +2051,7 @@ export const SermonControllerFindAllQueryParams = zod.strictObject({
     .enum(['date', 'title', 'artist', 'playlist'])
     .default(sermonControllerFindAllQuerySortDefault)
     .describe(
-      'Вариант сортировки. `date` — по убыванию id (порядок загрузки), `title` — по названию, `artist` — по автору, `playlist` — по названию плейлиста (проповеди без плейлиста — в конце). Игнорируется при поиске (сортировка по релевантности). Применяется только к страничной выдаче (page/limit) и полной выдаче; несовместимо с take/cursor.',
+      'Вариант сортировки. `date` — по дате добавления (created_at), при равенстве — по id, `title` — по названию, `artist` — по автору, `playlist` — по названию плейлиста (проповеди без плейлиста — в конце). Игнорируется при поиске (сортировка по релевантности). Применяется только к страничной выдаче (page/limit) и полной выдаче; несовместимо с take/cursor.',
     ),
   order: zod
     .enum(['asc', 'desc'])
@@ -2291,8 +2314,14 @@ export const SermonControllerFindAllResponse = zod.strictObject({
               ),
             }),
           ),
+          createdAt: zod.iso
+            .datetime({ offset: true })
+            .describe('Дата добавления плейлиста'),
         }),
       ),
+      createdAt: zod.iso
+        .datetime({ offset: true })
+        .describe('Дата добавления проповеди'),
     }),
   ),
   count: zod.number().nullable(),
@@ -2563,8 +2592,14 @@ export const SermonControllerFindOneResponse = zod.strictObject({
           ),
         }),
       ),
+      createdAt: zod.iso
+        .datetime({ offset: true })
+        .describe('Дата добавления плейлиста'),
     }),
   ),
+  createdAt: zod.iso
+    .datetime({ offset: true })
+    .describe('Дата добавления проповеди'),
 });
 
 /**
