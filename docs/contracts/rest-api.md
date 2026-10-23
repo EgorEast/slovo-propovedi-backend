@@ -117,7 +117,7 @@
 | `POST /auth/logout` | `AuthGuard` (без `@Roles`) | `AuthController.logout` | `AuthService.logout(refreshToken)` |
 | `GET /auth/profile` | `AuthGuard` (без `@Roles`) | `AuthController.getProfile` | `AuthService.getProfile(req.user.id)` |
 
-> ✅ `POST /auth/logout` доступен **любой аутентифицированной роли** (`admin` / `moderator` / `user`) — без `RolesGuard`. Отзывает refresh-токен (denylist, sha256-хэш в `revoked_refresh_token`); повторный logout с тем же токеном — тоже `204`. `POST /auth/refresh` **ротирует** пару: предъявленный refresh-токен отзывается в том же запросе (один живой refresh-токен на цепочку; повторный refresh со старым токеном → `401`). Access-токен остаётся технически валидным до истечения (≤ 30 мин). Детали — [`../modules/auth.md`](../modules/auth.md).
+> ✅ `POST /auth/logout` доступен **любой аутентифицированной роли** (`admin` / `moderator` / `user`) — без `RolesGuard`. Отзывает refresh-токен (denylist, sha256-хэш в `revoked_refresh_token`); повторный logout с тем же токеном — тоже `204`. `POST /auth/refresh` **ротирует** пару: предъявленный refresh-токен отзывается в том же запросе (один живой refresh-токен на цепочку; повторный refresh со старым токеном → `401`). `AuthGuard` на каждом запросе сверяет `token_version` с живой строкой БД и берёт роль оттуда, поэтому понижение/удаление пользователя действует немедленно, а смена пароля (`token_version + 1`) отзывает все access- и refresh-токены сразу. Детали — [`../modules/auth.md`](../modules/auth.md).
 
 ### Users
 
@@ -161,7 +161,7 @@
 ## База URL и аутентификация
 
 - **Base URL:** `https://api.slovo-propovedi.ru` — публичный адрес развёрнутого API. Локально NestJS слушает порт `3000` (захардкожен в `src/main.ts`).
-- **Аутентификация:** Bearer JWT, проверяется `AuthGuard` (`src/auth/guard/auth.guard.ts`); payload `{ id, email, role }` (zod-парсинг на входе, legacy-токены без `role` → `401` → refresh). Авторизация по ролям — `RolesGuard` (`@Roles`, fail-closed). Access/refresh flow — см. [`../modules/auth.md`](../modules/auth.md).
+- **Аутентификация:** Bearer JWT, проверяется `AuthGuard` (`src/auth/guard/auth.guard.ts`); payload `{ id, email, role, tokenVersion? }` (zod-парсинг на входе, legacy-токены без `role` → `401` → refresh; живой пользователь и версия сессии перепроверяются по БД, роль берётся из БД). Авторизация по ролям — `RolesGuard` (`@Roles`, fail-closed). Access/refresh flow — см. [`../modules/auth.md`](../modules/auth.md).
 - **Защита на сервере:** `AuthGuard` + `RolesGuard` на мутирующих эндпоинтах (см. таблицы выше) + `ZodValidationPipe` (strict) на всех границах.
 
 ## Связанные документы

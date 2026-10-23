@@ -44,6 +44,7 @@
 | `username` | `username` | varchar | UNIQUE, `@IsString`, `@IsNotEmpty` |
 | `password` | `password` | varchar | bcrypt-хэш |
 | `role` | `role` | varchar | NOT NULL, default `'user'`, CHECK `('admin','moderator','user')` |
+| `tokenVersion` | `token_version` | integer | NOT NULL, default `0`; бампается при смене пароля, сверяется guard'ом и `refreshTokens` |
 
 `UserRole` — TS-енум в `src/users/user-role.enum.ts` (`Admin='admin'`, `Moderator='moderator'`, `User='user'`). Колонка: `@Column({ name: 'role', type: 'varchar', default: UserRole.User })`.
 
@@ -59,13 +60,15 @@
 | `findOne(id)` | поиск по `id` (иначе `NotFoundException`) |
 | `create(dto)` | создание: bcrypt-хэш пароля + сохранение; `role = dto.role ?? UserRole.User` (least privilege) |
 | `update(id, dto, currentUserId)` | частичное обновление (только заданные поля) + защита роли (см. ниже) |
-| `changePassword(id, dto)` | смена пароля (bcrypt-хэш + `updatePassword`) |
+| `changePassword(id, dto)` | смена пароля (bcrypt-хэш + атомарный бамп `token_version` — отзывает все сессии) |
 | `remove(id, currentUserId)` | удаление (с защитой от блокировки, см. ниже) |
 | `findOneByUsername(username)` | поиск по `username` (используется при логине) |
 | `findOneById(id)` | поиск по `id` (используется в `getProfile` и `refreshTokens`) |
-| `updatePassword(id, hashedPassword)` | обновление пароля (используется при auto-rehash legacy-пароля) |
+| `findByIdForAuth(id)` | SELECT только `id`/`role`/`tokenVersion` для `AuthGuard` (проверка живой строки и версии сессии) |
+| `updatePassword(id, hashedPassword)` | обновление пароля **без** бампа версии (auto-rehash legacy-пароля при логине) |
 
 - **Пароль хэшируется** `bcrypt` (10 раундов, `BCRYPT_ROUNDS = 10`) в `create` и `changePassword`.
+- **Смена пароля отзывает сессии.** `changePassword` выполняет один `UPDATE` (`password = :hash, token_version = token_version + 1`), поэтому все ранее выпущенные access- и refresh-токены перестают проходить проверку версии **немедленно** — и на каждом запросе через `AuthGuard`, и на `/auth/refresh`. Пользователь должен войти заново. Авто-rehash legacy-пароля (`updatePassword`) версию не бампает: креды не меняются.
 - **Приватный `toResponse(user)`** отдаёт только `{ id, name, username, email, role }` — **пароль НИКОГДА не попадает в ответы**. Два слоя защиты:
   1. явный маппинг полей в `toResponse` (исключает `password`);
   2. строгие Zod-схемы `UserResponseDto`/`UserListResponseDto` на границе (`@ZodResponse`) — даже случайно добавленный ключ отбросит `ZodSerializerInterceptor`.
@@ -121,7 +124,7 @@ export class UsersModule {}
 - [README.md](./README.md) — индекс модулей
 - [auth.md](./auth.md) — как `UsersService` используется в `signIn`/`getProfile`/refresh/auto-rehash
 - [shared.md](./shared.md) — `IdParamDto`
-- [../db.md](../db.md) — таблица `user` в схеме БД, миграция `002_add_user_roles.sql`
+- [../db.md](../db.md) — таблица `user` в схеме БД, миграции `002_add_user_roles.sql` и `011_add_token_version.sql`
 - [../conventions.md](../conventions.md) — note про legacy class-validator
 - [../contracts/rest-api.md](../contracts/rest-api.md) — контракт `UsersController*` и матрица ролей
 - Домен users на фронте и экраны управления пользователями — репозиторий `slovo-propovedi-admin`

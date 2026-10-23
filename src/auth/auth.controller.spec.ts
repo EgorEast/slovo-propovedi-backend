@@ -23,6 +23,7 @@ const mockUser = {
   username: 'testuser',
   password: '$2a$10$abcdefghijklmnopqrstuv',
   role: UserRole.Admin,
+  tokenVersion: 0,
 };
 
 describe('AuthController', () => {

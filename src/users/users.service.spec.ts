@@ -21,6 +21,7 @@ const mockUser: User = {
   username: 'testuser',
   password: 'hashed-password',
   role: UserRole.User,
+  tokenVersion: 0,
 };
 
 const mockAdmin: User = {
@@ -337,20 +338,49 @@ describe('UsersService', () => {
     });
   });
 
+  describe('findByIdForAuth', () => {
+    it('selects only id, role and tokenVersion', async () => {
+      repository.findOne.mockResolvedValue({
+        id: mockUser.id,
+        role: mockUser.role,
+        tokenVersion: mockUser.tokenVersion,
+      });
+
+      const result = await service.findByIdForAuth(mockUser.id);
+
+      expect(repository.findOne).toHaveBeenCalledWith({
+        where: { id: mockUser.id },
+        select: { id: true, role: true, tokenVersion: true },
+      });
+      expect(result).toEqual({
+        id: mockUser.id,
+        role: mockUser.role,
+        tokenVersion: 0,
+      });
+    });
+
+    it('returns null when the user does not exist', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      await expect(service.findByIdForAuth('missing')).resolves.toBeNull();
+    });
+  });
+
   describe('changePassword', () => {
-    it('hashes password and calls updatePassword with hashed value', async () => {
+    it('hashes the password and bumps token_version in the same UPDATE', async () => {
       repository.findOne.mockResolvedValue(mockUser);
-      const updatePasswordSpy = jest
-        .spyOn(service, 'updatePassword')
-        .mockResolvedValue(undefined);
+      repository.update.mockResolvedValue({ affected: 1 });
 
       await service.changePassword('user-1', { password: 'new-password' });
 
       expect(bcrypt.hash).toHaveBeenCalledWith('new-password', 10);
-      expect(updatePasswordSpy).toHaveBeenCalledWith(
-        'user-1',
-        'hashed-password',
-      );
+      expect(repository.update).toHaveBeenCalledWith('user-1', {
+        password: 'hashed-password',
+        tokenVersion: expect.any(Function),
+      });
+
+      const update = repository.update.mock.calls[0][1];
+      expect(update.tokenVersion()).toBe('token_version + 1');
     });
 
     it('rejects with NotFoundException when user is not found', async () => {
@@ -359,6 +389,8 @@ describe('UsersService', () => {
       await expect(
         service.changePassword('missing', { password: 'new-password' }),
       ).rejects.toThrow(NotFoundException);
+
+      expect(repository.update).not.toHaveBeenCalled();
     });
   });
 

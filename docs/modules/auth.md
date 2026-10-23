@@ -7,13 +7,13 @@
 
 ## Роли
 
-Три роли (`UserRole`, `src/users/user-role.enum.ts`): `admin` / `moderator` / `user`. Роль живёт в **JWT-payload** (`{ id, email, role }`) и в **БД** (колонка `user.role`, см. [`../db.md`](../db.md)). Guard'ы:
+Три роли (`UserRole`, `src/users/user-role.enum.ts`): `admin` / `moderator` / `user`. Роль хранится в **БД** (колонка `user.role`, см. [`../db.md`](../db.md)) и копируется в **JWT-payload** (`{ id, email, role, tokenVersion }`) при подписи; guard'ы:
 
 | Guard | Что проверяет |
 |-------|---------------|
-| `AuthGuard` | токен валиден (подпись `JWT_SECRET`) **и** payload парсится zod-схемой `{ id: uuid, email, role }` |
-| `OptionalAuthGuard` | то же, но токен необязателен: нет токена → `request.user === undefined`, запрос продолжается (`200`); невалидный/просроченный/legacy токен → `401` |
-| `RolesGuard` | `@Roles(...)` из метаданных содержит роль из payload; **fail-closed** |
+| `AuthGuard` | токен валиден (подпись `JWT_SECRET`), payload парсится zod-схемой `{ id: uuid, email, role, tokenVersion? }`, **пользователь существует в БД** и `user.token_version` совпадает с `tokenVersion` из токена (отсутствующий claim = `0`); роль для `request.user` берётся из **живой строки БД** |
+| `OptionalAuthGuard` | то же, но токен необязателен: нет токена → `request.user === undefined`, запрос продолжается (`200`); невалидный/просроченный/legacy/отозванный токен → `401` |
+| `RolesGuard` | `@Roles(...)` из метаданных содержит роль из `request.user` (живая роль из БД); **fail-closed** |
 
 Пара `@Roles(...)` + `@UseGuards(AuthGuard, RolesGuard)` включается на мутирующих эндпоинтах. Без `@Roles` guard не ограничивает (возвращает `true`) — роут просто authenticated-only.
 
@@ -38,13 +38,18 @@
 2. `validatePassword(password, user)`:
    - если пароль — bcrypt-хэш (префиксы `$2a$`, `$2b$`, `$2y$`) → `bcrypt.compare`;
    - если legacy-plaintext — прямое сравнение; при совпадении **пере-хэширует** в bcrypt (10 раундов) и сохраняет через `usersService.updatePassword` (**auto-rehash**).
-3. payload `{ id, email, role }` — роль из свежезагруженного пользователя.
+3. payload `{ id, email, role, tokenVersion }` — роль и `tokenVersion` из свежезагруженного пользователя.
 4. `generateTokens(payload)` → пара токенов + `user: { id, name, username, email, role }`.
 
 ### `generateTokens`
 
 ```ts
-private async generateTokens(payload: { id: string; email: string; role: UserRole }) {
+private async generateTokens(payload: {
+  id: string;
+  email: string;
+  role: UserRole;
+  tokenVersion: number;
+}) {
   const [accessToken, refreshToken] = await Promise.all([
     this.jwtService.signAsync(payload, { secret: this.accessSecret, expiresIn: '30m' }),
     this.jwtService.signAsync(payload, { secret: this.refreshSecret, expiresIn: '30d' }),
@@ -58,6 +63,8 @@ private async generateTokens(payload: { id: string; email: string; role: UserRol
 | access | `JWT_SECRET` | `30m` | авторизация запросов (его принимает `AuthGuard`) |
 | refresh | `JWT_REFRESH_SECRET` | `30d` | обновление пары |
 
+Оба токена несут `tokenVersion` — версию сессии на момент подписи (см. ниже). Access-токен дополнительно проверяется по живой строке БД на каждом запросе.
+
 > ✅ Секреты обязательны: если `JWT_SECRET` / `JWT_REFRESH_SECRET` не заданы — сервис кидает ошибку. Guard также требует `JWT_SECRET`.
 
 ### `refreshTokens(refreshToken)`
@@ -65,10 +72,11 @@ private async generateTokens(payload: { id: string; email: string; role: UserRol
 1. `jwtService.verifyAsync(refreshToken, { secret: refreshSecret })` — сбой → `UnauthorizedException`.
 2. **Fast-fail denylist-check**: sha256(refreshToken) ищется в таблице `revoked_refresh_token` (`isRevoked`) — найден → `UnauthorizedException` (токен уже убит через `logout` или предыдущую ротацию) **до** пере-запроса пользователя.
 3. **Пере-запрашивает живого пользователя** `usersService.findOneById(payload.id)` — нет → `UnauthorizedException`.
-4. **Ротация**: предъявленный refresh-токен **отзывается в этом же запросе** — его sha256-хэш вставляется в `revoked_refresh_token` (`storeRevokedToken`, `exp` берётся из верифицированного payload, `ON CONFLICT DO NOTHING`). Вставка выполняется **до** подписания новой пары:
+4. **Проверка версии сессии**: `user.tokenVersion !== (payload.tokenVersion ?? 0)` → `UnauthorizedException` («Refresh token has been revoked»). Токен, выпущенный до смены пароля, мёртв, даже если подпись и `exp` ещё валидны; отсутствие claim'а у legacy-токена означает версию `0`.
+5. **Ротация**: предъявленный refresh-токен **отзывается в этом же запросе** — его sha256-хэш вставляется в `revoked_refresh_token` (`storeRevokedToken`, `exp` берётся из верифицированного payload, `ON CONFLICT DO NOTHING`). Вставка выполняется **до** подписания новой пары:
    - insert упал → исключение пробрасывается, новых токенов не выдаётся;
    - `ON CONFLICT DO NOTHING` проглотил вставку (хэш уже есть — параллельный logout/ротация победил) → `UnauthorizedException`, sibling-пара не майнится.
-5. Собирает **свежий** payload `{ id, email, role }` из живого пользователя и подписывает новую пару.
+6. Собирает **свежий** payload `{ id, email, role, tokenVersion }` из живого пользователя и подписывает новую пару.
 
 **Семантика ротации:**
 - **Один живой refresh-токен на цепочку**: каждый `/auth/refresh` убивает предъявленный токен и выдаёт свежую пару. Повторный `/auth/refresh` с уже отротированным токеном → `401` (он в denylist).
@@ -76,8 +84,9 @@ private async generateTokens(payload: { id: string; email: string; role: UserRol
 - **Гонка logout-vs-refresh безопасна без отдельной транзакции**: UNIQUE(`token_hash`) + `ON CONFLICT DO NOTHING` делают сам insert точкой сериализации — если параллельный logout уже сохранил хэш, insert не сработает и новая пара не будет выдана.
 
 Зачем re-fetch:
-- **stale/demoted role вступает в силу при следующем refresh** — пониженный админ не получит новый access-токен со старой ролью;
-- **legacy refresh-токены** (выданные до ролей, payload без `role`) автоматически апгрейдятся до ролевых.
+- **stale/demoted role вступает в силу немедленно** — пониженный админ не получит ни новый access-токен со старой ролью, ни доступ к живому guard'у (роль читается из БД на каждом запросе, см. ниже);
+- **version-check** убивает refresh-токены, выпущенные до смены пароля;
+- **legacy refresh-токены** (выданные до ролей/версионирования, payload без `role`/`tokenVersion`) проходят проверку как версия `0` и апгрейдятся до актуального payload'а.
 
 ### `logout(refreshToken)`
 
@@ -94,7 +103,7 @@ private async generateTokens(payload: { id: string; email: string; role: UserRol
 **Семантика отзыва (ротация):**
 - **refresh-токен умирает немедленно**: `logout` кладёт его хэш в denylist; `/auth/refresh` **также** отзывает предъявленный токен при ротации — в каждый момент времени в цепочке жив **один** refresh-токен;
 - повторный `/auth/refresh` с уже отротированным/отозванным токеном → `401` (в т.ч. из второй вкладки/устройства, где ещё лежит старый токен) — клиент должен заново пройти `/auth/login`;
-- **access-токен** НЕ в denylist — он остаётся технически валидным до собственного истечения (**≤ 30 минут**). Клиент обязан удалить оба токена при logout; при «утечке» access-токена максимум 30 минут — осознанный компромисс (не ходить в БД на каждый запрос, та же логика, что с устареванием роли);
+- **access-токен** НЕ в denylist — он остаётся технически валидным до собственного истечения (**≤ 30 минут**). Клиент обязан удалить оба токена при logout; при «утечке» access-токена максимум 30 минут — осознанный компромисс. `logout` **не** меняет `token_version` (иначе выход на одном устройстве убивал бы все остальные); сессии отзываются только сменой пароля — она бампает версию и убивает и access, и refresh немедленно;
 - строки denylist живут до `exp` токена (после — токен и так просрочен).
 
 ### `getProfile(userId)`
@@ -112,24 +121,30 @@ private async generateTokens(payload: { id: string; email: string; role: UserRol
 export const accessTokenPayloadSchema = z.object({
   id: z.string().uuid(),
   email: z.string(),
-  role: z.enum(UserRole),   // zod v4: native TS enum
+  role: z.enum(UserRole),                      // zod v4: native TS enum
+  tokenVersion: z.number().int().nonnegative().optional(), // legacy = 0
 });
 ```
 
 - Достаёт токен из заголовка `Authorization: Bearer <token>`.
 - Проверяет через `JwtService.verifyAsync` против `JWT_SECRET`.
-- **Парсит payload zod-схемой** (`accessTokenPayloadSchema.parse`) — parse, don't validate: дальше по приложению `request.user` ходит уже доверенным типом `{ id, email, role }`.
-- **Любая ошибка** (нет токена, плохая подпись, payload не парсится) → `UnauthorizedException` (fail loud).
-- **Legacy access-токены** без `role` НЕ проходят parse → `401` → клиент делает `/auth/refresh`, получает ролевую пару и повторяет запрос (механизм refresh-retry в админке).
+- **Парсит payload zod-схемой** (`accessTokenPayloadSchema.parse`) — parse, don't validate: дальше по приложению `request.user` ходит уже доверенным типом `{ id, email, role, tokenVersion? }`.
+- **Загружает живого пользователя** через `usersService.findByIdForAuth(id)` (SELECT только `id`, `role`, `token_version`):
+  - пользователь удалён → `401`;
+  - `user.token_version !== (payload.tokenVersion ?? 0)` → `401` с сообщением «Session has been revoked. Please sign in again.» — клиентский refresh-retry получит такой же отказ на `/auth/refresh` и обязан вернуть пользователя на логин;
+  - иначе `request.user = { ...payload, role: user.role }` — **роль берётся из БД**, а не из токена.
+- **Любая ошибка** верификации/парсинга (нет токена, плохая подпись, payload не парсится) → `UnauthorizedException` (fail loud); ошибка БД при загрузке пользователя пробрасывается как `500`, а не маскируется под `401`.
+- **Legacy access-токены** без `role` НЕ проходят parse → `401` → клиент делает `/auth/refresh`, получает ролевую пару и повторяет запрос (механизм refresh-retry в админке). Legacy-токены без `tokenVersion` считаются версией `0`.
 - **Принимается только access-токен** (refresh-токен подписан другим секретом и сюда не подходит).
+- **Стоимость:** один SELECT по PK на каждый аутентифицированный запрос — цена немедленного применения удаления/понижения/смены пароля (см. ниже).
 
 ## `OptionalAuthGuard` (`src/auth/guard/optional-auth.guard.ts`)
 
-`extends AuthGuard` (переиспользует `extractTokenFromHeader` / `resolveSecret` / `verifyToken`) и переопределяет `canActivate` для **опциональной** аутентификации:
+`extends AuthGuard` (переиспользует `extractTokenFromHeader` / `resolveSecret` / `verifyOrThrow` / `resolveLiveUser`) и переопределяет `canActivate` для **опциональной** аутентификации:
 
-- Валидный Bearer-токен → `request.user = { id, email, role }` (тот же parse zod-схемой), запрос продолжается.
+- Валидный Bearer-токен → `request.user = { id, email, role }` (та же проверка живой строки БД и версии, что в `AuthGuard`), запрос продолжается.
 - Нет токена / не Bearer → `request.user` остаётся `undefined`, запрос продолжается анонимно (`200`).
-- **Невалидный / просроченный / legacy-токен без `role` → `401`** — токен, который присутствует, но не проходит проверку, не деградирует в анонима: клиент обновит токен и повторит запрос.
+- **Невалидный / просроченный / отозванный / legacy-токен без `role` → `401`** — токен, который присутствует, но не проходит проверку, не деградирует в анонима: клиент обновит токен и повторит запрос.
 - Отсутствие `JWT_SECRET` — серверная мисконфигурация, а не проблема токена: секрет резолвится **вне** `try`, поэтому ошибка пробрасывается (fail loud), а не превращается в `401` или в анонима.
 
 ## `RolesGuard` (`src/auth/guard/roles.guard.ts`)
@@ -157,11 +172,14 @@ export const accessTokenPayloadSchema = z.object({
 
 `src/auth/entities/revoked-refresh-token.entity.ts`, таблица `revoked_refresh_token` (см. [`../db.md`](../db.md)). Регистрируется в `AuthModule` через `TypeOrmModule.forFeature([RevokedRefreshToken])` (рядом с существующими импортами `UsersModule` + глобальный `JwtModule`).
 
-## Роль в access-токене и её «устаревание»
+## Роль и версия сессии в access-токене
 
-Роль копируется в access-токен при подписи, поэтому **до истечения access-токена (≤ 30 мин) роль в нём может устареть**: пониженный/повышенный пользователь продолжит действовать со старой ролью, пока жив access-токен. Это осознанный компромисс (не ходить в БД на каждый запрос). Изменения роли вступают в силу:
-- **немедленно** для долгих сессий — при `/auth/refresh` (re-fetch живого пользователя);
-- **максимум через 30 мин** для текущего access-токена.
+Роль копируется в access-токен при подписи, но **источником истины остаётся БД**: `AuthGuard` на каждом запросе загружает `id`/`role`/`token_version` и подставляет **живую** роль в `request.user`. Поэтому:
+- понижение/повышение роли действует **немедленно** (следующий же запрос);
+- удалённый пользователь получает `401` немедленно;
+- смена пароля бампает `user.token_version`, и все access/refresh-токены со старой версией отклоняются сразу — пользователь должен войти заново.
+
+`token_version` — целочисленный счётчик (`NOT NULL DEFAULT 0`). `signIn` и `refreshTokens` подписывают пару текущим значением; `UsersService.changePassword` инкрементирует его в том же `UPDATE`, что и хэш пароля (см. [`users.md`](./users.md)). `updatePassword` (auto-rehash legacy-пароля при логине) версию **не** трогает — те же креды остаются валидными.
 
 ## Связанные документы
 

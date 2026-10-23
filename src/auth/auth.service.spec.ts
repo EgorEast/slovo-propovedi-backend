@@ -27,6 +27,7 @@ const mockUser = {
   username: 'testuser',
   password: '$2a$10$abcdefghijklmnopqrstuv',
   role: UserRole.Admin,
+  tokenVersion: 0,
 };
 
 describe('AuthService', () => {
@@ -123,6 +124,7 @@ describe('AuthService', () => {
           id: mockUser.id,
           email: mockUser.email,
           role: UserRole.Admin,
+          tokenVersion: 0,
         }),
         expect.anything(),
       );
@@ -229,6 +231,26 @@ describe('AuthService', () => {
         UnauthorizedException,
       );
 
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
+    });
+
+    it('rejects a refresh token signed before the last password change', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        id: mockUser.id,
+        exp: Math.floor(Date.now() / 1000) + 60,
+        tokenVersion: 0,
+      });
+      usersService.findOneById.mockResolvedValue({
+        ...mockUser,
+        tokenVersion: 1,
+      });
+
+      await expect(
+        service.refreshTokens('stale-refresh-token'),
+      ).rejects.toThrow(UnauthorizedException);
+
+      // The stale token is rejected before rotation; no fresh pair is minted.
+      expect(revokedTokensRepository.createQueryBuilder).not.toHaveBeenCalled();
       expect(jwtService.signAsync).not.toHaveBeenCalled();
     });
 

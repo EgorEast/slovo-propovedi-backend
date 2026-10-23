@@ -39,6 +39,9 @@ CREATE TABLE "user" (
     -- the constraint name matches sql/migrations/002_add_user_roles.sql so the
     -- migration is a no-op on fresh databases.
     role character varying DEFAULT 'user'::character varying NOT NULL,
+    -- Session version: bumped on password change, mirrored in access/refresh
+    -- tokens; a mismatch invalidates the token (mirrors migration 011).
+    token_version integer DEFAULT 0 NOT NULL,
     CONSTRAINT user_role_check CHECK (role IN ('admin', 'moderator', 'user'))
 );
 

@@ -54,8 +54,14 @@ export class AuthService {
     // The role lives in the JWT so guards can authorize per-request. email is
     // retained for backwards compatibility with already-issued refresh tokens;
     // it is NOT used for lookup (getProfile re-fetches by id, refresh re-fetches
-    // the live user by id).
-    const payload = { id: user.id, email: user.email, role: user.role };
+    // the live user by id). tokenVersion ties the pair to the account's current
+    // session version: a password change bumps it and revokes both tokens.
+    const payload = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    };
     const tokens = await this.generateTokens(payload);
 
     return {
@@ -71,7 +77,7 @@ export class AuthService {
   }
 
   async refreshTokens(refreshToken: string): Promise<RefreshResponseDto> {
-    let verified: { id: string; exp: number };
+    let verified: { id: string; exp: number; tokenVersion?: number };
 
     try {
       verified = await this.jwtService.verifyAsync(refreshToken, {
@@ -96,6 +102,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
+    // A password change bumps token_version; a refresh token minted before it
+    // is dead even though its signature and expiry are still valid. A missing
+    // claim means a pre-versioning token, i.e. version 0.
+    if (user.tokenVersion !== (verified.tokenVersion ?? 0)) {
+      throw new UnauthorizedException('Refresh token has been revoked');
+    }
+
     // ROTATION: the presented token is revoked before the fresh pair is
     // signed, so a failed store means no new tokens are ever issued. No
     // separate transaction is needed for the logout-vs-refresh race: the
@@ -116,6 +129,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       role: user.role,
+      tokenVersion: user.tokenVersion,
     });
   }
 
@@ -204,6 +218,7 @@ export class AuthService {
     id: string;
     email: string;
     role: UserRole;
+    tokenVersion: number;
   }) {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {

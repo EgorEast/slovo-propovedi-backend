@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { MinioService, type ReferencedFileNames } from './minio/minio.service';
 import { SermonEntity } from './sermon/entities/sermon.entity';
 import { PlaylistEntity } from './playlist/entities/playlist.entity';
+import { UsersService } from './users/users.service';
 
 const REJECTED_FILE_MESSAGE =
   'Недопустимый тип файла. Разрешены только: JPEG, PNG, WebP, MP3, M4A, PDF, FB2.';
@@ -51,6 +52,7 @@ describe('AppController', () => {
           },
         },
         { provide: JwtService, useValue: {} },
+        { provide: UsersService, useValue: {} },
         {
           provide: getRepositoryToken(SermonEntity),
           useValue: { find: sermonFind },

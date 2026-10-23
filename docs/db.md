@@ -38,6 +38,7 @@
 | `username` | varchar | UNIQUE |
 | `password` | varchar | bcrypt-хэш |
 | `role` | varchar | NOT NULL, default `'user'`, CHECK `(role IN ('admin','moderator','user'))` |
+| `token_version` | integer | NOT NULL, default `0` — версия сессии; бампается при смене пароля, сверяется `AuthGuard` и `refreshTokens` |
 
 ### `RevokedRefreshToken` — таблица `revoked_refresh_token`
 
@@ -175,6 +176,7 @@
   username (UQ)
   password            (bcrypt)
   role                (default 'user', CHECK admin/moderator/user)
+  token_version       (default 0; смена пароля отзывает сессии)
   │
   │ 1:N
   ▼
@@ -252,6 +254,7 @@
 | `sql/migrations/008_add_invidious_instances.sql` | **существующие БД** (2026-10-06): `CREATE TABLE IF NOT EXISTS invidious_instance` (integer-PK `serial` + UNIQUE `url`) для админ-списка Invidious-инстансов импорта. PK `PK_invidious_instance_id` и UNIQUE `UQ_invidious_instance_url` — каждый в DO-блоке с guard по `pg_constraint` (идемпотентно; на fresh-bootstrap БД — no-op). Revert: `DROP TABLE IF EXISTS invidious_instance`. |
 | `sql/migrations/009_feature_flags.sql` | **существующие БД** (2026-10-10): `CREATE TABLE IF NOT EXISTS feature_flag` (uuid-PK, UNIQUE `key`, `enabled` default `false`, `created_at`/`updated_at`) и `feature_flag_override` (uuid-PK, `flag_id`/`user_id`, UNIQUE пара, `created_at` default `now()`) для удалённых фича-флагов. PK `PK_feature_flag_id`/`PK_feature_flag_override_id`, UNIQUE `UQ_feature_flag_key`/`UQ_feature_flag_override_pair`, FK `FK_feature_flag_override_flag` → `feature_flag`(id) и `FK_feature_flag_override_user` → `user`(id) — каждый в DO-блоке с guard по `pg_constraint` (идемпотентно; на fresh-bootstrap БД — no-op). Сид `read`/`study` (`ON CONFLICT DO NOTHING`), индекс `ix_feature_flag_override_user`(`user_id`) для выборки исключений пользователя. Revert: `DROP TABLE IF EXISTS feature_flag_override; DROP TABLE IF EXISTS feature_flag;`. |
 | `sql/migrations/010_feature_flag_override_created_at.sql` | **существующие БД** (2026-10-10): `ADD COLUMN IF NOT EXISTS created_at` (`timestamp with time zone NOT NULL DEFAULT now()`) на `feature_flag_override`. Дополняет 009: колонка нужна `GET /feature-flags/:id/overrides` (`FeatureFlagOverride.createdAt`), но была вписана правкой 009 на месте, поэтому БД, где 009 уже отработала до этого, `CREATE TABLE IF NOT EXISTS` её не получит. Идемпотентен (`ADD COLUMN IF NOT EXISTS`; на fresh-bootstrap БД — no-op). Revert: `ALTER TABLE feature_flag_override DROP COLUMN IF EXISTS created_at;`. |
+| `sql/migrations/011_add_token_version.sql` | **существующие БД** (2026-10-23): `ADD COLUMN IF NOT EXISTS token_version integer DEFAULT 0 NOT NULL` на `user` — версия сессии для отзыва access/refresh-токенов при смене пароля и немедленной проверки удалённого/пониженного пользователя. **Применять до деплоя соответствующего тега**: код читает колонку на каждом аутентифицированном запросе, а схема меняется только вручную (`synchronize: false`). Идемпотентен (на fresh-bootstrap БД — no-op). Revert: `ALTER TABLE "user" DROP COLUMN IF EXISTS token_version;`. |
 
 Команды применения (как DB-owner):
 
@@ -270,7 +273,10 @@ psql -h <host> -U <user> -d <db> -f sql/migrations/007_chapter_range.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/008_add_invidious_instances.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/009_feature_flags.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/010_feature_flag_override_created_at.sql
+psql -h <host> -U <user> -d <db> -f sql/migrations/011_add_token_version.sql
 ```
+
+> ⚠️ **Миграция 011 должна быть применена к прод-БД ДО деплоя тега с этим кодом** (`synchronize: false`, код читает `token_version` на каждом аутентифицированном запросе). Без колонки все guarded-роуты будут падать с `500`.
 
 > ⚠️ **Нет TypeORM migration runner и нет npm-скрипта миграций.** Применение — строго ручное через `psql`. Новые изменения схемы оформлять идемпотентным SQL-файлом и синхронно отражать в `bootstrap.sql`.
 

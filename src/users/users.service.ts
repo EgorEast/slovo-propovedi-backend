@@ -85,6 +85,31 @@ export class UsersService {
     }
   }
 
+  // AuthGuard's per-request re-check: only the three fields needed to
+  // authenticate — never the password hash. Returns null for a deleted user.
+  async findByIdForAuth(
+    id: string,
+  ): Promise<Pick<User, 'id' | 'role' | 'tokenVersion'> | null> {
+    try {
+      return await this.usersRepository.findOne({
+        where: { id },
+        select: { id: true, role: true, tokenVersion: true },
+      });
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'from:findByIdForAuth ' +
+          (error instanceof Error ? error.message : String(error)),
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // Auto-rehash path (legacy plaintext password upgraded on sign-in). It
+  // deliberately does NOT bump token_version: the same credentials remain
+  // valid, so existing sessions must survive the transparent upgrade.
   async updatePassword(id: string, hashedPassword: string): Promise<void> {
     await this.usersRepository.update(id, { password: hashedPassword });
   }
@@ -245,7 +270,12 @@ export class UsersService {
         throw new NotFoundException('Пользователь не найден');
       }
       const hashedPassword = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-      await this.updatePassword(id, hashedPassword);
+      // One UPDATE bumps the session version with the new hash, so every
+      // access and refresh token signed before this moment stops validating.
+      await this.usersRepository.update(id, {
+        password: hashedPassword,
+        tokenVersion: () => 'token_version + 1',
+      });
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;

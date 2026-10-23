@@ -9,6 +9,7 @@ import { SectionEntity } from 'src/section/entities/section.entity';
 import { SectionPlaylistJoinEntity } from 'src/section/entities/section-playlist-join.entity';
 import { SermonService } from 'src/sermon/sermon.service';
 import { FindAllPlaylistsQueryDto } from './dto/find-all-playlists-query.dto';
+import { UsersService } from 'src/users/users.service';
 
 describe('PlaylistController', () => {
   let controller: PlaylistController;
@@ -21,6 +22,10 @@ describe('PlaylistController', () => {
         PlaylistService,
         {
           provide: JwtService,
+          useValue: {},
+        },
+        {
+          provide: UsersService,
           useValue: {},
         },
         {
