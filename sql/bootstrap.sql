@@ -21,15 +21,15 @@
 -- migrations so re-running them on a fresh database is a no-op.
 -- =============================================================================
 
--- uuid PKs are generated with uuid_generate_v4() (uuid-ossp), matching
--- TypeORM's default `uuidExtension: "uuid-ossp"`.
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
+-- uuid PKs are generated with the native uuidv7() (PostgreSQL >= 18,
+-- pg_catalog built-in), time-ordered for index locality. There is no
+-- uuid-ossp dependency: fresh installs require PostgreSQL 18.
 
 -- ---------------------------------------------------------------------------
 -- user (admin/moderator/user accounts)
 -- ---------------------------------------------------------------------------
 CREATE TABLE "user" (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuidv7() NOT NULL,
     name character varying NOT NULL,
     email character varying NOT NULL,
     username character varying NOT NULL,
@@ -39,6 +39,9 @@ CREATE TABLE "user" (
     -- the constraint name matches sql/migrations/002_add_user_roles.sql so the
     -- migration is a no-op on fresh databases.
     role character varying DEFAULT 'user'::character varying NOT NULL,
+    -- Session version: bumped on password change, mirrored in access/refresh
+    -- tokens; a mismatch invalidates the token (mirrors migration 011).
+    token_version integer DEFAULT 0 NOT NULL,
     CONSTRAINT user_role_check CHECK (role IN ('admin', 'moderator', 'user'))
 );
 
@@ -46,7 +49,7 @@ CREATE TABLE "user" (
 -- revoked_refresh_token (logout denylist — sha256 hashes of revoked refresh tokens)
 -- ---------------------------------------------------------------------------
 CREATE TABLE revoked_refresh_token (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuidv7() NOT NULL,
     token_hash character varying NOT NULL,
     user_id uuid NOT NULL,
     revoked_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -71,7 +74,7 @@ CREATE TABLE invidious_instance (
 -- holds per-user exceptions ("grant" | "deny"), at most one row per pair.
 -- Mirrors sql/migrations/009_feature_flags.sql.
 CREATE TABLE feature_flag (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuidv7() NOT NULL,
     key character varying NOT NULL,
     title character varying NOT NULL,
     enabled boolean DEFAULT false NOT NULL,
@@ -80,7 +83,7 @@ CREATE TABLE feature_flag (
 );
 
 CREATE TABLE feature_flag_override (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuidv7() NOT NULL,
     flag_id uuid NOT NULL,
     user_id uuid NOT NULL,
     -- "grant" | "deny"
@@ -92,7 +95,7 @@ CREATE TABLE feature_flag_override (
 -- sermon
 -- ---------------------------------------------------------------------------
 CREATE TABLE sermon (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuidv7() NOT NULL,
     title character varying NOT NULL,
     description character varying NOT NULL,
     "text-file-url" character varying,
@@ -116,14 +119,17 @@ CREATE TABLE sermon (
         || setweight(to_tsvector('russian', coalesce(artist, '')), 'B')
         || setweight(to_tsvector('russian', coalesce(book, '')), 'B')
         || setweight(to_tsvector('russian', coalesce(description, '')), 'D')
-    ) STORED
+    ) STORED,
+    -- Creation date — sort=date orders by it (truncated to milliseconds to
+    -- match the keyset cursor precision). Mirrors migration 013.
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 -- ---------------------------------------------------------------------------
 -- section
 -- ---------------------------------------------------------------------------
 CREATE TABLE section (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuidv7() NOT NULL,
     title character varying NOT NULL,
     description character varying,
     -- Global order of sections (drag-and-drop reordering on the admin dashboard).
@@ -140,7 +146,7 @@ CREATE TABLE section (
 -- playlist
 -- ---------------------------------------------------------------------------
 CREATE TABLE playlist (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuidv7() NOT NULL,
     title character varying NOT NULL,
     description character varying NOT NULL,
     artwork character varying NOT NULL,
@@ -151,7 +157,10 @@ CREATE TABLE playlist (
     search_vector tsvector GENERATED ALWAYS AS (
         setweight(to_tsvector('russian', coalesce(title, '')), 'A')
         || setweight(to_tsvector('russian', coalesce(description, '')), 'D')
-    ) STORED
+    ) STORED,
+    -- Creation date — sort=date orders by it (truncated to milliseconds to
+    -- match the keyset cursor precision). Mirrors migration 013.
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 -- ---------------------------------------------------------------------------
@@ -163,7 +172,7 @@ CREATE TABLE playlist (
 -- PK invariant ("a sermon is in a playlist at most once").
 -- ---------------------------------------------------------------------------
 CREATE TABLE playlist_sermons_sermon (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuidv7() NOT NULL,
     "playlistId" uuid NOT NULL,
     "sermonId" uuid NOT NULL,
     -- Order of sermons within a playlist (drag-and-drop reordering on the admin dashboard).
@@ -171,7 +180,7 @@ CREATE TABLE playlist_sermons_sermon (
 );
 
 CREATE TABLE section_playlists_playlist (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT uuidv7() NOT NULL,
     "sectionId" uuid NOT NULL,
     "playlistId" uuid NOT NULL,
     -- Order of playlists within a section (drag-and-drop reordering on the admin dashboard).

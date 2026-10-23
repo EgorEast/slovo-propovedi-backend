@@ -31,7 +31,7 @@
 |-----|----------|
 | `ItemsSize` | `'small' | 'middle' | 'large' | 'xLarge'` |
 | `Transform` | `'high' | 'short' | 'middle'` |
-| `WhereIsSlideTitleLocated` | `'on' | 'under' | 'bothOnAndUnder'` (deprecated — не использовать, читается как 'under') |
+| `WhereIsSlideTitleLocated` | `'on' | 'under' | 'bothOnAndUnder'` (`bothOnAndUnder` — заголовок и описание внизу карточки, заголовок над описанием) |
 
 Колонки:
 
@@ -71,6 +71,7 @@
 ### `reorderSections(ids)` — глобальный порядок разделов
 
 - Валидирует: не пусто, без дубликатов, **полный in-scope набор** (`ids.length === total` по таблице `section`) — иначе `BadRequestException`.
+- **Локальный инвариант сервиса:** `ids` заново парсятся сгенерированной схемой `ReorderSectionsBody` (`zod.array(zod.uuid())`) до построения SQL — невалидный id → `400` без обращения к БД, даже если сервис вызван в обход DTO.
 - **Одиночный `CASE id` UPDATE** позиций (вместо N запросов):
 
 ```ts
@@ -84,7 +85,7 @@ await sectionRepository.createQueryBuilder()
   .execute();
 ```
 
-> ✅ Безопасность: `id` — uuid, провалидирован `zod.uuid()` в `ReorderSectionsDto`, интерполяция в CASE безопасна.
+> ✅ Безопасность: `id` — uuid; проверяется и в `ReorderSectionsDto` (граница HTTP), и локально в сервисе перед интерполяцией в CASE.
 
 ### `reorderPlaylistsInSection(sectionId, playlistIds)`
 
@@ -102,6 +103,8 @@ await sectionRepository.createQueryBuilder()
 | `src/section/dto/section-response.dto.ts` | create/findOne |
 | `src/section/dto/all-sections-response.dto.ts` | findAll |
 | `src/section/dto/status-section-response.dto.ts` | reorder/update/remove |
+
+> ✅ Входные схемы `CreateSectionDto`/`UpdateSectionDto` ограничены: `title` ≤ 300, `description` ≤ 10000, `itemsRows` — целое `0..100` (в ответах ограничений нет — legacy-строки должны сериализоваться). `playlistsIds` в update — ≤ 1000 элементов; `reorder`-массивы `ids`/`playlistIds` — ≤ 1000. Полная таблица лимитов — [`../contracts/rest-api.md`](../contracts/rest-api.md).
 
 ## Связанные документы
 

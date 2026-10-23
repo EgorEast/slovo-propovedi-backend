@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import { LessThan, Repository } from 'typeorm';
@@ -10,11 +10,23 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { RefreshResponseDto } from './dto/refresh-response.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { RevokedRefreshToken } from './entities/revoked-refresh-token.entity';
+import { resolveJwtSecret } from './jwt-secret';
+
+const JWT_ALGORITHMS: 'HS256'[] = ['HS256'];
 
 const BCRYPT_PREFIXES = ['$2a$', '$2b$', '$2y$'];
 
+// Bcrypt hash (cost 10, same as BCRYPT_ROUNDS in UsersService) of a random
+// throwaway string. A committed constant is used instead of hashing at module
+// load: no startup CPU, no import-time side effect for tests, and the value
+// guards nothing — it only burns the same ~bcrypt cost as a real check.
+const DUMMY_PASSWORD_HASH =
+  '$2b$10$96rsAYi/v./SGUcJ9JHoDOkR8tt0qWivRBwqIG0M6n56i1HBNwHlS';
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
@@ -23,39 +35,44 @@ export class AuthService {
   ) {}
 
   private get accessSecret(): string {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      throw new Error('JWT_SECRET environment variable is not set');
-    }
-    return secret;
+    return resolveJwtSecret('JWT_SECRET');
   }
 
   private get refreshSecret(): string {
-    const secret = process.env.JWT_REFRESH_SECRET;
-    if (!secret) {
-      throw new Error('JWT_REFRESH_SECRET environment variable is not set');
-    }
-    return secret;
+    return resolveJwtSecret('JWT_REFRESH_SECRET');
   }
 
   async signIn(username: string, password: string): Promise<AuthResponseDto> {
     const user = await this.usersService.findOneByUsername(username);
 
     if (!user) {
+      // Unknown username must cost the same as a wrong password: without this
+      // bcrypt.compare the 401 would return ~immediately and reveal whether
+      // the username exists. The result is discarded — the dummy hash never
+      // matches.
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+      this.logFailedSignIn(username);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const isValid = await this.validatePassword(password, user);
 
     if (!isValid) {
+      this.logFailedSignIn(username);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     // The role lives in the JWT so guards can authorize per-request. email is
     // retained for backwards compatibility with already-issued refresh tokens;
     // it is NOT used for lookup (getProfile re-fetches by id, refresh re-fetches
-    // the live user by id).
-    const payload = { id: user.id, email: user.email, role: user.role };
+    // the live user by id). tokenVersion ties the pair to the account's current
+    // session version: a password change bumps it and revokes both tokens.
+    const payload = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    };
     const tokens = await this.generateTokens(payload);
 
     return {
@@ -70,12 +87,23 @@ export class AuthService {
     };
   }
 
+  // Audit trail for brute-force detection. The attempted username is the only
+  // credential-adjacent value logged: passwords and tokens must never reach the
+  // logs. JSON.stringify escapes quotes/newlines so a crafted username cannot
+  // forge log lines. The 401 response stays generic — no user enumeration.
+  private logFailedSignIn(username: string): void {
+    this.logger.warn(
+      `Failed sign-in attempt for username=${JSON.stringify(username)}`,
+    );
+  }
+
   async refreshTokens(refreshToken: string): Promise<RefreshResponseDto> {
-    let verified: { id: string; exp: number };
+    let verified: { id: string; exp: number; tokenVersion?: number };
 
     try {
       verified = await this.jwtService.verifyAsync(refreshToken, {
         secret: this.refreshSecret,
+        algorithms: JWT_ALGORITHMS,
       });
     } catch {
       throw new UnauthorizedException('Invalid or expired refresh token');
@@ -94,6 +122,13 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    // A password change bumps token_version; a refresh token minted before it
+    // is dead even though its signature and expiry are still valid. A missing
+    // claim means a pre-versioning token, i.e. version 0.
+    if (user.tokenVersion !== (verified.tokenVersion ?? 0)) {
+      throw new UnauthorizedException('Refresh token has been revoked');
     }
 
     // ROTATION: the presented token is revoked before the fresh pair is
@@ -116,6 +151,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       role: user.role,
+      tokenVersion: user.tokenVersion,
     });
   }
 
@@ -127,6 +163,7 @@ export class AuthService {
     try {
       verified = await this.jwtService.verifyAsync(refreshToken, {
         secret: this.refreshSecret,
+        algorithms: JWT_ALGORITHMS,
       });
     } catch {
       return;
@@ -204,6 +241,7 @@ export class AuthService {
     id: string;
     email: string;
     role: UserRole;
+    tokenVersion: number;
   }) {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
@@ -227,18 +265,16 @@ export class AuthService {
     inputPassword: string,
     user: { id: string; password: string },
   ): Promise<boolean> {
-    if (this.isPasswordBcryptHash(user.password)) {
-      return bcrypt.compare(inputPassword, user.password);
+    if (!this.isPasswordBcryptHash(user.password)) {
+      // Plaintext/unknown hashes are never accepted. Migration 012 rehashes
+      // them in place; until then the generic 401 and this warning surface the
+      // misconfiguration without opening a plaintext compare path.
+      this.logger.warn(
+        `Non-bcrypt credential hash encountered for user=${JSON.stringify(user.id)}`,
+      );
+      return false;
     }
 
-    // Legacy plaintext — compare directly, then re-hash if matched
-    const matchesPlaintext = inputPassword === user.password;
-
-    if (matchesPlaintext) {
-      const rehashed = await bcrypt.hash(inputPassword, 10);
-      await this.usersService.updatePassword(user.id, rehashed);
-    }
-
-    return matchesPlaintext;
+    return bcrypt.compare(inputPassword, user.password);
   }
 }

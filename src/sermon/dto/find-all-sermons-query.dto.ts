@@ -1,6 +1,10 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { SermonControllerFindAllQueryParams } from '../../generated';
+import {
+  SermonControllerFindAllQueryParams,
+  sermonControllerFindAllQueryPageMax,
+  sermonControllerFindAllQuerySearchMax,
+} from '../../generated';
 import { SortOrder } from 'src/shared/sort';
 
 // Sermon list sort keys — the values documented in the spec and enforced by
@@ -9,11 +13,11 @@ export type SermonSort = 'date' | 'title' | 'artist' | 'playlist';
 
 // Query params arrive as strings — coerce `take` from string to number.
 // `search` is normalized at the boundary: trim whitespace, reject empty.
-// `cursor` is overridden from the generated zod.uuid(): relevance-ordered
-// search pages carry an opaque composite cursor (base64 JSON `{rank, id}`),
-// while non-search pages keep the plain uuid id cursor. Old plain-uuid cursors
-// are invalidated for search pages (the service rejects them), and a garbage
-// cursor on a non-search page is still rejected here at the boundary.
+// `cursor` is overridden from the generated zod schema as an opaque non-empty
+// string: the service decodes it per pagination mode (base64 composite cursor
+// `{rank, id}` for search, `{createdAt, id}` for date-ordered keyset pages),
+// so cursor FORMAT validation lives in exactly one place per mode. Old
+// plain-uuid cursors are rejected by the service with 400.
 // `page`/`limit` select the offset-pagination mode, which is mutually
 // exclusive with the keyset mode (`take`/`cursor`) — the service never sees
 // an ambiguous combination.
@@ -26,25 +30,24 @@ export type SermonSort = 'date' | 'title' | 'artist' | 'playlist';
 // .transform below, so the service only ever sees a resolved combination.
 const FindAllSermonsQuerySchema = SermonControllerFindAllQueryParams.extend({
   take: z.coerce.number().int().min(1).max(100).optional(),
-  search: z.string().trim().min(1).optional(),
+  search: z
+    .string()
+    .trim()
+    .min(1)
+    .max(sermonControllerFindAllQuerySearchMax)
+    .optional(),
   cursor: z.string().min(1).optional(),
-  page: z.coerce.number().int().min(1).optional(),
+  page: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(sermonControllerFindAllQueryPageMax)
+    .optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
   sort: z.enum(['date', 'title', 'artist', 'playlist']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
 })
   .superRefine((query, ctx) => {
-    if (
-      query.cursor &&
-      !query.search &&
-      !z.string().uuid().safeParse(query.cursor).success
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['cursor'],
-        message: 'cursor must be a valid uuid when search is absent',
-      });
-    }
     if (
       (query.page !== undefined || query.limit !== undefined) &&
       (query.take !== undefined || query.cursor !== undefined)

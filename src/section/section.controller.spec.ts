@@ -6,6 +6,7 @@ import { SectionService } from './section.service';
 import { SectionEntity } from './entities/section.entity';
 import { SectionPlaylistJoinEntity } from './entities/section-playlist-join.entity';
 import { PlaylistService } from 'src/playlist/playlist.service';
+import { UsersService } from 'src/users/users.service';
 
 describe('SectionController', () => {
   let controller: SectionController;
@@ -17,6 +18,10 @@ describe('SectionController', () => {
         SectionService,
         {
           provide: JwtService,
+          useValue: {},
+        },
+        {
+          provide: UsersService,
           useValue: {},
         },
         {

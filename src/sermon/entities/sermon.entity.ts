@@ -1,4 +1,10 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { PlaylistSermonJoinEntity } from 'src/playlist/entities/playlist-sermon-join.entity';
 
 @Entity('sermon')
@@ -35,6 +41,9 @@ export class SermonEntity {
 
   @Column({ name: 'verse', type: 'json', nullable: true })
   verse?: number | number[] | (number | number[])[];
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt: Date;
 
   @OneToMany(() => PlaylistSermonJoinEntity, (join) => join.sermon, {
     cascade: true,

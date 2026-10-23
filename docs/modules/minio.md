@@ -1,20 +1,19 @@
 # Модуль `minio` — объектное хранилище
 
-Обёртка над MinIO (`src/minio/minio.service.ts`). Отвечает за bucket `files`, два клиента (data-plane + presign), загрузку, presigned-URL и public-read policy. Используется bootstrap-ом (`createBucketIfNotExists`), модулями `app` (файлы) и `sermon` (presigned-URL аудио).
+Обёртка над MinIO (`src/minio/minio.service.ts`). Отвечает за bucket `files`, загрузку, public-read policy и статические URL объектов. Используется bootstrap-ом (`createBucketIfNotExists`), модулями `app` (файлы) и `sermon` (best-effort удаление аудио/текста при удалении проповеди).
 
 **Слой:** backend (module `minio`)
 **Статус:** актуально
 
-## Два клиента
+## Клиент
 
-`MinioService` держит два клиента MinIO:
+`MinioService` держит один data-plane клиент MinIO:
 
 | Клиент | Поле | Endpoint | Назначение |
 |--------|------|----------|------------|
-| внутренний (data-plane) | `minioClient` | `MINIO_ENDPOINT` + `MINIO_MAIN_PORT_IN`, `useSSL: false` | загрузка и администрирование bucket'а (Docker-сеть) |
-| presign | `presignClient` | `MINIO_PUBLIC_URI` (host/port/useSSL из URI), region `us-east-1` | генерация presigned-URL для браузера |
+| внутренний (data-plane) | `minioClient` | `MINIO_ENDPOINT` + `MINIO_MAIN_PORT_IN`, `useSSL: false` | загрузка, листинг, удаление и администрирование bucket'а (Docker-сеть) |
 
-> ✅ `buildPresignClient` кидает ошибку, если `MINIO_PUBLIC_URI` не задан (или невалидный URL). Причина двух клиентов — **SigV4**: host входит в подпись, поэтому presigned-URL должен генерироваться с тем же host, что увидит браузер; менять host после генерации нельзя.
+> ✅ Presigned-URL больше не генерируются: bucket `files` — public-read by design, а доступ к медиа идёт по статическим URL `${MINIO_PUBLIC_URI}/files/<name>` (`getFileUrl`). Поэтому второй (presign) клиент и `buildPresignClient` удалены.
 
 ## Bucket и policy
 
@@ -44,28 +43,27 @@
 | Метод | Назначение |
 |-------|------------|
 | `createBucketIfNotExists()` | обеспечить bucket + public-read (вызывается в `main.ts` на boot) |
-| `uploadFile(file): Promise<string>` | сохраняет файл как `randomUUID() + ext` с content-type; возвращает `fileName` |
+| `uploadFile(file): Promise<string>` | сохраняет файл как `randomUUID() + ext` (ext в нижнем регистре) с content-type; возвращает `fileName` |
 | `getFileUrl(fileName): Promise<string>` | `\`${MINIO_PUBLIC_URI}/files/<name>\`` (статический URL) |
 | `listImages(): Promise<StoredImage[]>` | до 500 изображений (jpeg/jpg/png/webp) newest-first для обложек |
 | `listOrphans(referenced, limit): Promise<StoredFile[]>` | до `limit` осиротевших медиа-объектов newest-first; стрим останавливается при достижении капа |
 | `listAllFiles(): Promise<StoredFile[]>` | полный скан bucket (без капа, стриминг, newest-first) |
 | `listFilesWithUsage(referenced): Promise<StoredFileUsage[]>` | полный скан + флаг `used` по переданным наборам referenced-имён |
-| `getPresignedUrl(bucket, fileName, expiry=3600)` | presigned GET для произвольного bucket |
-| `getPresignedFileUrl(fileName, expiry=3600)` | presigned GET в default bucket `files` |
 | `extractFileNameFromUrl(fileUrl)` (static) | вытащить имя объекта из сохранённого URL |
 | `getFileExtension(fileName)` (static) | нижний регистр расширения (с точкой); без точки — `''` |
 | `isImageFile` / `isAudioOrTextFile` / `isMediaFile` (static) | классификация объекта по расширению |
 | `isReferencedAudioOrText(fileName, referenced)` | аудио/текст привязан к проповеди (`referenced.audio`/`referenced.text`); общий расчёт «неиспользуемости» для orphans-скана и `DELETE /files/:fileName` |
 | `removeObjectByUrl(fileUrl)` | удалить объект из default bucket `files` по сохранённому URL |
 | `removeObjectByName(fileName)` | удалить объект из default bucket `files` по имени |
-| `getContentType(fileType)` | ext → MIME (`image/*`, `audio/mp3`, иначе `application/octet-stream`) |
+| `getContentType(fileType)` | ext → MIME (`image/*`, `audio/mp3`, `audio/mp4`, `application/pdf`, `application/xml` для `.fb2`, иначе `application/octet-stream`) |
 
 > Read-путь orphans ограничен: `listOrphans(referenced, limit)` стримит bucket и останавливается, как только собрано `limit` осиротевших объектов, — накопление ограничено `limit`, а не размером bucket (см. [`app.md`](./app.md)). Полный скан (`listAllFiles`/`listFilesWithUsage`) остаётся **без капа** для orphans-*cleanup*: чтобы удалить все осиротевшие аудио/текст, нужно перечислить весь bucket. Стрим `listObjectsV2` не материализует листинг целиком в памяти; собранный список копится в массиве — на каталоге админ-масштаба это дёшево.
 
 ### `uploadFile`
 
 ```ts
-const fileType = path.extname(file.originalname);
+// Lowercase once: `.MP3` must not be stored as application/octet-stream.
+const fileType = MinioService.getFileExtension(file.originalname);
 const contentType = this.getContentType(fileType);
 const fileName = randomUUID() + fileType;
 await this.minioClient.putObject(BUCKET_NAME, fileName, file.buffer, file.size, {
@@ -74,7 +72,9 @@ await this.minioClient.putObject(BUCKET_NAME, fileName, file.buffer, file.size, 
 return fileName;
 ```
 
-> ✅ Имя объекта = `randomUUID() + ext` — уникально, без коллизий от оригинальных имён.
+> ✅ Имя объекта = `randomUUID() + ext` — уникально, без коллизий от оригинальных имён; расширение нормализуется в нижний регистр, поэтому `SERMON.MP3` → `<uuid>.mp3` с `audio/mp3`.
+>
+> ✅ Таксономия расширений (`IMAGE_EXTENSIONS`, `AUDIO_TEXT_EXTENSIONS`, `MEDIA_EXTENSIONS`, `getFileExtension`) живёт в `src/shared/media.ts` и реэкспортируется статическими полями `MinioService`. Там же выводится `STORED_FILE_NAME_PATTERN` для валидации `:fileName` — добавили формат в таксономию, и allow-list, classification и path-валидация обновились вместе. Лимит загрузки (100 MB) и `fileFilter` — на уровне контроллера (`src/app/upload-file-filter.ts`, см. [`app.md`](./app.md)).
 
 ### `listImages` (cover-reuse)
 
@@ -96,16 +96,6 @@ return fileName;
 - Оба метода используют общий `scanBucket` без `limit` — стрим не материализует листинг в памяти целиком; собранный список копится в массиве.
 - Полный скан нужен orphans-*cleanup* (`POST /files/orphans/cleanup`), чтобы удалить **все** осиротевшие аудио/текст; read-эндпоинт `GET /files/orphans` использует ограниченный `listOrphans`. Наборы referenced-имён строит контроллер из БД через `extractFileNameFromUrl`.
 
-### `getPresignedFileUrl`
-
-```ts
-async getPresignedFileUrl(fileName, expirySeconds = 3600) {
-  return await this.getPresignedUrl(BUCKET_NAME, fileName, expirySeconds);
-}
-```
-
-Стриминг отдаётся напрямую из MinIO (не через backend) — проксирование держало бы буферы в Node heap.
-
 ### `extractFileNameFromUrl`
 
 ```ts
@@ -117,7 +107,7 @@ static extractFileNameFromUrl(fileUrl: string): string {
 
 Проверяется **только путь**: он должен начинаться с default bucket (`files`); **host не проверяется** — сохранённые URL переживают смену домена `MINIO_PUBLIC_URI`. URL, чей путь не начинается с bucket (например, `https://cdn.example.com/podcast/files/ep1.mp3`), бросает ошибку — иначе чужой путь мог бы удалить объект из НАШЕГО bucket.
 
-Используется в `SermonService.getStreamUrl`, чтобы из `sermon.audioUrl` получить имя объекта, и внутри `removeObjectByUrl` (см. ниже).
+Используется внутри `removeObjectByUrl` (см. ниже), а также в `AppController.loadReferencedFileNames`, чтобы из URL-колонок БД получить имена объектов для orphans-скана.
 
 ### `removeObjectByUrl`
 
@@ -140,6 +130,8 @@ async removeObjectByName(fileName: string): Promise<void> {
 
 Удаляет объект по имени (без разбора URL). Удаление несуществующего объекта — no-op (S3 DeleteObject идемпотентен). Используется `DELETE /files/:fileName` и `POST /files/orphans/cleanup`.
 
+> ⚠️ **TOCTOU между проверкой ссылок и удалением.** `DELETE /files/:fileName` и orphans-cleanup сначала читают referenced-наборы из БД, а затем вызывают `removeObjectByName`; проверка и удаление в MinIO **не атомарны**. В окне (миллисекунды) между `SELECT` и `removeObject` параллельная запись может привязать файл к проповеди/плейлисту, и объект будет удалён, хотя уже используется. При админ-масштабе (единичные ручные операции) это принятый компромисс; полноценное решение — re-check после удаления или транзакционная блокировка ссылок, оставлено как возможное будущее улучшение. Orphans-cleanup удаляет только аудио/текст, изображения не трогает.
+
 ### `isReferencedAudioOrText`
 
 ```ts
@@ -154,6 +146,6 @@ isReferencedAudioOrText(fileName: string, referenced: ReferencedFileNames): bool
 
 - [README.md](./README.md) — индекс модулей
 - [app.md](./app.md) — файловые эндпоинты, использующие `MinioService`
-- [sermon.md](./sermon.md) — presigned-URL аудио через `extractFileNameFromUrl`
+- [sermon.md](./sermon.md) — best-effort удаление аудио/текста через `removeObjectByUrl`
 - [../architecture.md](../architecture.md) — env (`MINIO_*`, `MINIO_PUBLIC_URI`), bucket на boot
 - [../contracts/rest-api.md](../contracts/rest-api.md) — контракт загрузки файлов

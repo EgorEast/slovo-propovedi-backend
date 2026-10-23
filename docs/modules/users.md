@@ -44,6 +44,7 @@
 | `username` | `username` | varchar | UNIQUE, `@IsString`, `@IsNotEmpty` |
 | `password` | `password` | varchar | bcrypt-хэш |
 | `role` | `role` | varchar | NOT NULL, default `'user'`, CHECK `('admin','moderator','user')` |
+| `tokenVersion` | `token_version` | integer | NOT NULL, default `0`; бампается при смене пароля, сверяется guard'ом и `refreshTokens` |
 
 `UserRole` — TS-енум в `src/users/user-role.enum.ts` (`Admin='admin'`, `Moderator='moderator'`, `User='user'`). Колонка: `@Column({ name: 'role', type: 'varchar', default: UserRole.User })`.
 
@@ -51,7 +52,7 @@
 
 ## `UsersService` (`src/users/users.service.ts`)
 
-Публичные методы (ошибки оборачиваются в `HttpException`):
+Публичные методы (непредвиденные ошибки → generic `500`, детали только в серверном логе; см. «Контракт ошибок» ниже):
 
 | Метод | Назначение |
 |-------|------------|
@@ -59,18 +60,42 @@
 | `findOne(id)` | поиск по `id` (иначе `NotFoundException`) |
 | `create(dto)` | создание: bcrypt-хэш пароля + сохранение; `role = dto.role ?? UserRole.User` (least privilege) |
 | `update(id, dto, currentUserId)` | частичное обновление (только заданные поля) + защита роли (см. ниже) |
-| `changePassword(id, dto)` | смена пароля (bcrypt-хэш + `updatePassword`) |
+| `changePassword(id, dto)` | смена пароля (bcrypt-хэш + атомарный бамп `token_version` — отзывает все сессии) |
 | `remove(id, currentUserId)` | удаление (с защитой от блокировки, см. ниже) |
 | `findOneByUsername(username)` | поиск по `username` (используется при логине) |
 | `findOneById(id)` | поиск по `id` (используется в `getProfile` и `refreshTokens`) |
-| `updatePassword(id, hashedPassword)` | обновление пароля (используется при auto-rehash legacy-пароля) |
+| `findByIdForAuth(id)` | SELECT только `id`/`role`/`tokenVersion` для `AuthGuard` (проверка живой строки и версии сессии) |
 
 - **Пароль хэшируется** `bcrypt` (10 раундов, `BCRYPT_ROUNDS = 10`) в `create` и `changePassword`.
+- **Смена пароля отзывает сессии.** `changePassword` выполняет один `UPDATE` (`password = :hash, token_version = token_version + 1`), поэтому все ранее выпущенные access- и refresh-токены перестают проходить проверку версии **немедленно** — и на каждом запросе через `AuthGuard`, и на `/auth/refresh`. Пользователь должен войти заново. Массовый rehash legacy-plaintext-паролей делает SQL-миграция [`012_rehash_plaintext_passwords.sql`](../../sql/migrations/012_rehash_plaintext_passwords.sql), а не код логина.
 - **Приватный `toResponse(user)`** отдаёт только `{ id, name, username, email, role }` — **пароль НИКОГДА не попадает в ответы**. Два слоя защиты:
   1. явный маппинг полей в `toResponse` (исключает `password`);
   2. строгие Zod-схемы `UserResponseDto`/`UserListResponseDto` на границе (`@ZodResponse`) — даже случайно добавленный ключ отбросит `ZodSerializerInterceptor`.
 - **`toUserRole(role)`** — парсинг роли на границе сервиса: zod гарантирует `'admin' | 'moderator' | 'user'`, функция маппит строку в TS-енум `UserRole` (литеральный union не присваивается енуму напрямую).
 - **Конфликт уникальности** (`email`/`username`, PG-код `23505`) → `ConflictException` «Пользователь с таким email или username уже существует».
+
+### Политика паролей и размеры полей
+
+Ограничения заданы **только во входных схемах** спецификации (`CreateUserRequest`, `UpdateUserRequest`, `ChangePasswordRequest`, `SignInRequestDto`); ответы (`UserResponse`/`AllUsersResponse`) намеренно без ограничений — иначе legacy-строки в БД могли бы не пройти сериализацию.
+
+| Поле | Ограничение | Причина |
+|------|-------------|---------|
+| `CreateUserRequest.password` | `minLength: 8`, `maxLength: 200` | Минимальная стойкость нового пароля + потолок для CPU-затрат bcrypt и памяти |
+| `ChangePasswordRequest.password` | `minLength: 8`, `maxLength: 200` | То же; смена пароля подчиняется той же политике, что и создание |
+| `SignInRequestDto.password` | **только** `maxLength: 200`, **без** `minLength` | Старые аккаунты могли иметь пароль короче текущей политики — вход должен оставаться возможным; не-bcrypt-строки при этом отклоняются и переводятся миграцией 012. Потолок защищает от хеширования гигантских строк |
+| `SignInRequestDto.username` | `maxLength: 100` | Потолок строки на публичном login-эндпоинте |
+| `Create/UpdateUserRequest.name` | `maxLength: 100` | Разумный размер имени |
+| `Create/UpdateUserRequest.username` | `maxLength: 50` | Компактный логин |
+| `Create/UpdateUserRequest.email` | `maxLength: 254` | RFC 5321 (максимальная длина адреса) |
+
+`CreateUserRequest.password` с пустой строкой или короче 8 символов → `400 Bad Request` на Zod-пайпе. `SignInRequestDto` короткий пароль (`"old"`) принимает — решение о валидности принимает `AuthService` по хэшу.
+
+### Контракт ошибок
+
+- **Клиентские 4xx** — часть API-контракта, отдаются как есть: `404` «Пользователь не найден», `409` конфликт уникальности, `403` защита ролей/self-delete.
+- **Непредвиденные ошибки** (PostgreSQL/TypeORM driver, MinIO, прочие исключения) **логируются** через `Logger.error` с префиксом `from:<operation>` (например, `from:findOneByUsername`) и полным текстом ошибки + stack. Клиенту возвращается только `500 Internal server error`.
+- В тело ответа **никогда** не попадают `error.message`, SQL-фрагменты, имена таблиц/constraint'ов/relation'ов и stack trace: раньше строка вида `from:findOneByUsername <pg error>` уходила клиенту и раскрывала внутренности БД (finding AUTH M-3).
+- Логика вынесена в общий хелпер `toInternalServerError(logger, operation, error)` (`src/shared/internal-error.ts`) и используется во всех сервисах (`users`, `auth`, `sermon`, `playlist`, `section`, `feature-flags`, `invidious-instances`).
 
 ### Защита ролей (`update` / `remove`) → 403
 
@@ -108,7 +133,7 @@ export class UsersModule {}
 | `src/users/dto/create-user.dto.ts` | `UsersControllerCreateBody` (`{ name, email, username, password, role? }`) |
 | `src/users/dto/update-user.dto.ts` | `UsersControllerUpdateBody` (`{ name?, email?, username?, role? }`) |
 | `src/users/dto/change-password.dto.ts` | `UsersControllerChangePasswordBody` (`{ password }`) |
-| `src/users/dto/find-all-users-query.dto.ts` | `UsersControllerFindAllQueryParams` + `.extend({ page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional() })` (findAll) |
+| `src/users/dto/find-all-users-query.dto.ts` | `UsersControllerFindAllQueryParams` + `.extend({ page: z.coerce.number().int().min(1).max(100000).optional(), limit: z.coerce.number().int().min(1).max(100).optional() })` (findAll) |
 | `src/users/dto/user-response.dto.ts` | `UsersControllerCreateResponse` (create/findOne/update) |
 | `src/users/dto/user-list-response.dto.ts` | `UsersControllerFindAllResponse` (findAll) |
 
@@ -121,7 +146,7 @@ export class UsersModule {}
 - [README.md](./README.md) — индекс модулей
 - [auth.md](./auth.md) — как `UsersService` используется в `signIn`/`getProfile`/refresh/auto-rehash
 - [shared.md](./shared.md) — `IdParamDto`
-- [../db.md](../db.md) — таблица `user` в схеме БД, миграция `002_add_user_roles.sql`
+- [../db.md](../db.md) — таблица `user` в схеме БД, миграции `002_add_user_roles.sql` и `011_add_token_version.sql`
 - [../conventions.md](../conventions.md) — note про legacy class-validator
 - [../contracts/rest-api.md](../contracts/rest-api.md) — контракт `UsersController*` и матрица ролей
 - Домен users на фронте и экраны управления пользователями — репозиторий `slovo-propovedi-admin`
