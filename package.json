@@ -20,6 +20,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "gen:schemas": "node --env-file-if-exists=.env --no-network-family-autoselection scripts/gen-schemas.mjs",
     "upload-sermons": "node scripts/upload-sermons.mjs",
+    "backfill-created-at": "node --env-file-if-exists=.env scripts/backfill-created-at.mjs",
     "bump-version": "node scripts/bump-version.mjs",
     "prepare": "husky"
   },
