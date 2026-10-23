@@ -34,11 +34,6 @@
       "description": "TypeORM and its Postgres drivers / Nest integration move together.",
       "matchPackageNames": ["typeorm", "@nestjs/typeorm", "pg", "postgres", "@types/pg"],
       "groupName": "typeorm stack"
-    },
-    {
-      "description": "class-transformer and class-validator are used as a pair by Nest DTOs.",
-      "matchPackageNames": ["class-transformer", "class-validator"],
-      "groupName": "class-transformer / class-validator"
     }
   ]
 }

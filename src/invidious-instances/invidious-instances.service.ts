@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   HttpException,
-  HttpStatus,
   Injectable,
   Logger,
   OnModuleInit,
@@ -9,6 +8,7 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { InvidiousInstanceEntity } from './entities/invidious-instance.entity';
+import { toInternalServerError } from '../shared/internal-error';
 
 // Instances verified working on 2026-10-05 via the /api/v1/videos probe.
 // Seeded only while the table is empty, so a fresh deploy starts with a usable
@@ -90,10 +90,6 @@ export class InvidiousInstancesService implements OnModuleInit {
     if (error instanceof HttpException) {
       return error;
     }
-    const message = error instanceof Error ? error.message : String(error);
-    return new HttpException(
-      `from:${operation} ${message}`,
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
+    return toInternalServerError(this.logger, operation, error);
   }
 }

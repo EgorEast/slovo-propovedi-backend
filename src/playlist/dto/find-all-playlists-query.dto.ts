@@ -1,6 +1,10 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { PlaylistControllerFindAllQueryParams } from '../../generated';
+import {
+  PlaylistControllerFindAllQueryParams,
+  playlistControllerFindAllQueryPageMax,
+  playlistControllerFindAllQuerySearchMax,
+} from '../../generated';
 import { SortOrder } from 'src/shared/sort';
 
 // Playlist list sort keys — the values documented in the spec and enforced by
@@ -17,8 +21,18 @@ export type PlaylistSort = 'date' | 'title' | 'section';
 // resolve the documented defaults in the .transform below.
 const FindAllPlaylistsQuerySchema = PlaylistControllerFindAllQueryParams.extend(
   {
-    search: z.string().trim().min(1).optional(),
-    page: z.coerce.number().int().min(1).optional(),
+    search: z
+      .string()
+      .trim()
+      .min(1)
+      .max(playlistControllerFindAllQuerySearchMax)
+      .optional(),
+    page: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(playlistControllerFindAllQueryPageMax)
+      .optional(),
     limit: z.coerce.number().int().min(1).max(100).optional(),
     sort: z.enum(['date', 'title', 'section']).optional(),
     order: z.enum(['asc', 'desc']).optional(),

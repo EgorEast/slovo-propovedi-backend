@@ -18,12 +18,15 @@ import { UserResponseDto } from './dto/user-response.dto';
 import { AuthGuard } from './guard/auth.guard';
 import { ZodResponse } from 'nestjs-zod';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle, minutes } from '@nestjs/throttler';
 
 @Controller('auth')
 @ApiTags('Auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  // Brute-force guard: 10 attempts per minute per IP across all usernames.
+  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with username and password' })
@@ -32,6 +35,9 @@ export class AuthController {
     return this.authService.signIn(signInDto.username, signInDto.password);
   }
 
+  // Rotating refresh tokens make 401-retry bursts normal for an SPA; the limit
+  // is still tight enough to stop unlimited token guessing.
+  @Throttle({ default: { limit: 30, ttl: minutes(1) } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access and refresh tokens' })

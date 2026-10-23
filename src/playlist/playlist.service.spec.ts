@@ -1,4 +1,8 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { In } from 'typeorm';
@@ -38,10 +42,13 @@ const PLAYLIST_RELATIONS = {
 };
 
 const PLAYLIST_ORDER = {
+  createdAt: 'DESC',
   id: 'DESC',
   sermonJoins: { position: 'ASC' },
   sectionJoins: { position: 'ASC' },
 };
+
+const PLAYLIST_DATE_ORDER_EXPRESSION = `date_trunc('milliseconds', playlist.created_at)`;
 
 describe('PlaylistService', () => {
   let service: PlaylistService;
@@ -306,7 +313,14 @@ describe('PlaylistService', () => {
         await service.findAll(undefined, undefined, undefined, 'date', 'asc');
 
         expect(playlistRepository.findAndCount).not.toHaveBeenCalled();
-        expect(queryBuilder.orderBy).toHaveBeenCalledWith('playlist.id', 'ASC');
+        expect(queryBuilder.orderBy).toHaveBeenCalledWith(
+          PLAYLIST_DATE_ORDER_EXPRESSION,
+          'ASC',
+        );
+        expect(queryBuilder.addOrderBy).toHaveBeenCalledWith(
+          'playlist.id',
+          'DESC',
+        );
         expect(queryBuilder.getManyAndCount).toHaveBeenCalledTimes(1);
       });
 
@@ -360,11 +374,12 @@ describe('PlaylistService', () => {
         title: `Плейлист ${id}`,
         description: '',
         artwork: '',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
         sectionJoins: [],
         sermonJoins: [],
       });
 
-      it('pages parent ids by id DESC, counts separately and hydrates via IN', async () => {
+      it('pages parent ids by created_at DESC then id DESC, counts separately and hydrates via IN', async () => {
         const idBuilder = mockQueryBuilder();
         idBuilder.getRawMany.mockResolvedValue([
           { id: 'pl-3' },
@@ -383,7 +398,14 @@ describe('PlaylistService', () => {
         const result = await service.findAll(undefined, 1, 2);
 
         expect(idBuilder.select).toHaveBeenCalledWith('playlist.id', 'id');
-        expect(idBuilder.orderBy).toHaveBeenCalledWith('playlist.id', 'DESC');
+        expect(idBuilder.orderBy).toHaveBeenCalledWith(
+          PLAYLIST_DATE_ORDER_EXPRESSION,
+          'DESC',
+        );
+        expect(idBuilder.addOrderBy).toHaveBeenCalledWith(
+          'playlist.id',
+          'DESC',
+        );
         expect(idBuilder.skip).toHaveBeenCalledWith(0);
         expect(idBuilder.take).toHaveBeenCalledWith(2);
         expect(idBuilder.getRawMany).toHaveBeenCalledTimes(1);
@@ -460,10 +482,20 @@ describe('PlaylistService', () => {
           .mockReturnValueOnce(idBuilder)
           .mockReturnValueOnce(countBuilder);
         playlistRepository.find.mockResolvedValue([playlistEntity('pl-1')]);
+        const loggerSpy = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation(() => undefined);
 
-        await expect(service.findAll(undefined, 1, 10)).rejects.toThrow(
+        const error = await service
+          .findAll(undefined, 1, 10)
+          .catch((caught) => caught);
+
+        expect(error).toBeInstanceOf(InternalServerErrorException);
+        expect(error.message).toBe('Internal server error');
+        expect(loggerSpy.mock.calls[0][0]).toContain(
           'Playlist "pl-missing" missing from hydration query',
         );
+        loggerSpy.mockRestore();
       });
 
       it('orders the id page by LOWER(title) ASC then id DESC for offset sort=title', async () => {
@@ -582,6 +614,7 @@ describe('PlaylistService', () => {
         artwork: '',
         sermonJoins: [],
         sectionJoins: [],
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
       });
 
       await service.create({
@@ -628,6 +661,7 @@ describe('PlaylistService', () => {
         artwork: '',
         sermonJoins: [],
         sectionJoins: [],
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
       });
 
       await service.create({
@@ -653,6 +687,7 @@ describe('PlaylistService', () => {
           artwork: '',
           sermonJoins: [],
           sectionJoins: [],
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
         })
         .mockResolvedValueOnce({
           id: 'pl-1',
@@ -661,6 +696,7 @@ describe('PlaylistService', () => {
           artwork: '',
           sermonJoins: [],
           sectionJoins: [],
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
         });
       playlistRepository.save = jest
         .fn()
@@ -683,6 +719,7 @@ describe('PlaylistService', () => {
           artwork: '',
           sermonJoins: [],
           sectionJoins: [],
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
         })
         .mockResolvedValueOnce({
           id: 'pl-1',
@@ -691,6 +728,7 @@ describe('PlaylistService', () => {
           artwork: '',
           sermonJoins: [],
           sectionJoins: [],
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
         });
       playlistRepository.save = jest
         .fn()

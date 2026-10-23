@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { FeatureFlagsService } from './feature-flags.service';
 import { FeatureFlag } from './entities/feature-flag.entity';
 import {
@@ -82,10 +87,33 @@ describe('FeatureFlagsService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('logs the driver detail and rejects with a generic 500 when the lookup fails', async () => {
+    const loggerSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    flagsRepository.find.mockRejectedValue(
+      new Error('relation "feature_flag" does not exist'),
+    );
+
+    const error = await service.findAll().catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(InternalServerErrorException);
+    expect(error.message).toBe('Internal server error');
+    expect(JSON.stringify(error.getResponse())).not.toContain('feature_flag');
+    expect(loggerSpy).toHaveBeenCalledWith(
+      expect.stringContaining('from:findAll'),
+      expect.any(String),
+    );
+    expect(loggerSpy.mock.calls[0][0]).toContain(
+      'relation "feature_flag" does not exist',
+    );
   });
 
   describe('findAll', () => {

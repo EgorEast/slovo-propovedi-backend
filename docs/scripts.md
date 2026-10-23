@@ -111,3 +111,33 @@ SP_USERNAME=admin npm run upload-sermons -- "/путь/к/папке"
 ```
 
 Без `--username`/`SP_USERNAME` скрипт спросит имя и пароль интерактивно (пароль вводится скрыто).
+
+## Скрипт бэкфилла `created_at` — `scripts/backfill-created-at.mjs`
+
+Восстанавливает реальные даты добавления проповедей и плейлистов после миграции [`013_add_created_at.sql`](../sql/migrations/013_add_created_at.sql): `ADD COLUMN ... DEFAULT now() NOT NULL` проставляет **всем** существующим строкам один и тот же placeholder (момент применения миграции). Скрипт заменяет его на дату из mtime объектов в MinIO. **По умолчанию — dry-run**: печатает план и ничего не пишет.
+
+Запуск:
+
+```bash
+npm run backfill-created-at            # dry-run: план без записи
+npm run backfill-created-at -- --apply # записать вычисленные даты
+node --env-file-if-exists=.env scripts/backfill-created-at.mjs --help
+```
+
+Флаги:
+
+| Флаг | Описание |
+|---|---|
+| `--apply` | записать даты в БД (без флага — только план) |
+| `-h`, `--help` | справка (exit 0) |
+
+Порядок выбора даты:
+
+- **проповедь** — `mtime(audioUrl)`, иначе `mtime(textFileUrl)`, иначе `mtime(artwork)`;
+- **плейлист** — `mtime(artwork)`, иначе `MIN(created_at)` связанных проповедей.
+
+Проповеди обрабатываются первыми, поэтому fallback плейлистов видит уже восстановленные даты. Строки без объекта в MinIO (или без mtime) пропускаются и сохраняют placeholder — скрипт сообщает их число в итоге.
+
+**Точность до миллисекунд.** Кандидаты (`mtime` и `MIN(created_at)`) усекаются до целых миллисекунд: keyset-курсор проповедей несёт `Date` миллисекундной точности, а `ORDER BY` сравнивает `date_trunc('milliseconds', created_at)`. µs-точное значение сломало бы границу страницы (пропуск/дубликат строки). См. [`modules/sermon.md`](./modules/sermon.md) — «Keyset-пагинация».
+
+Скрипт идемпотентен (mtime объектов стабильны) и не меняет ничего, кроме `created_at`. Переменные окружения — те же, что у приложения: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `MINIO_ENDPOINT`, `MINIO_MAIN_PORT_IN`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`; bucket — `files` (как `MinioService.BUCKET_NAME`). Запускать после применения миграции 013 (до деплоя тега или сразу после — на работу API это не влияет).

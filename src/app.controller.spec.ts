@@ -6,9 +6,7 @@ import { AppController } from './app.controller';
 import { MinioService, type ReferencedFileNames } from './minio/minio.service';
 import { SermonEntity } from './sermon/entities/sermon.entity';
 import { PlaylistEntity } from './playlist/entities/playlist.entity';
-
-const REJECTED_FILE_MESSAGE =
-  'Недопустимый тип файла. Разрешены только: JPEG, PNG, WebP, MP3, M4A, PDF, FB2.';
+import { UsersService } from './users/users.service';
 
 const DELETE_REJECTED_FILE_MESSAGE =
   'Удалять можно только изображения (JPEG, PNG, WebP). Аудио и текстовые файлы удаляются через очистку осиротевших файлов.';
@@ -22,6 +20,7 @@ describe('AppController', () => {
   let uploadFile: jest.Mock;
   let getFileUrl: jest.Mock;
   let removeObjectByName: jest.Mock;
+  let listFilesWithUsage: jest.Mock;
   let sermonFind: jest.Mock;
   let playlistFind: jest.Mock;
 
@@ -31,6 +30,7 @@ describe('AppController', () => {
       .fn()
       .mockResolvedValue('http://localhost:9000/files/uuid.m4a');
     removeObjectByName = jest.fn().mockResolvedValue(undefined);
+    listFilesWithUsage = jest.fn().mockResolvedValue([]);
     sermonFind = jest.fn().mockResolvedValue([]);
     playlistFind = jest.fn().mockResolvedValue([]);
 
@@ -43,6 +43,7 @@ describe('AppController', () => {
             uploadFile,
             getFileUrl,
             removeObjectByName,
+            listFilesWithUsage,
             isReferencedAudioOrText: (
               fileName: string,
               referenced: ReferencedFileNames,
@@ -51,6 +52,7 @@ describe('AppController', () => {
           },
         },
         { provide: JwtService, useValue: {} },
+        { provide: UsersService, useValue: {} },
         {
           provide: getRepositoryToken(SermonEntity),
           useValue: { find: sermonFind },
@@ -84,18 +86,29 @@ describe('AppController', () => {
       });
     });
 
-    it('rejects an extension outside the allow-list before touching storage', async () => {
-      await expect(
-        appController.uploadFile(multerFile('sermon.wav')),
-      ).rejects.toThrow(new BadRequestException(REJECTED_FILE_MESSAGE));
-      expect(uploadFile).not.toHaveBeenCalled();
-    });
-
     it('fails fast when no file was attached', async () => {
       await expect(appController.uploadFile(undefined)).rejects.toThrow(
         new BadRequestException('No file uploaded'),
       );
       expect(uploadFile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /files/orphans/cleanup', () => {
+    it('bounds stored failure reasons to the first line and 200 chars', async () => {
+      listFilesWithUsage.mockResolvedValue([
+        { fileName: 'broken.m4a', used: false },
+      ]);
+      removeObjectByName.mockRejectedValue(
+        new Error(`${'x'.repeat(300)}\nSECRET-INTERNALS`),
+      );
+
+      const result = await appController.cleanupOrphanedFiles();
+
+      expect(result.deleted).toEqual([]);
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0].reason).toHaveLength(200);
+      expect(result.failed[0].reason).not.toContain('SECRET-INTERNALS');
     });
   });
 

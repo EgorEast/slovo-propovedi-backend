@@ -32,10 +32,6 @@ export class AllSermonsResponse {
   nextCursor: string | null;
 }
 
-export class StreamUrlResponse {
-  url: string;
-}
-
 export class StatusSermonResponse {
   status: string;
 }

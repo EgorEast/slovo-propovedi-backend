@@ -6,6 +6,10 @@ import { UsersService } from '../users/users.service';
 import { AuthGuard } from './guard/auth.guard';
 import { UserRole } from '../users/user-role.enum';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import {
+  THROTTLER_LIMIT,
+  THROTTLER_TTL,
+} from '@nestjs/throttler/dist/throttler.constants';
 import { RevokedRefreshToken } from './entities/revoked-refresh-token.entity';
 
 jest.mock('bcrypt', () => ({
@@ -13,8 +17,9 @@ jest.mock('bcrypt', () => ({
   hash: jest.fn().mockResolvedValue('hashed-password'),
 }));
 
-process.env.JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret';
+process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters';
+process.env.JWT_REFRESH_SECRET =
+  'test-jwt-refresh-secret-at-least-32-characters';
 
 const mockUser = {
   id: 'user-1',
@@ -23,6 +28,7 @@ const mockUser = {
   username: 'testuser',
   password: '$2a$10$abcdefghijklmnopqrstuv',
   role: UserRole.Admin,
+  tokenVersion: 0,
 };
 
 describe('AuthController', () => {
@@ -31,7 +37,6 @@ describe('AuthController', () => {
   let usersService: {
     findOneByUsername: jest.Mock;
     findOneById: jest.Mock;
-    updatePassword: jest.Mock;
   };
   let jwtService: {
     signAsync: jest.Mock;
@@ -70,7 +75,6 @@ describe('AuthController', () => {
           useValue: {
             findOneByUsername: jest.fn(),
             findOneById: jest.fn(),
-            updatePassword: jest.fn(),
           },
         },
         {
@@ -155,5 +159,35 @@ describe('AuthController', () => {
     } as never);
 
     expect(result.role).toBe(UserRole.Admin);
+  });
+
+  describe('rate limits', () => {
+    const throttleMetadata = (handler: object) => ({
+      limit: Reflect.getMetadata(`${THROTTLER_LIMIT}default`, handler),
+      ttl: Reflect.getMetadata(`${THROTTLER_TTL}default`, handler),
+    });
+
+    it('limits login to 10 attempts per minute', () => {
+      expect(throttleMetadata(AuthController.prototype.signIn)).toEqual({
+        limit: 10,
+        ttl: 60_000,
+      });
+    });
+
+    it('limits refresh to 30 attempts per minute', () => {
+      expect(throttleMetadata(AuthController.prototype.refresh)).toEqual({
+        limit: 30,
+        ttl: 60_000,
+      });
+    });
+
+    it('leaves logout and profile on the global default', () => {
+      expect(
+        throttleMetadata(AuthController.prototype.logout).limit,
+      ).toBeUndefined();
+      expect(
+        throttleMetadata(AuthController.prototype.getProfile).limit,
+      ).toBeUndefined();
+    });
   });
 });

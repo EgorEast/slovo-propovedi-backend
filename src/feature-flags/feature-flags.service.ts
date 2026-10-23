@@ -1,8 +1,8 @@
 import {
   ConflictException,
   HttpException,
-  HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -15,6 +15,7 @@ import {
 } from './entities/feature-flag-override.entity';
 import { CreateFeatureFlagDto } from './dto/create-feature-flag.dto';
 import { UpdateFeatureFlagDto } from './dto/update-feature-flag.dto';
+import { toInternalServerError } from '../shared/internal-error';
 
 export interface FeatureFlagResponse {
   id: string;
@@ -51,6 +52,8 @@ export interface FeatureFlagOverrideListResponse {
 
 @Injectable()
 export class FeatureFlagsService {
+  private readonly logger = new Logger(FeatureFlagsService.name);
+
   constructor(
     @InjectRepository(FeatureFlag)
     private readonly flagsRepository: Repository<FeatureFlag>,
@@ -238,11 +241,7 @@ export class FeatureFlagsService {
     if (error instanceof HttpException) {
       return error;
     }
-    const message = error instanceof Error ? error.message : String(error);
-    return new HttpException(
-      `from:${operation} ${message}`,
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
+    return toInternalServerError(this.logger, operation, error);
   }
 
   private toResponse(flag: FeatureFlag): FeatureFlagResponse {

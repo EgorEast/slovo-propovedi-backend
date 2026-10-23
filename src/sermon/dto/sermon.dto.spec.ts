@@ -18,6 +18,49 @@ const baseBody = {
 const RANGE_WITH_INVALID_VERSE_MESSAGE =
   'verse must be a two-integer range or null when chapter is a range';
 
+describe('Sermon DTO input bounds', () => {
+  it('accepts a stored file URL on any host as long as the path starts with /files/', () => {
+    const result = CreateSermonDto.schema.safeParse({
+      ...baseBody,
+      audioUrl: 'https://another-domain.example/files/audio.mp3',
+      textFileUrl: 'http://localhost:9000/files/text.pdf',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a file URL whose path does not start with /files/', () => {
+    const result = CreateSermonDto.schema.safeParse({
+      ...baseBody,
+      audioUrl: 'https://example.com/audio/audio.mp3',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-URL audioUrl', () => {
+    const result = CreateSermonDto.schema.safeParse({
+      ...baseBody,
+      audioUrl: 'audio-1',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a title above the schema maximum', () => {
+    const result = CreateSermonDto.schema.safeParse({
+      ...baseBody,
+      title: 'a'.repeat(301),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects more than 1000 playlist ids', () => {
+    const result = CreateSermonDto.schema.safeParse({
+      ...baseBody,
+      playlistsIds: Array.from({ length: 1001 }, (_, i) => `playlist-${i}`),
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('Sermon DTO chapter-range rule', () => {
   describe('CreateSermonDto', () => {
     it('rejects a chapter range paired with a single verse', () => {

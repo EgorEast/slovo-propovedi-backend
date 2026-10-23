@@ -12,8 +12,8 @@ WORKDIR /usr/src/app
 # Copying this first prevents re-running npm install on every code change.
 COPY --chown=node:node package*.json ./
 
-# Install app dependencies using the `npm ci` command instead of `npm install`
-RUN npm install
+# Install app dependencies from the lockfile (`npm ci` is reproducible, `npm install` is not)
+RUN npm ci
 
 # Bundle app source
 COPY --chown=node:node . .
@@ -46,8 +46,12 @@ RUN npm run build
 # Set NODE_ENV environment variable
 ENV NODE_ENV=production
 
-# Running `npm ci` removes the existing node_modules directory and passing in --only=production ensures that only the production dependencies are installed. This ensures that the node_modules directory is as optimized as possible
-RUN npm install --only=production && npm cache clean --force
+# Install only production dependencies, strictly from the lockfile.
+# `npm ci` wipes node_modules first; `--ignore-scripts` is needed because the
+# root `prepare` hook (`husky`) is a devDependency and is absent here.
+# `npm rebuild` then runs the dependencies' install scripts (bcrypt's native
+# build) without re-running the root hook.
+RUN npm ci --omit=dev --ignore-scripts && npm rebuild && npm cache clean --force
 
 USER node
 
@@ -60,6 +64,10 @@ FROM node:24-alpine AS production
 # Copy the bundled code from the build stage to the production image
 COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
 COPY --chown=node:node --from=build /usr/src/app/dist ./dist
+
+# Never run as root. The deployment unit may override uid/gid
+# (`--user=$SLOVO_UID:$SLOVO_GID`), but the image default stays unprivileged.
+USER node
 
 # Start the server using the production build
 CMD [ "node", "dist/main.js" ]
