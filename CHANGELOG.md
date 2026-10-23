@@ -2,6 +2,38 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.16.0] - 2026-10-23
+
+### Features
+- rekey existing uuid primary keys to uuidv7 (migration 015)
+- switch uuid primary keys to native uuidv7 (PostgreSQL 18)
+- add created_at to sermon/playlist and date_trunc date sort
+- support local-spec generation via OPENAPI_SPEC_PATH
+- rate limit auth endpoints
+- resurrect bothOnAndUnder as bottom-stacked title placement
+
+### Bug Fixes
+- call native uuidv7() without schema qualification
+- keep created_at ms-exact for the date keyset cursor
+- map upload size errors and harden reorder input invariants
+- bound request payloads and add search token cap
+- prevent user enumeration and internal error leaks
+- enforce upload limits and file name validation
+- revoke sessions on password change
+- harden deploy pipeline and container
+- patch npm audit findings
+- upgrade dependencies to latest, pin typescript for eslint
+
+### Maintenance
+- document created_at, date sorting and uuidv7 migrations
+- regenerate schemas from published spec
+- low-severity hardening batch
+- update opencode config
+- add husky pre-commit hook with lint-staged
+- remove unused dependencies
+- tighten version-bound wording from review
+- stop pinning package versions in documentation
+
 ## [0.15.1] - 2026-10-16
 
 ### Bug Fixes
