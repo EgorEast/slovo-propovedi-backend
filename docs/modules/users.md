@@ -65,10 +65,9 @@
 | `findOneByUsername(username)` | поиск по `username` (используется при логине) |
 | `findOneById(id)` | поиск по `id` (используется в `getProfile` и `refreshTokens`) |
 | `findByIdForAuth(id)` | SELECT только `id`/`role`/`tokenVersion` для `AuthGuard` (проверка живой строки и версии сессии) |
-| `updatePassword(id, hashedPassword)` | обновление пароля **без** бампа версии (auto-rehash legacy-пароля при логине) |
 
 - **Пароль хэшируется** `bcrypt` (10 раундов, `BCRYPT_ROUNDS = 10`) в `create` и `changePassword`.
-- **Смена пароля отзывает сессии.** `changePassword` выполняет один `UPDATE` (`password = :hash, token_version = token_version + 1`), поэтому все ранее выпущенные access- и refresh-токены перестают проходить проверку версии **немедленно** — и на каждом запросе через `AuthGuard`, и на `/auth/refresh`. Пользователь должен войти заново. Авто-rehash legacy-пароля (`updatePassword`) версию не бампает: креды не меняются.
+- **Смена пароля отзывает сессии.** `changePassword` выполняет один `UPDATE` (`password = :hash, token_version = token_version + 1`), поэтому все ранее выпущенные access- и refresh-токены перестают проходить проверку версии **немедленно** — и на каждом запросе через `AuthGuard`, и на `/auth/refresh`. Пользователь должен войти заново. Массовый rehash legacy-plaintext-паролей делает SQL-миграция [`012_rehash_plaintext_passwords.sql`](../../sql/migrations/012_rehash_plaintext_passwords.sql), а не код логина.
 - **Приватный `toResponse(user)`** отдаёт только `{ id, name, username, email, role }` — **пароль НИКОГДА не попадает в ответы**. Два слоя защиты:
   1. явный маппинг полей в `toResponse` (исключает `password`);
   2. строгие Zod-схемы `UserResponseDto`/`UserListResponseDto` на границе (`@ZodResponse`) — даже случайно добавленный ключ отбросит `ZodSerializerInterceptor`.
@@ -83,7 +82,7 @@
 |------|-------------|---------|
 | `CreateUserRequest.password` | `minLength: 8`, `maxLength: 200` | Минимальная стойкость нового пароля + потолок для CPU-затрат bcrypt и памяти |
 | `ChangePasswordRequest.password` | `minLength: 8`, `maxLength: 200` | То же; смена пароля подчиняется той же политике, что и создание |
-| `SignInRequestDto.password` | **только** `maxLength: 200`, **без** `minLength` | Legacy-пароли (короткие/plaintext до миграции) не должны блокироваться на входе; потолок защищает от хеширования гигантских строк |
+| `SignInRequestDto.password` | **только** `maxLength: 200`, **без** `minLength` | Старые аккаунты могли иметь пароль короче текущей политики — вход должен оставаться возможным; не-bcrypt-строки при этом отклоняются и переводятся миграцией 012. Потолок защищает от хеширования гигантских строк |
 | `SignInRequestDto.username` | `maxLength: 100` | Потолок строки на публичном login-эндпоинте |
 | `Create/UpdateUserRequest.name` | `maxLength: 100` | Разумный размер имени |
 | `Create/UpdateUserRequest.username` | `maxLength: 50` | Компактный логин |

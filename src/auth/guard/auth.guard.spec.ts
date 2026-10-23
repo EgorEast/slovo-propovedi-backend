@@ -8,7 +8,7 @@ describe('AuthGuard', () => {
   let guard: AuthGuard;
   let jwtService: { verifyAsync: jest.Mock };
   let usersService: { findByIdForAuth: jest.Mock };
-  const secret = 'test-secret';
+  const secret = 'test-secret-at-least-32-characters-long';
   const userId = '11111111-1111-4111-8111-111111111111';
 
   const buildContext = (headers: Record<string, string | undefined>) => {
@@ -91,6 +91,12 @@ describe('AuthGuard', () => {
     // Role comes from the DB row, not the (possibly stale) token claim.
     expect(request.user).toEqual({ ...payload, role: UserRole.Moderator });
     expect(usersService.findByIdForAuth).toHaveBeenCalledWith(userId);
+    // Algorithm is pinned: a token that claims another alg is rejected by
+    // jsonwebtoken before the payload schema ever sees it.
+    expect(jwtService.verifyAsync).toHaveBeenCalledWith('valid-token', {
+      secret,
+      algorithms: ['HS256'],
+    });
   });
 
   it('treats a missing tokenVersion claim as version 0', async () => {
@@ -158,6 +164,19 @@ describe('AuthGuard', () => {
 
     await expect(rejection).rejects.toThrow(
       'JWT_SECRET environment variable is not set',
+    );
+    await expect(rejection).rejects.not.toBeInstanceOf(UnauthorizedException);
+    expect(jwtService.verifyAsync).not.toHaveBeenCalled();
+  });
+
+  it('fails loud when JWT_SECRET is shorter than 32 characters', async () => {
+    process.env.JWT_SECRET = 'too-short';
+    const rejection = guard.canActivate(
+      buildContext({ authorization: 'Bearer valid-token' }),
+    );
+
+    await expect(rejection).rejects.toThrow(
+      /JWT_SECRET must be at least 32 characters/,
     );
     await expect(rejection).rejects.not.toBeInstanceOf(UnauthorizedException);
     expect(jwtService.verifyAsync).not.toHaveBeenCalled();

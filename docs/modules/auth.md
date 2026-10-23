@@ -76,7 +76,7 @@ WARN [AuthService] Failed sign-in attempt for username="someone"
    - `DUMMY_PASSWORD_HASH` — **статическая константа** в `auth.service.ts`: bcrypt-хэш (cost 10, как реальные пароли) случайной строки. Выбрана статика, а не `bcrypt.hashSync` на старте модуля: нет блокирующей CPU-работы при загрузке и нет побочного эффекта при импорте в тестах. Хэш ничего не защищает — его значение не секрет и наружу не попадает, результат сравнения отбрасывается.
 2. `validatePassword(password, user)`:
    - если пароль — bcrypt-хэш (префиксы `$2a$`, `$2b$`, `$2y$`) → `bcrypt.compare`;
-   - если legacy-plaintext — прямое сравнение; при совпадении **пере-хэширует** в bcrypt (10 раундов) и сохраняет через `usersService.updatePassword` (**auto-rehash**).
+   - если хэш **не** bcrypt (legacy-plaintext или неизвестный формат) → **сразу `false`** и generic `401`; серверный лог получает `WARN ... Non-bcrypt credential hash encountered for user=...`. Прямого сравнения с plaintext и auto-rehash больше нет (AUTH M-5 / INJ L3): такие строки переводятся в bcrypt миграцией [`012_rehash_plaintext_passwords.sql`](../../sql/migrations/012_rehash_plaintext_passwords.sql).
 3. payload `{ id, email, role, tokenVersion }` — роль и `tokenVersion` из свежезагруженного пользователя.
 4. `generateTokens(payload)` → пара токенов + `user: { id, name, username, email, role }`.
 
@@ -104,11 +104,11 @@ private async generateTokens(payload: {
 
 Оба токена несут `tokenVersion` — версию сессии на момент подписи (см. ниже). Access-токен дополнительно проверяется по живой строке БД на каждом запросе.
 
-> ✅ Секреты обязательны: если `JWT_SECRET` / `JWT_REFRESH_SECRET` не заданы — сервис кидает ошибку. Guard также требует `JWT_SECRET`.
+> ✅ Секреты обязательны и должны быть **не короче 32 символов**: `resolveJwtSecret` (`src/auth/jwt-secret.ts`) кидает описательную ошибку, если переменная не задана или слишком короткая. Проверка общая для `AuthService` (access + refresh) и `AuthGuard` (access), поэтому слабый ключ не может тихо уехать в прод. Все `verifyAsync` явно пинят алгоритм `algorithms: ['HS256']` — токен с другим alg не проходит верификацию.
 
 ### `refreshTokens(refreshToken)`
 
-1. `jwtService.verifyAsync(refreshToken, { secret: refreshSecret })` — сбой → `UnauthorizedException`.
+1. `jwtService.verifyAsync(refreshToken, { secret: refreshSecret, algorithms: ['HS256'] })` — сбой → `UnauthorizedException`.
 2. **Fast-fail denylist-check**: sha256(refreshToken) ищется в таблице `revoked_refresh_token` (`isRevoked`) — найден → `UnauthorizedException` (токен уже убит через `logout` или предыдущую ротацию) **до** пере-запроса пользователя.
 3. **Пере-запрашивает живого пользователя** `usersService.findOneById(payload.id)` — нет → `UnauthorizedException`.
 4. **Проверка версии сессии**: `user.tokenVersion !== (payload.tokenVersion ?? 0)` → `UnauthorizedException` («Refresh token has been revoked»). Токен, выпущенный до смены пароля, мёртв, даже если подпись и `exp` ещё валидны; отсутствие claim'а у legacy-токена означает версию `0`.
@@ -131,7 +131,7 @@ private async generateTokens(payload: {
 
 Выход из системы через **denylist** (таблица `revoked_refresh_token`, см. [`../db.md`](../db.md)). Логика:
 
-1. `jwtService.verifyAsync(refreshToken, { secret: refreshSecret })`:
+1. `jwtService.verifyAsync(refreshToken, { secret: refreshSecret, algorithms: ['HS256'] })`:
    - **невалидный/просроченный** токен → `return` (**всё равно `204`**, идемпотентность — непригодному токену нечего отзывать);
    - валидный → payload `{ id, exp }` (id пользователя, срок токена).
 2. **FK-guard**: `usersService.findOneById(payload.id)` — пользователь удалён → `return` (**тоже `204`**, токен и так мёртв: `/auth/refresh` пере-запрашивает пользователя и дал бы `401`; хранить строку нельзя — FK `revoked_refresh_token.user_id → user(id)` упал бы `500`).
@@ -154,6 +154,20 @@ private async generateTokens(payload: {
 
 `auth.service.ts` **не декларирует** свои классы `UserResponse`/`AuthResponse`/`RefreshResponse` — единый источник истины для формы ответа это zod-DTO (`src/auth/dto/*.dto.ts`, сгенерированные схемы). Сервис возвращает обычные объекты, которые на границе валидирует `ZodSerializerInterceptor` (`@ZodResponse`). В прошлом здесь был дубликат `UserResponse`; он удалён (роль не была бы в нём → `@ZodResponse` упал бы 500).
 
+## Осознанные компромиссы и posture
+
+### Refresh-токен в JSON-теле
+
+`/auth/login` и `/auth/refresh` возвращают `refreshToken` в теле JSON, а SPA хранит его в своём хранилище. Это **осознанный компромисс под текущую архитектуру** (admin/PWA-клиенты на отдельном origin):
+
+- плюс: работает без same-site cookie-инфраструктуры и CSRF-токенов между `api.`- и `app.`-хостами;
+- минус: XSS на фронтенде даёт атакующему 30-дневный refresh-токен (access-токен живёт 30 минут). Смягчение — короткий access-токен, ротация refresh при каждом использовании и denylist отозванных токенов (см. выше): украденный и уже использованный токен умирает, а смена пароля бампает `token_version` и убивает всю цепочку;
+- пересмотреть, если threat model изменится (например, появится требование PCI/более строгой изоляции XSS): тогда refresh-токен переезжает в `HttpOnly; Secure; SameSite` cookie + CSRF-защита.
+
+### Swagger и `DOCS_ENABLED`
+
+Swagger UI монтируется на `/swagger-api` только при `DOCS_ENABLED === 'true'` и **не требует аутентификации** — это раскрывает полную схему API. Флаг по умолчанию выключен; в проде его включают осознанно (например, для отладки контракта). Helmet в `main.ts` работает с `contentSecurityPolicy: false`, потому что Swagger UI использует inline-скрипты/стили; API при этом остаётся JSON-сервисом без HTML-поверхности, так что отсутствие CSP не создаёт XSS-вектора на бэкенде.
+
 ## `AuthGuard` (`src/auth/guard/auth.guard.ts`)
 
 ```ts
@@ -166,7 +180,7 @@ export const accessTokenPayloadSchema = z.object({
 ```
 
 - Достаёт токен из заголовка `Authorization: Bearer <token>`.
-- Проверяет через `JwtService.verifyAsync` против `JWT_SECRET`.
+- Проверяет через `JwtService.verifyAsync` против `JWT_SECRET` с явным `algorithms: ['HS256']` (alg-путаница/`none` не проходит).
 - **Парсит payload zod-схемой** (`accessTokenPayloadSchema.parse`) — parse, don't validate: дальше по приложению `request.user` ходит уже доверенным типом `{ id, email, role, tokenVersion? }`.
 - **Загружает живого пользователя** через `usersService.findByIdForAuth(id)` (SELECT только `id`, `role`, `token_version`):
   - пользователь удалён → `401`;
@@ -207,7 +221,7 @@ export const accessTokenPayloadSchema = z.object({
 | `src/auth/dto/refresh-response.dto.ts` | `{ accessToken, refreshToken }` |
 | `src/auth/dto/user-response.dto.ts` | `{ id, name, username, email, role }` |
 
-> ✅ `SignInRequestDto` ограничен **только по максимуму**: `username` ≤ 100, `password` ≤ 200. `minLength` на пароль при входе **не ставится** — legacy-аккаунты с короткими/plaintext-паролями должны сохранять возможность входа; потолок защищает bcrypt от хеширования гигантских строк. Создание пользователя и смена пароля, наоборот, требуют минимум 8 символов (см. [`users.md`](./users.md#политика-паролей-и-размеры-полей)).
+> ✅ `SignInRequestDto` ограничен **только по максимуму**: `username` ≤ 100, `password` ≤ 200. `minLength` на пароль при входе **не ставится** — старые аккаунты могли иметь пароль короче текущей политики, и вход должен оставаться возможным; потолок защищает bcrypt от хеширования гигантских строк. Не-bcrypt-строки при этом не принимаются: их переводит в bcrypt миграция 012 (см. [`db.md`](../db.md)). Создание пользователя и смена пароля, наоборот, требуют минимум 8 символов (см. [`users.md`](./users.md#политика-паролей-и-размеры-полей)).
 
 ## Denylist-сущность `RevokedRefreshToken`
 
@@ -220,12 +234,12 @@ export const accessTokenPayloadSchema = z.object({
 - удалённый пользователь получает `401` немедленно;
 - смена пароля бампает `user.token_version`, и все access/refresh-токены со старой версией отклоняются сразу — пользователь должен войти заново.
 
-`token_version` — целочисленный счётчик (`NOT NULL DEFAULT 0`). `signIn` и `refreshTokens` подписывают пару текущим значением; `UsersService.changePassword` инкрементирует его в том же `UPDATE`, что и хэш пароля (см. [`users.md`](./users.md)). `updatePassword` (auto-rehash legacy-пароля при логине) версию **не** трогает — те же креды остаются валидными.
+`token_version` — целочисленный счётчик (`NOT NULL DEFAULT 0`). `signIn` и `refreshTokens` подписывают пару текущим значением; `UsersService.changePassword` инкрементирует его в том же `UPDATE`, что и хэш пароля (см. [`users.md`](./users.md)). Миграция 012 меняет только `password` и версию **не** трогает — креды не меняются, поэтому существующие сессии переживших rehash пользователей остаются валидными.
 
 ## Связанные документы
 
 - [README.md](./README.md) — индекс модулей
-- [users.md](./users.md) — сущность `user`, роли, `UsersService` (findOneByUsername/findOneById/updatePassword)
+- [users.md](./users.md) — сущность `user`, роли, `UsersService` (findOneByUsername/findOneById/changePassword)
 - [../architecture.md](../architecture.md) — env (`JWT_SECRET`, `JWT_REFRESH_SECRET`), глобальный `ThrottlerGuard` и per-route auth-guard'ы
 - [../contracts/rest-api.md](../contracts/rest-api.md) — контракт `AuthController*`, матрица ролей, 401-refresh во фронтенде
 - Аутентификация на фронте (login, restore, refresh) — репозиторий `slovo-propovedi-admin`

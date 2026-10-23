@@ -9,6 +9,9 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { UsersService } from '../../users/users.service';
 import { UserRole } from '../../users/user-role.enum';
+import { resolveJwtSecret } from '../jwt-secret';
+
+const JWT_ALGORITHMS: 'HS256'[] = ['HS256'];
 
 // The only trusted shape of a valid access token. Parsing at the boundary means
 // the rest of the app can treat `request.user` as already-validated data —
@@ -51,11 +54,7 @@ export class AuthGuard implements CanActivate {
   }
 
   protected resolveSecret(): string {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      throw new Error('JWT_SECRET environment variable is not set');
-    }
-    return secret;
+    return resolveJwtSecret('JWT_SECRET');
   }
 
   // Any verification/parse failure is an authentication failure (401). The
@@ -75,7 +74,10 @@ export class AuthGuard implements CanActivate {
     token: string,
     secret: string,
   ): Promise<AccessTokenPayload> {
-    const payload = await this.jwtService.verifyAsync(token, { secret });
+    const payload = await this.jwtService.verifyAsync(token, {
+      secret,
+      algorithms: JWT_ALGORITHMS,
+    });
     return accessTokenPayloadSchema.parse(payload);
   }
 

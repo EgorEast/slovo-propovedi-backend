@@ -5,11 +5,20 @@ import { createZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import { MinioService } from './minio/minio.service';
 import { SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
 import * as yaml from 'js-yaml';
 import type { OpenAPIObject } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Security headers for every response. CSP is disabled on purpose: this is a
+  // JSON API and the Swagger UI endpoint ships inline scripts/styles that a
+  // default policy would block. All other helmet defaults stay in place,
+  // including Cross-Origin-Resource-Policy: same-origin — API JSON is read via
+  // CORS-enabled fetch (not blocked by CORP), while media lives on MinIO and is
+  // served by MinIO's own headers.
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   // Traefik is the single hop in front of the container. Trust exactly one
   // proxy hop so req.ip is the address Traefik appends to X-Forwarded-For
@@ -37,11 +46,18 @@ async function bootstrap() {
     `https://${landingHostname}`,
     `https://www.${landingHostname}`,
     `https://${webHostname}`,
-    'http://localhost:3000',
-    'http://localhost:4321',
-    'http://localhost:8081',
-    'http://localhost:8082',
   ];
+  // The container image sets NODE_ENV=production (see Dockerfile). Local dev
+  // origins must never widen the production allow-list, so they are gated on
+  // the environment instead of being hardcoded unconditionally.
+  if (process.env.NODE_ENV !== 'production') {
+    allowedOrigins.push(
+      'http://localhost:3000',
+      'http://localhost:4321',
+      'http://localhost:8081',
+      'http://localhost:8082',
+    );
+  }
   if (process.env.DOCS_UI_ORIGIN) {
     allowedOrigins.push(process.env.DOCS_UI_ORIGIN);
   }

@@ -8,7 +8,7 @@ describe('OptionalAuthGuard', () => {
   let guard: OptionalAuthGuard;
   let jwtService: { verifyAsync: jest.Mock };
   let usersService: { findByIdForAuth: jest.Mock };
-  const secret = 'test-secret';
+  const secret = 'test-secret-at-least-32-characters-long';
   const userId = '11111111-1111-4111-8111-111111111111';
 
   const buildContext = (headers: Record<string, string | undefined>) => {
@@ -83,6 +83,7 @@ describe('OptionalAuthGuard', () => {
 
     expect(jwtService.verifyAsync).toHaveBeenCalledWith('valid-token', {
       secret,
+      algorithms: ['HS256'],
     });
     expect(request.user).toEqual({ ...payload, role: UserRole.Moderator });
   });

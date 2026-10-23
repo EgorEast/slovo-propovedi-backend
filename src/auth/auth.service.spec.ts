@@ -12,11 +12,11 @@ import { RevokedRefreshToken } from './entities/revoked-refresh-token.entity';
 
 jest.mock('bcrypt', () => ({
   compare: jest.fn().mockResolvedValue(true),
-  hash: jest.fn().mockResolvedValue('hashed-password'),
 }));
 
-process.env.JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret';
+process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters';
+process.env.JWT_REFRESH_SECRET =
+  'test-jwt-refresh-secret-at-least-32-characters';
 
 const sha256Hex = (value: string): string =>
   createHash('sha256').update(value).digest('hex');
@@ -36,7 +36,6 @@ describe('AuthService', () => {
   let usersService: {
     findOneByUsername: jest.Mock;
     findOneById: jest.Mock;
-    updatePassword: jest.Mock;
   };
   let jwtService: {
     signAsync: jest.Mock;
@@ -83,7 +82,6 @@ describe('AuthService', () => {
           useValue: {
             findOneByUsername: jest.fn(),
             findOneById: jest.fn(),
-            updatePassword: jest.fn(),
           },
         },
         {
@@ -166,6 +164,55 @@ describe('AuthService', () => {
         status: 401,
       });
     });
+
+    it('rejects a non-bcrypt stored hash without comparing or rewriting it', async () => {
+      usersService.findOneByUsername.mockResolvedValue({
+        ...mockUser,
+        password: 'legacy-plaintext',
+      });
+
+      // The stored value is not a hash, so even an exact plaintext match must
+      // not authenticate. This is the post-migration contract: unmigrated rows
+      // fail closed until sql/migrations/012_rehash_plaintext_passwords.sql runs.
+      await expect(
+        service.signIn('testuser', 'legacy-plaintext'),
+      ).rejects.toMatchObject({
+        message: 'Invalid credentials',
+        status: 401,
+      });
+
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
+    });
+
+    it('fails loud when JWT_SECRET is shorter than 32 characters', async () => {
+      const originalSecret = process.env.JWT_SECRET;
+      process.env.JWT_SECRET = 'short-secret';
+      usersService.findOneByUsername.mockResolvedValue(mockUser);
+
+      try {
+        await expect(service.signIn('testuser', 'password')).rejects.toThrow(
+          /JWT_SECRET must be at least 32 characters/,
+        );
+        expect(jwtService.signAsync).not.toHaveBeenCalled();
+      } finally {
+        process.env.JWT_SECRET = originalSecret;
+      }
+    });
+
+    it('fails loud when JWT_REFRESH_SECRET is shorter than 32 characters', async () => {
+      const originalSecret = process.env.JWT_REFRESH_SECRET;
+      process.env.JWT_REFRESH_SECRET = 'short-refresh-secret';
+      usersService.findOneByUsername.mockResolvedValue(mockUser);
+
+      try {
+        await expect(service.signIn('testuser', 'password')).rejects.toThrow(
+          /JWT_REFRESH_SECRET must be at least 32 characters/,
+        );
+      } finally {
+        process.env.JWT_REFRESH_SECRET = originalSecret;
+      }
+    });
   });
 
   describe('refreshTokens', () => {
@@ -185,6 +232,12 @@ describe('AuthService', () => {
 
       const result = await service.refreshTokens('legacy-refresh-token');
 
+      // Verification is explicitly pinned to HS256: a token signed with a
+      // different (or "none") algorithm never reaches the denylist or DB.
+      expect(jwtService.verifyAsync).toHaveBeenCalledWith(
+        'legacy-refresh-token',
+        expect.objectContaining({ algorithms: ['HS256'] }),
+      );
       expect(usersService.findOneById).toHaveBeenCalledWith(mockUser.id);
       expect(jwtService.signAsync).toHaveBeenCalledWith(
         expect.objectContaining({ role: UserRole.Moderator }),

@@ -17,8 +17,9 @@ jest.mock('bcrypt', () => ({
   hash: jest.fn().mockResolvedValue('hashed-password'),
 }));
 
-process.env.JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret';
+process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters';
+process.env.JWT_REFRESH_SECRET =
+  'test-jwt-refresh-secret-at-least-32-characters';
 
 const mockUser = {
   id: 'user-1',
@@ -36,7 +37,6 @@ describe('AuthController', () => {
   let usersService: {
     findOneByUsername: jest.Mock;
     findOneById: jest.Mock;
-    updatePassword: jest.Mock;
   };
   let jwtService: {
     signAsync: jest.Mock;
@@ -75,7 +75,6 @@ describe('AuthController', () => {
           useValue: {
             findOneByUsername: jest.fn(),
             findOneById: jest.fn(),
-            updatePassword: jest.fn(),
           },
         },
         {

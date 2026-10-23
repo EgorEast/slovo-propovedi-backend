@@ -98,13 +98,6 @@ export class UsersService {
     }
   }
 
-  // Auto-rehash path (legacy plaintext password upgraded on sign-in). It
-  // deliberately does NOT bump token_version: the same credentials remain
-  // valid, so existing sessions must survive the transparent upgrade.
-  async updatePassword(id: string, hashedPassword: string): Promise<void> {
-    await this.usersRepository.update(id, { password: hashedPassword });
-  }
-
   async findAll(page?: number, limit?: number): Promise<AllUsersResponse> {
     try {
       // Offset mode is selected by the presence of page/limit (limit without

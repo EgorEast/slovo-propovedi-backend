@@ -255,6 +255,7 @@
 | `sql/migrations/009_feature_flags.sql` | **существующие БД** (2026-10-10): `CREATE TABLE IF NOT EXISTS feature_flag` (uuid-PK, UNIQUE `key`, `enabled` default `false`, `created_at`/`updated_at`) и `feature_flag_override` (uuid-PK, `flag_id`/`user_id`, UNIQUE пара, `created_at` default `now()`) для удалённых фича-флагов. PK `PK_feature_flag_id`/`PK_feature_flag_override_id`, UNIQUE `UQ_feature_flag_key`/`UQ_feature_flag_override_pair`, FK `FK_feature_flag_override_flag` → `feature_flag`(id) и `FK_feature_flag_override_user` → `user`(id) — каждый в DO-блоке с guard по `pg_constraint` (идемпотентно; на fresh-bootstrap БД — no-op). Сид `read`/`study` (`ON CONFLICT DO NOTHING`), индекс `ix_feature_flag_override_user`(`user_id`) для выборки исключений пользователя. Revert: `DROP TABLE IF EXISTS feature_flag_override; DROP TABLE IF EXISTS feature_flag;`. |
 | `sql/migrations/010_feature_flag_override_created_at.sql` | **существующие БД** (2026-10-10): `ADD COLUMN IF NOT EXISTS created_at` (`timestamp with time zone NOT NULL DEFAULT now()`) на `feature_flag_override`. Дополняет 009: колонка нужна `GET /feature-flags/:id/overrides` (`FeatureFlagOverride.createdAt`), но была вписана правкой 009 на месте, поэтому БД, где 009 уже отработала до этого, `CREATE TABLE IF NOT EXISTS` её не получит. Идемпотентен (`ADD COLUMN IF NOT EXISTS`; на fresh-bootstrap БД — no-op). Revert: `ALTER TABLE feature_flag_override DROP COLUMN IF EXISTS created_at;`. |
 | `sql/migrations/011_add_token_version.sql` | **существующие БД** (2026-10-23): `ADD COLUMN IF NOT EXISTS token_version integer DEFAULT 0 NOT NULL` на `user` — версия сессии для отзыва access/refresh-токенов при смене пароля и немедленной проверки удалённого/пониженного пользователя. **Применять до деплоя соответствующего тега**: код читает колонку на каждом аутентифицированном запросе, а схема меняется только вручную (`synchronize: false`). Идемпотентен (на fresh-bootstrap БД — no-op). Revert: `ALTER TABLE "user" DROP COLUMN IF EXISTS token_version;`. |
+| `sql/migrations/012_rehash_plaintext_passwords.sql` | **существующие БД** (2026-10-23): `CREATE EXTENSION IF NOT EXISTS pgcrypto` + `UPDATE "user" SET password = crypt(password, gen_salt('bf', 10))` для строк, чей `password` **не** начинается с `$2a$`/`$2b$`/`$2y$` — legacy-plaintext переводится в bcrypt cost 10 без смены самих кредов. Код логина больше не имеет plaintext-ветки и отвечает `401` на не-bcrypt-хэш, поэтому **миграцию применять до деплоя тега**. Идемпотентна (bcrypt-строки не трогаются). `token_version` не меняется — сессии переживают rehash. Требует `pgcrypto` (суперпользователь или trusted extension); fallback без `pgcrypto` — заменить plaintext на неиспользуемый валидный bcrypt-хэш и принудительно сбросить пароли (инструкция в шапке файла). Revert невозможен — plaintext уничтожается. |
 
 Команды применения (как DB-owner):
 
@@ -274,9 +275,12 @@ psql -h <host> -U <user> -d <db> -f sql/migrations/008_add_invidious_instances.s
 psql -h <host> -U <user> -d <db> -f sql/migrations/009_feature_flags.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/010_feature_flag_override_created_at.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/011_add_token_version.sql
+psql -h <host> -U <user> -d <db> -f sql/migrations/012_rehash_plaintext_passwords.sql
 ```
 
 > ⚠️ **Миграция 011 должна быть применена к прод-БД ДО деплоя тега с этим кодом** (`synchronize: false`, код читает `token_version` на каждом аутентифицированном запросе). Без колонки все guarded-роуты будут падать с `500`.
+
+> ⚠️ **Миграция 012 — тоже до деплоя**: с нового тега не-bcrypt-пароль не проходит логин. Неприменённая миграция не ломает приложение, но legacy-пользователи не смогут войти (fail-closed) и в логе появятся `Non-bcrypt credential hash encountered`. Если `pgcrypto` включить нельзя, используйте fallback из шапки миграции (неиспользуемый bcrypt-хэш + принудительный сброс паролей).
 
 > ⚠️ **Нет TypeORM migration runner и нет npm-скрипта миграций.** Применение — строго ручное через `psql`. Новые изменения схемы оформлять идемпотентным SQL-файлом и синхронно отражать в `bootstrap.sql`.
 

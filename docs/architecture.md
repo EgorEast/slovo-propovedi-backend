@@ -21,13 +21,27 @@ const app = await NestFactory.create(AppModule);
 |--------|------------|
 | `https://slovo-propovedi.ru` | основной сайт |
 | `https://www.slovo-propovedi.ru` | www-сайт |
-| `http://localhost:3000` | локальный Vite-прокси (backend-порт) |
-| `http://localhost:4321` | локальный фронтенд (Svelte dev) |
-| `http://localhost:8081` | резервный локальный порт |
-| `http://localhost:8082` | резервный локальный порт |
+| `http://localhost:3000` | локальный Vite-прокси (backend-порт) — **только при `NODE_ENV !== 'production'`** |
+| `http://localhost:4321` | локальный фронтенд (Svelte dev) — **только при `NODE_ENV !== 'production'`** |
+| `http://localhost:8081` | резервный локальный порт — **только при `NODE_ENV !== 'production'`** |
+| `http://localhost:8082` | резервный локальный порт — **только при `NODE_ENV !== 'production'`** |
 | `DOCS_UI_ORIGIN` (опционально) | дополнительный origin, добавляется при наличии в env |
 
 > ⚠️ Список origin'ов **захардкожен** в `main.ts`; он не загружается из конфигурации (кроме опционального `DOCS_UI_ORIGIN`). При добавлении нового frontend-хоста правка — в коде.
+>
+> ✅ Localhost-origin'ы добавляются только когда `NODE_ENV !== 'production'`. Прод-образ выставляет `NODE_ENV=production` (`Dockerfile`), поэтому dev-адреса не попадают в прод-allow-list. Если переменная не задана (локальный запуск), origin'ы остаются доступны — это осознанно, чтобы `npm run start:dev` работал без дополнительной настройки.
+
+### Helmet: security-заголовки
+
+Сразу после создания приложения, **до** CORS и остального middleware, подключается `helmet`:
+
+```ts
+app.use(helmet({ contentSecurityPolicy: false }));
+```
+
+- **CSP отключён осознанно.** Это JSON API, а не HTML-сайт; единственная HTML-страница — Swagger UI на `/swagger-api`, и она использует inline-скрипты/стили, которые дефолтная политика заблокировала бы. Включать CSP «наполовину» (с `unsafe-inline`) смысла нет: XSS-поверхности в API без HTML нет, а сломанный Swagger — реальный регресс.
+- **Остальные заголовки Helmet остаются дефолтными:** `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security`, `X-DNS-Prefetch-Control: off`, `X-Download-Options: noopen`, `X-Permitted-Cross-Domain-Policies: none`, `X-XSS-Protection: 0`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Origin-Agent-Cluster: ?1`.
+- **`Cross-Origin-Resource-Policy: same-origin` оставлен дефолтным.** CORP ограничивает no-cors-встраивание (img/script/iframe), но не CORS-fetch: фронтенды читают JSON через CORS-запросы, и заголовок им не мешает. Медиа отдаёт **MinIO** на отдельном хосте со своими заголовками, а Swagger UI и его ассеты — same-origin. Если в будущем понадобится встраивать ответы API через `<iframe>`/`<img>` с другого origin, политику придётся ослабить до `cross-origin` — но сейчас таких сценариев нет.
 
 ### Глобальный Zod-пайп (strict)
 
@@ -73,6 +87,7 @@ if (process.env.DOCS_ENABLED === 'true') {
 
 - YAML парсится через `js-yaml`; вход — `OPENAPI_SPEC_URL`, по умолчанию `https://docs.slovo-propovedi.ru/openAPI.yaml`.
 - При сбое скачивания/парсинга Swagger UI отключается с `Logger.warn`, приложение не падает.
+- `DOCS_ENABLED` по умолчанию выключен; включать его в проде следует только при необходимости, потому что `/swagger-api` публикует полную схему API без аутентификации. CSP для этого пути отключён (см. раздел Helmet), иначе inline-скрипты Swagger UI не выполнились бы.
 
 > ✅ Спецификация живёт во **внешнем** swagger-репозитории `slovo-propovedi-docs` и деплоится на `docs.slovo-propovedi.ru/openAPI.yaml`. Это же — `input` для Orval-кодогенерации (см. [`contracts/rest-api.md`](./contracts/rest-api.md)).
 
@@ -154,8 +169,9 @@ Node-скрипты, которые не проходят через Nest bootst
 | `POSTGRES_USER` | — | `src/db/typeorm.module.ts` | пользователь БД |
 | `POSTGRES_PASSWORD` | — | `src/db/typeorm.module.ts` | пароль БД |
 | `POSTGRES_DB` | — | `src/db/typeorm.module.ts` | имя БД |
-| `JWT_SECRET` | — (обязателен) | `auth.service.ts`, `guard/auth.guard.ts` | секрет access-токена; кидает ошибку, если не задан |
-| `JWT_REFRESH_SECRET` | — (обязателен) | `auth.service.ts` | секрет refresh-токена; кидает ошибку, если не задан |
+| `NODE_ENV` | — | `main.ts` | `'production'` отключает localhost-origin'ы в CORS allow-list; выставляется в `Dockerfile` |
+| `JWT_SECRET` | — (обязателен) | `auth.service.ts`, `guard/auth.guard.ts` | секрет access-токена; кидает ошибку, если не задан или короче 32 символов |
+| `JWT_REFRESH_SECRET` | — (обязателен) | `auth.service.ts` | секрет refresh-токена; кидает ошибку, если не задан или короче 32 символов |
 | `MINIO_ENDPOINT` | — | `minio.service.ts` | внутренний endpoint MinIO (data-plane, Docker-сеть) |
 | `MINIO_MAIN_PORT_IN` | — | `minio.service.ts` | внутренний порт MinIO |
 | `MINIO_ACCESS_KEY` | — | `minio.service.ts` | access key MinIO |
@@ -209,7 +225,7 @@ Unit-тесты (`npm test`) гоняет Jest через трансформ **`
 
 Выкат тег-ориентированный: push тега `v*` запускает Forgejo Actions, который стримит исходники на VPS и выполняет там `scripts/vps-deploy.sh`. Скрипт идемпотентен, собирает Docker-образ через buildx-билдер `slovo-constrained` (docker-container) и рестартует systemd-юнит `slovo-backend.service`.
 
-**Миграции — до деплоя.** `synchronize: false`, поэтому схема БД меняется только вручную и **до** выката тега с кодом, который рассчитывает на новую схему (иначе guarded-роуты упадут). Для релиза с `token_version` сначала применяется `sql/migrations/011_add_token_version.sql` (см. [`db.md`](./db.md)), и только затем деплоится тег.
+**Миграции — до деплоя.** `synchronize: false`, поэтому схема БД меняется только вручную и **до** выката тега с кодом, который рассчитывает на новую схему (иначе guarded-роуты упадут). Для релиза с `token_version` сначала применяется `sql/migrations/011_add_token_version.sql` (см. [`db.md`](./db.md)), и только затем деплоится тег. Для релиза с отказом от plaintext-паролей сначала применяется `sql/migrations/012_rehash_plaintext_passwords.sql`: новый код не принимает не-bcrypt-хэши, поэтому неприменённая миграция означает невозможность входа для legacy-аккаунтов (fail-closed, но нежелательный).
 
 **Совместимость с фронтендом.** Контракт живёт в `slovo-propovedi-docs`, SDK админки (`slovo-propovedi-admin`) генерируется из него отдельно. Удаление маршрута из спецификации — breaking change: сначала регенерируется и выкатывается фронтенд, затем backend. В частности, `stream-url`-эндпоинты удалены в пользу статических public-read URL — SDK, который ещё зовёт `/sermons/{id}/stream-url`, должен быть обновлён **до** деплоя этого backend-релиза.
 
