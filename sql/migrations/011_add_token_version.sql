@@ -1,0 +1,33 @@
+-- =============================================================================
+-- Migration 011: user.token_version (2026-10-23)
+-- =============================================================================
+--
+-- Adds a monotonically increasing session version to every account. Access and
+-- refresh tokens carry the version they were signed with; AuthGuard and
+-- AuthService.refreshTokens reject a token whose version differs from the live
+-- row, and UsersService.changePassword bumps the column in the same UPDATE as
+-- the new password hash. Result: a password change instantly revokes every
+-- outstanding access and refresh token instead of letting refresh tokens live
+-- for their full 30 days.
+--
+-- The column is also used to re-check the user on every authenticated request
+-- (deleted/demoted accounts stop working immediately rather than after the
+-- access token's 30-minute lifetime).
+--
+-- This migration is IDEMPOTENT — safe to run more than once:
+--   * ADD COLUMN IF NOT EXISTS
+--
+-- Fresh databases get the column directly from sql/bootstrap.sql (same type and
+-- default), so running this migration there is a no-op.
+--
+-- Run BEFORE deploying the matching application tag: the code selects
+-- token_version on every authenticated request, and schema changes are manual
+-- (synchronize: false). Run as the DB owner, e.g.:
+--   psql -h <host> -U <user> -d <db> -f sql/migrations/011_add_token_version.sql
+--
+-- REVERT (rollback on a broken deploy):
+--   ALTER TABLE "user" DROP COLUMN IF EXISTS token_version;
+-- =============================================================================
+
+ALTER TABLE "user"
+    ADD COLUMN IF NOT EXISTS token_version integer DEFAULT 0 NOT NULL;

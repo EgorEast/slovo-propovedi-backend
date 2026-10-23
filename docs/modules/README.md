@@ -9,13 +9,13 @@
 
 | Модуль | Эндпоинты | Сущность | Документ |
 |--------|-----------|----------|----------|
-| `app` (файлы) | `POST /files`, `GET /files`, `GET /files/orphans`, `POST /files/orphans/cleanup`, `GET /files/:fileName`, `GET /files/:fileName/stream-url`, `DELETE /files/:fileName` | — (MinIO) | [`app.md`](./app.md) |
+| `app` (файлы) | `POST /files`, `GET /files`, `GET /files/orphans`, `POST /files/orphans/cleanup`, `GET /files/:fileName`, `DELETE /files/:fileName` | — (MinIO) | [`app.md`](./app.md) |
 | `health` | `GET /health` | — | [`health.md`](./health.md) |
 | `auth` | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/profile` | `RevokedRefreshToken` (`revoked_refresh_token`, denylist) | [`auth.md`](./auth.md) |
 | `users` | `POST /users`, `GET /users`, `GET /users/:id`, `PATCH /users/:id`, `PATCH /users/:id/password`, `DELETE /users/:id` | `User` (`user`) | [`users.md`](./users.md) |
 | `invidious-instances` | `GET /invidious-instances`, `PUT /invidious-instances` | `InvidiousInstanceEntity` (`invidious_instance`) | [`invidious-instances.md`](./invidious-instances.md) |
 | `feature-flags` | `GET /feature-flags/me`, `GET /feature-flags`, `POST /feature-flags`, `PATCH /feature-flags/:id`, `DELETE /feature-flags/:id`, `GET /feature-flags/:id/overrides`, `PUT/DELETE /feature-flags/:id/overrides/:userId` | `FeatureFlag` (`feature_flag`) + `FeatureFlagOverride` (`feature_flag_override`) | [`feature-flags.md`](./feature-flags.md) |
-| `sermon` | `POST /sermons`, `GET /sermons`, `GET /sermons/:id`, `GET /sermons/:id/stream-url`, `PATCH /sermons/:id`, `DELETE /sermons/:id` | `SermonEntity` (`sermon`) | [`sermon.md`](./sermon.md) |
+| `sermon` | `POST /sermons`, `GET /sermons`, `GET /sermons/:id`, `PATCH /sermons/:id`, `DELETE /sermons/:id` | `SermonEntity` (`sermon`) | [`sermon.md`](./sermon.md) |
 | `playlist` | `POST /playlists`, `GET /playlists`, `GET /playlists/:id`, `PATCH /playlists/:id`, `PATCH /playlists/:id/sermons/reorder`, `DELETE /playlists/:id` | `PlaylistEntity` (`playlist`) + `PlaylistSermonJoinEntity` | [`playlist.md`](./playlist.md) |
 | `section` | `POST /section`, `GET /section`, `GET /section/:id`, `PATCH /section/reorder`, `PATCH /section/:id/playlists/reorder`, `PATCH /section/:id`, `DELETE /section/:id` | `SectionEntity` (`section`) + `SectionPlaylistJoinEntity` | [`section.md`](./section.md) |
 | `minio` | (не HTTP) | — | [`minio.md`](./minio.md) |
@@ -27,7 +27,7 @@
 
 Роли: `admin` / `moderator` / `user` (`UserRole`, живут в JWT-payload `{ id, email, role }` и в БД). `AuthGuard` парсит payload zod-схемой (legacy-токены без роли → 401 → refresh); `RolesGuard` fail-closed по `@Roles(...)`.
 
-- **Публичные чтения** (без аутентификации, любая роль): `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`.
+- **Публичные чтения** (без аутентификации, любая роль): `GET /sermons`, `/sermons/:id`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `GET /files/:fileName`, `/health`, `/auth/login`, `/auth/refresh`.
 - **Опциональная аутентификация (`OptionalAuthGuard`):** `GET /feature-flags/me` — с валидным Bearer-токеном возвращает эффективные флаги пользователя (единое правило для всех ролей, админ-байпаса нет); без токена — глобальные состояния; невалидный/просроченный токен → `401` (клиент обновит токен и повторит запрос).
 - **Guarded (`AuthGuard`):** `GET /auth/profile` (любой аутентифицированный, включая `user`), `POST /auth/logout` (любой аутентифицированный; отзывает refresh-токен через denylist).
 - **Guarded (`AuthGuard` + `RolesGuard`):**

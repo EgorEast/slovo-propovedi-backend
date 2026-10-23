@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
@@ -11,11 +12,11 @@ import { RevokedRefreshToken } from './entities/revoked-refresh-token.entity';
 
 jest.mock('bcrypt', () => ({
   compare: jest.fn().mockResolvedValue(true),
-  hash: jest.fn().mockResolvedValue('hashed-password'),
 }));
 
-process.env.JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret';
+process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters';
+process.env.JWT_REFRESH_SECRET =
+  'test-jwt-refresh-secret-at-least-32-characters';
 
 const sha256Hex = (value: string): string =>
   createHash('sha256').update(value).digest('hex');
@@ -27,6 +28,7 @@ const mockUser = {
   username: 'testuser',
   password: '$2a$10$abcdefghijklmnopqrstuv',
   role: UserRole.Admin,
+  tokenVersion: 0,
 };
 
 describe('AuthService', () => {
@@ -34,7 +36,6 @@ describe('AuthService', () => {
   let usersService: {
     findOneByUsername: jest.Mock;
     findOneById: jest.Mock;
-    updatePassword: jest.Mock;
   };
   let jwtService: {
     signAsync: jest.Mock;
@@ -81,7 +82,6 @@ describe('AuthService', () => {
           useValue: {
             findOneByUsername: jest.fn(),
             findOneById: jest.fn(),
-            updatePassword: jest.fn(),
           },
         },
         {
@@ -123,6 +123,7 @@ describe('AuthService', () => {
           id: mockUser.id,
           email: mockUser.email,
           role: UserRole.Admin,
+          tokenVersion: 0,
         }),
         expect.anything(),
       );
@@ -135,12 +136,82 @@ describe('AuthService', () => {
       });
     });
 
-    it('rejects with UnauthorizedException when the user is unknown', async () => {
+    it('rejects an unknown username with the generic 401 after a dummy bcrypt compare', async () => {
       usersService.findOneByUsername.mockResolvedValue(null);
+      jest.mocked(bcrypt.compare).mockResolvedValueOnce(false);
 
-      await expect(service.signIn('nobody', 'password')).rejects.toThrow(
-        UnauthorizedException,
+      await expect(service.signIn('nobody', 'password')).rejects.toMatchObject({
+        message: 'Invalid credentials',
+        status: 401,
+      });
+
+      // The dummy compare equalizes timing with the known-username path; the
+      // hash is a cost-10 bcrypt value, same as real password hashes.
+      expect(bcrypt.compare).toHaveBeenCalledWith(
+        'password',
+        expect.stringMatching(/^\$2[aby]\$10\$/),
       );
+    });
+
+    it('rejects a wrong password with the same generic 401', async () => {
+      usersService.findOneByUsername.mockResolvedValue(mockUser);
+      jest.mocked(bcrypt.compare).mockResolvedValueOnce(false);
+
+      await expect(
+        service.signIn('testuser', 'wrong-password'),
+      ).rejects.toMatchObject({
+        message: 'Invalid credentials',
+        status: 401,
+      });
+    });
+
+    it('rejects a non-bcrypt stored hash without comparing or rewriting it', async () => {
+      usersService.findOneByUsername.mockResolvedValue({
+        ...mockUser,
+        password: 'legacy-plaintext',
+      });
+
+      // The stored value is not a hash, so even an exact plaintext match must
+      // not authenticate. This is the post-migration contract: unmigrated rows
+      // fail closed until sql/migrations/012_rehash_plaintext_passwords.sql runs.
+      await expect(
+        service.signIn('testuser', 'legacy-plaintext'),
+      ).rejects.toMatchObject({
+        message: 'Invalid credentials',
+        status: 401,
+      });
+
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
+    });
+
+    it('fails loud when JWT_SECRET is shorter than 32 characters', async () => {
+      const originalSecret = process.env.JWT_SECRET;
+      process.env.JWT_SECRET = 'short-secret';
+      usersService.findOneByUsername.mockResolvedValue(mockUser);
+
+      try {
+        await expect(service.signIn('testuser', 'password')).rejects.toThrow(
+          /JWT_SECRET must be at least 32 characters/,
+        );
+        expect(jwtService.signAsync).not.toHaveBeenCalled();
+      } finally {
+        process.env.JWT_SECRET = originalSecret;
+      }
+    });
+
+    it('fails loud when JWT_REFRESH_SECRET is shorter than 32 characters', async () => {
+      const originalSecret = process.env.JWT_REFRESH_SECRET;
+      process.env.JWT_REFRESH_SECRET = 'short-refresh-secret';
+      usersService.findOneByUsername.mockResolvedValue(mockUser);
+
+      try {
+        await expect(service.signIn('testuser', 'password')).rejects.toThrow(
+          /JWT_REFRESH_SECRET must be at least 32 characters/,
+        );
+      } finally {
+        process.env.JWT_REFRESH_SECRET = originalSecret;
+      }
     });
   });
 
@@ -161,6 +232,12 @@ describe('AuthService', () => {
 
       const result = await service.refreshTokens('legacy-refresh-token');
 
+      // Verification is explicitly pinned to HS256: a token signed with a
+      // different (or "none") algorithm never reaches the denylist or DB.
+      expect(jwtService.verifyAsync).toHaveBeenCalledWith(
+        'legacy-refresh-token',
+        expect.objectContaining({ algorithms: ['HS256'] }),
+      );
       expect(usersService.findOneById).toHaveBeenCalledWith(mockUser.id);
       expect(jwtService.signAsync).toHaveBeenCalledWith(
         expect.objectContaining({ role: UserRole.Moderator }),
@@ -229,6 +306,26 @@ describe('AuthService', () => {
         UnauthorizedException,
       );
 
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
+    });
+
+    it('rejects a refresh token signed before the last password change', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        id: mockUser.id,
+        exp: Math.floor(Date.now() / 1000) + 60,
+        tokenVersion: 0,
+      });
+      usersService.findOneById.mockResolvedValue({
+        ...mockUser,
+        tokenVersion: 1,
+      });
+
+      await expect(
+        service.refreshTokens('stale-refresh-token'),
+      ).rejects.toThrow(UnauthorizedException);
+
+      // The stale token is rejected before rotation; no fresh pair is minted.
+      expect(revokedTokensRepository.createQueryBuilder).not.toHaveBeenCalled();
       expect(jwtService.signAsync).not.toHaveBeenCalled();
     });
 

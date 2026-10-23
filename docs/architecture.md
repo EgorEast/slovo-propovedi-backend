@@ -21,13 +21,27 @@ const app = await NestFactory.create(AppModule);
 |--------|------------|
 | `https://slovo-propovedi.ru` | основной сайт |
 | `https://www.slovo-propovedi.ru` | www-сайт |
-| `http://localhost:3000` | локальный Vite-прокси (backend-порт) |
-| `http://localhost:4321` | локальный фронтенд (Svelte dev) |
-| `http://localhost:8081` | резервный локальный порт |
-| `http://localhost:8082` | резервный локальный порт |
+| `http://localhost:3000` | локальный Vite-прокси (backend-порт) — **только при `NODE_ENV !== 'production'`** |
+| `http://localhost:4321` | локальный фронтенд (Svelte dev) — **только при `NODE_ENV !== 'production'`** |
+| `http://localhost:8081` | резервный локальный порт — **только при `NODE_ENV !== 'production'`** |
+| `http://localhost:8082` | резервный локальный порт — **только при `NODE_ENV !== 'production'`** |
 | `DOCS_UI_ORIGIN` (опционально) | дополнительный origin, добавляется при наличии в env |
 
 > ⚠️ Список origin'ов **захардкожен** в `main.ts`; он не загружается из конфигурации (кроме опционального `DOCS_UI_ORIGIN`). При добавлении нового frontend-хоста правка — в коде.
+>
+> ✅ Localhost-origin'ы добавляются только когда `NODE_ENV !== 'production'`. Прод-образ выставляет `NODE_ENV=production` (`Dockerfile`), поэтому dev-адреса не попадают в прод-allow-list. Если переменная не задана (локальный запуск), origin'ы остаются доступны — это осознанно, чтобы `npm run start:dev` работал без дополнительной настройки.
+
+### Helmet: security-заголовки
+
+Сразу после создания приложения, **до** CORS и остального middleware, подключается `helmet`:
+
+```ts
+app.use(helmet({ contentSecurityPolicy: false }));
+```
+
+- **CSP отключён осознанно.** Это JSON API, а не HTML-сайт; единственная HTML-страница — Swagger UI на `/swagger-api`, и она использует inline-скрипты/стили, которые дефолтная политика заблокировала бы. Включать CSP «наполовину» (с `unsafe-inline`) смысла нет: XSS-поверхности в API без HTML нет, а сломанный Swagger — реальный регресс.
+- **Остальные заголовки Helmet остаются дефолтными:** `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security`, `X-DNS-Prefetch-Control: off`, `X-Download-Options: noopen`, `X-Permitted-Cross-Domain-Policies: none`, `X-XSS-Protection: 0`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Origin-Agent-Cluster: ?1`.
+- **`Cross-Origin-Resource-Policy: same-origin` оставлен дефолтным.** CORP ограничивает no-cors-встраивание (img/script/iframe), но не CORS-fetch: фронтенды читают JSON через CORS-запросы, и заголовок им не мешает. Медиа отдаёт **MinIO** на отдельном хосте со своими заголовками, а Swagger UI и его ассеты — same-origin. Если в будущем понадобится встраивать ответы API через `<iframe>`/`<img>` с другого origin, политику придётся ослабить до `cross-origin` — но сейчас таких сценариев нет.
 
 ### Глобальный Zod-пайп (strict)
 
@@ -73,6 +87,7 @@ if (process.env.DOCS_ENABLED === 'true') {
 
 - YAML парсится через `js-yaml`; вход — `OPENAPI_SPEC_URL`, по умолчанию `https://docs.slovo-propovedi.ru/openAPI.yaml`.
 - При сбое скачивания/парсинга Swagger UI отключается с `Logger.warn`, приложение не падает.
+- `DOCS_ENABLED` по умолчанию выключен; включать его в проде следует только при необходимости, потому что `/swagger-api` публикует полную схему API без аутентификации. CSP для этого пути отключён (см. раздел Helmet), иначе inline-скрипты Swagger UI не выполнились бы.
 
 > ✅ Спецификация живёт во **внешнем** swagger-репозитории `slovo-propovedi-docs` и деплоится на `docs.slovo-propovedi.ru/openAPI.yaml`. Это же — `input` для Orval-кодогенерации (см. [`contracts/rest-api.md`](./contracts/rest-api.md)).
 
@@ -100,10 +115,11 @@ await app.listen('3000');
 |----------|-------------|------------|
 | `ZodValidationPipe` (strict) | `main.ts` (глобально) | валидирует все входные body/query/params по Zod-DTO |
 | `ZodSerializerInterceptor` | `app.module.ts` (`APP_INTERCEPTOR`) | валидирует/сериализует исходящие ответы по `@ZodResponse` |
-| `AuthGuard` | **по-роуту** (`@UseGuards`) | JWT-защита; парсит payload zod-схемой `{ id, email, role }`; **глобального guard нет** |
+| `ThrottlerGuard` | `app.module.ts` (`APP_GUARD`, **глобально**) + `@Throttle` на auth-роутах | rate limiting по IP: 300/мин базово, `POST /auth/login` — 10/мин, `POST /auth/refresh` — 30/мин; превышение → `429` |
+| `AuthGuard` | **по-роуту** (`@UseGuards`) | JWT-защита; парсит payload zod-схемой `{ id, email, role }` |
 | `RolesGuard` | **по-роуту** (`@UseGuards` + `@Roles`) | авторизация по ролям (fail-closed); без `@Roles` не ограничивает |
 
-> ⚠️ **Глобального guard нет.** Защита точечная: `@UseGuards(AuthGuard)` на `/auth/profile`, `@UseGuards(AuthGuard, RolesGuard)` + `@Roles(...)` на мутирующих эндпоинтах, `GET /files`, всех `/users*` и обоих `/invidious-instances*`. Публичные чтения (без аутентификации): `GET /sermons`, `/sermons/:id`, `/sermons/:id/stream-url`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName*`, `/health`, `/auth/login`, `/auth/refresh`. Карта guard'ов и матрица ролей — в [`modules/auth.md`](./modules/auth.md) и [`contracts/rest-api.md`](./contracts/rest-api.md).
+> ⚠️ **Глобального auth-guard'а нет.** Защита точечная: `@UseGuards(AuthGuard)` на `/auth/profile`, `@UseGuards(AuthGuard, RolesGuard)` + `@Roles(...)` на мутирующих эндпоинтах, `GET /files`, всех `/users*` и обоих `/invidious-instances*`. Публичные чтения (без аутентификации): `GET /sermons`, `/sermons/:id`, `GET /playlists`, `/playlists/:id`, `GET /section`, `/section/:id`, `/files/:fileName`, `/health`, `/auth/login`, `/auth/refresh`. Единственный глобальный guard — `ThrottlerGuard` (rate limiting); он не аутентифицирует. Карта guard'ов, лимиты и `trust proxy` — в [`modules/auth.md`](./modules/auth.md); матрица ролей — в [`contracts/rest-api.md`](./contracts/rest-api.md).
 
 ## Модули
 
@@ -112,6 +128,9 @@ await app.listen('3000');
 ```ts
 imports: [
   ConfigModule.forRoot({ isGlobal: true }),
+  ThrottlerModule.forRoot({
+    throttlers: [{ name: 'default', ttl: minutes(1), limit: 300 }],
+  }),
   HealthModule,
   SectionModule,
   AuthModule,
@@ -126,10 +145,12 @@ controllers: [AppController],
 providers: [
   AppService,
   { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
+  { provide: APP_GUARD, useClass: ThrottlerGuard },
 ],
 ```
 
 - `ConfigModule.forRoot({ isGlobal: true })` — env читается через `ConfigService` / `process.env`; отдельного `config/*`-модуля нет.
+- `ThrottlerModule.forRoot(...)` + `APP_GUARD` (`ThrottlerGuard`) — глобальный rate limiting по IP; строгие лимиты auth-роутов задаются `@Throttle` в контроллере (см. [`modules/auth.md`](./modules/auth.md)).
 - `TypeOrmModule` здесь — локальный модуль `src/db/typeorm.module.ts` (подключение к PostgreSQL), не путать с `@nestjs/typeorm`.
 
 ## Переменные окружения
@@ -148,13 +169,14 @@ Node-скрипты, которые не проходят через Nest bootst
 | `POSTGRES_USER` | — | `src/db/typeorm.module.ts` | пользователь БД |
 | `POSTGRES_PASSWORD` | — | `src/db/typeorm.module.ts` | пароль БД |
 | `POSTGRES_DB` | — | `src/db/typeorm.module.ts` | имя БД |
-| `JWT_SECRET` | — (обязателен) | `auth.service.ts`, `guard/auth.guard.ts` | секрет access-токена; кидает ошибку, если не задан |
-| `JWT_REFRESH_SECRET` | — (обязателен) | `auth.service.ts` | секрет refresh-токена; кидает ошибку, если не задан |
+| `NODE_ENV` | — | `main.ts` | `'production'` отключает localhost-origin'ы в CORS allow-list; выставляется в `Dockerfile` |
+| `JWT_SECRET` | — (обязателен) | `auth.service.ts`, `guard/auth.guard.ts` | секрет access-токена; кидает ошибку, если не задан или короче 32 символов |
+| `JWT_REFRESH_SECRET` | — (обязателен) | `auth.service.ts` | секрет refresh-токена; кидает ошибку, если не задан или короче 32 символов |
 | `MINIO_ENDPOINT` | — | `minio.service.ts` | внутренний endpoint MinIO (data-plane, Docker-сеть) |
 | `MINIO_MAIN_PORT_IN` | — | `minio.service.ts` | внутренний порт MinIO |
 | `MINIO_ACCESS_KEY` | — | `minio.service.ts` | access key MinIO |
 | `MINIO_SECRET_KEY` | — | `minio.service.ts` | secret key MinIO |
-| `MINIO_PUBLIC_URI` | — (обязателен для presign) | `minio.service.ts` | browser-facing URI MinIO для presigned-URL |
+| `MINIO_PUBLIC_URI` | — (обязателен) | `minio.service.ts` | browser-facing URI MinIO; база статических URL `${MINIO_PUBLIC_URI}/files/<name>` |
 | `DOCS_ENABLED` | — | `main.ts` | `'true'` включает Swagger UI |
 | `DOCS_HOSTNAME` | `docs.slovo-propovedi.ru` | `main.ts` | хост docs-сайта; строит дефолт для `OPENAPI_SPEC_URL` и (в проде) `DOCS_UI_ORIGIN` |
 | `OPENAPI_SPEC_URL` | `https://$DOCS_HOSTNAME/openAPI.yaml` | `main.ts` | источник спецификации для Swagger UI |
@@ -166,7 +188,7 @@ Node-скрипты, которые не проходят через Nest bootst
 Actions переменные (см. `slovo-propovedi-admin`/`-landing`/`-mobile`/`-docs`); значения выше —
 дефолты в коде на случай, если переменная не задана.
 
-> ✅ `MINIO_PUBLIC_URI` обязателен для presign-клиента (`buildPresignClient` кидает ошибку, если не задан): host входит в SigV4-подпись, поэтому presigned-URL должен генерироваться с тем же host, что увидит браузер.
+> ✅ `MINIO_PUBLIC_URI` — browser-facing база статических URL (`getFileUrl`). Presigned-URL больше не используются: bucket `files` public-read by design, поэтому второй (presign) клиент удалён.
 
 ## Как запускать и тестировать
 
@@ -203,6 +225,16 @@ Unit-тесты (`npm test`) гоняет Jest через трансформ **`
 
 Выкат тег-ориентированный: push тега `v*` запускает Forgejo Actions, который стримит исходники на VPS и выполняет там `scripts/vps-deploy.sh`. Скрипт идемпотентен, собирает Docker-образ через buildx-билдер `slovo-constrained` (docker-container) и рестартует systemd-юнит `slovo-backend.service`.
 
+**Миграции — до деплоя.** `synchronize: false`, поэтому схема БД меняется только вручную и **до** выката тега с кодом, который рассчитывает на новую схему (иначе guarded-роуты упадут). Для релиза с `token_version` сначала применяется `sql/migrations/011_add_token_version.sql` (см. [`db.md`](./db.md)), и только затем деплоится тег. Для релиза с отказом от plaintext-паролей сначала применяется `sql/migrations/012_rehash_plaintext_passwords.sql`: новый код не принимает не-bcrypt-хэши, поэтому неприменённая миграция означает невозможность входа для legacy-аккаунтов (fail-closed, но нежелательный).
+
+**Совместимость с фронтендом.** Контракт живёт в `slovo-propovedi-docs`, SDK админки (`slovo-propovedi-admin`) генерируется из него отдельно. Удаление маршрута из спецификации — breaking change: сначала регенерируется и выкатывается фронтенд, затем backend. В частности, `stream-url`-эндпоинты удалены в пользу статических public-read URL — SDK, который ещё зовёт `/sermons/{id}/stream-url`, должен быть обновлён **до** деплоя этого backend-релиза.
+
+**Лимит тела запроса.** Загрузка файла ограничена 100 MB в `FileInterceptor`, а Multer держит тело в памяти. Reverse proxy (Traefik/nginx в `slovo-propovedi-playbook`) должен пропускать body не меньше этого лимита, иначе легитимная загрузка будет отклонена на edge.
+
+**Безопасность пайплайна.** Хост-ключ VPS пиннится в `known_hosts` через `ssh-keyscan` (TOFU) на раннере, а SSH-соединения идут с `StrictHostKeyChecking=accept-new` — незнакомый хост ещё принимается, но подменённый ключ уже рвёт соединение. Значения из ref/переменных (в том числе `DEPLOY_TAG`) передаются на удалённую сторону через `env:` шага и экранируются для удалённого shell, а не вклеиваются в строку команды. Образ собирается строго из `package-lock.json` (`npm ci`), а финальная стадия `Dockerfile` работает под непривилегированным пользователем `node` (systemd-юнит может переопределить uid/gid на `slovo`).
+
+**Rate limiting — два уровня.** На edge Traefik применяет middleware `slovo-rate-limit@file` (label `traefik.http.routers.slovo-backend-api.middlewares` в `scripts/vps-deploy.sh`; сама конфигурация middleware живёт в playbook). В приложении дополнительно работает глобальный `ThrottlerGuard` с жёсткими лимитами на `/auth/login` и `/auth/refresh` (см. [`modules/auth.md`](./modules/auth.md)): эти лимиты версионируются вместе с кодом и не зависят от edge-конфига.
+
 **Граница ответственности.** `vps-deploy.sh` владеет только контейнером `slovo-backend` и своей Docker-сетью `slovo-backend`. Вся общая инфраструктура — Docker, пользователь/группа `slovo`, buildx-билдер `slovo-constrained`, Traefik (`slovo-traefik.service`), PostgreSQL / PgBouncer / MinIO и их Docker-сети (`traefik`, `slovo-postgres`, `slovo-minio`) — принадлежит внешнему `slovo-propovedi-playbook` (Ansible, отдельный репозиторий) и должна быть развёрнута заранее (`just setup-all`). Скрипт её **не создаёт**: при отсутствии любого из этих компонентов деплой падает с явной ошибкой, а не доводит сервер до полусобранного состояния.
 
 После запуска контейнера и перехода systemd-юнита в active (проверка `systemctl is-active`, а не полноценный healthcheck приложения) скрипт выполняет **пост-деплойную очистку** (строго non-fatal — сбой очистки не валит успешный деплой, ошибки логируются как `WARN`):
@@ -216,5 +248,5 @@ Unit-тесты (`npm test`) гоняет Jest через трансформ **`
 - [conventions.md](./conventions.md) — nestjs-zod, DTO, codegen, SQL-миграции
 - [db.md](./db.md) — TypeORM-конфиг и карта сущностей
 - [modules/auth.md](./modules/auth.md) — JWT, `AuthGuard`, token pair
-- [modules/minio.md](./modules/minio.md) — bucket, presign, public-read
+- [modules/minio.md](./modules/minio.md) — bucket, public-read, статические URL
 - [contracts/rest-api.md](./contracts/rest-api.md) — внешний REST-контракт и конвейер кодогенерации

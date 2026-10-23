@@ -46,7 +46,8 @@ the exceptions — they are in English).
   responses, strict `zod.strictObject` at the boundary. `strictSchemaDeclaration: true` requires every
   route parameter to be a Zod DTO.
 - **Passwords via `bcrypt`** (10 rounds). **Auth via JWT** — own `AuthGuard`, payload `{ id, email }`;
-  no Passport. No global guard — protection is per-route.
+  no Passport. No global auth guard — protection is per-route. The only global guard is
+  `ThrottlerGuard` (rate limiting; see `docs/modules/auth.md`).
 - **Parse, don't validate** at the boundary: `@nestjs/zod` rejects unknown keys; generated schemas are
   the single source of truth, extended/overridden with `.extend(...)` where needed (never rewritten).
 - **Generated code is a contract.** `src/generated/index.ts` is **never hand-edited** — only

@@ -2,8 +2,8 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
-  HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -15,6 +15,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
+import { toInternalServerError } from 'src/shared/internal-error';
 
 const BCRYPT_ROUNDS = 10;
 
@@ -48,6 +49,8 @@ export interface AllUsersResponse {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
@@ -62,11 +65,7 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findOneByUsername ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findOneByUsername', error);
     }
   }
 
@@ -77,16 +76,26 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findOneById ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findOneById', error);
     }
   }
 
-  async updatePassword(id: string, hashedPassword: string): Promise<void> {
-    await this.usersRepository.update(id, { password: hashedPassword });
+  // AuthGuard's per-request re-check: only the three fields needed to
+  // authenticate — never the password hash. Returns null for a deleted user.
+  async findByIdForAuth(
+    id: string,
+  ): Promise<Pick<User, 'id' | 'role' | 'tokenVersion'> | null> {
+    try {
+      return await this.usersRepository.findOne({
+        where: { id },
+        select: { id: true, role: true, tokenVersion: true },
+      });
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw toInternalServerError(this.logger, 'findByIdForAuth', error);
+    }
   }
 
   async findAll(page?: number, limit?: number): Promise<AllUsersResponse> {
@@ -111,11 +120,7 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findAll ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findAll', error);
     }
   }
 
@@ -130,11 +135,7 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findOne ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findOne', error);
     }
   }
 
@@ -159,11 +160,7 @@ export class UsersService {
           'Пользователь с таким email или username уже существует',
         );
       }
-      throw new HttpException(
-        'from:create ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'create', error);
     }
   }
 
@@ -230,11 +227,7 @@ export class UsersService {
           'Пользователь с таким email или username уже существует',
         );
       }
-      throw new HttpException(
-        'from:update ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'update', error);
     }
   }
 
@@ -245,16 +238,17 @@ export class UsersService {
         throw new NotFoundException('Пользователь не найден');
       }
       const hashedPassword = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-      await this.updatePassword(id, hashedPassword);
+      // One UPDATE bumps the session version with the new hash, so every
+      // access and refresh token signed before this moment stops validating.
+      await this.usersRepository.update(id, {
+        password: hashedPassword,
+        tokenVersion: () => 'token_version + 1',
+      });
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:changePassword ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'changePassword', error);
     }
   }
 
@@ -292,11 +286,7 @@ export class UsersService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:remove ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'remove', error);
     }
   }
 

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { SermonController } from './sermon.controller';
 import { SermonService } from './sermon.service';
+import { UsersService } from '../users/users.service';
 
 describe('SermonController', () => {
   let controller: SermonController;
@@ -15,6 +16,8 @@ describe('SermonController', () => {
       providers: [
         { provide: SermonService, useValue: sermonService },
         { provide: JwtService, useValue: {} },
+        // AuthGuard (referenced by @UseGuards) re-checks the live user.
+        { provide: UsersService, useValue: {} },
       ],
     }).compile();
 

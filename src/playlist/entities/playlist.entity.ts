@@ -1,4 +1,10 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { SectionPlaylistJoinEntity } from 'src/section/entities/section-playlist-join.entity';
 import { PlaylistSermonJoinEntity } from './playlist-sermon-join.entity';
 
@@ -15,6 +21,9 @@ export class PlaylistEntity {
 
   @Column({ name: 'artwork', type: 'varchar' })
   artwork: string;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt: Date;
 
   @OneToMany(() => SectionPlaylistJoinEntity, (join) => join.playlist, {
     cascade: true,
