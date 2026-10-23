@@ -32,4 +32,9 @@ describe('FindAllUsersQueryDto (offset pagination)', () => {
     const result = FindAllUsersQueryDto.schema.safeParse({ page: '0' });
     expect(result.success).toBe(false);
   });
+
+  it('rejects a page above the schema maximum', () => {
+    const result = FindAllUsersQueryDto.schema.safeParse({ page: '100001' });
+    expect(result.success).toBe(false);
+  });
 });

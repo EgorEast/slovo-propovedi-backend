@@ -207,6 +207,8 @@ export const accessTokenPayloadSchema = z.object({
 | `src/auth/dto/refresh-response.dto.ts` | `{ accessToken, refreshToken }` |
 | `src/auth/dto/user-response.dto.ts` | `{ id, name, username, email, role }` |
 
+> ✅ `SignInRequestDto` ограничен **только по максимуму**: `username` ≤ 100, `password` ≤ 200. `minLength` на пароль при входе **не ставится** — legacy-аккаунты с короткими/plaintext-паролями должны сохранять возможность входа; потолок защищает bcrypt от хеширования гигантских строк. Создание пользователя и смена пароля, наоборот, требуют минимум 8 символов (см. [`users.md`](./users.md#политика-паролей-и-размеры-полей)).
+
 ## Denylist-сущность `RevokedRefreshToken`
 
 `src/auth/entities/revoked-refresh-token.entity.ts`, таблица `revoked_refresh_token` (см. [`../db.md`](../db.md)). Регистрируется в `AuthModule` через `TypeOrmModule.forFeature([RevokedRefreshToken])` (рядом с существующими импортами `UsersModule` + глобальный `JwtModule`).

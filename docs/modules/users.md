@@ -75,6 +75,22 @@
 - **`toUserRole(role)`** — парсинг роли на границе сервиса: zod гарантирует `'admin' | 'moderator' | 'user'`, функция маппит строку в TS-енум `UserRole` (литеральный union не присваивается енуму напрямую).
 - **Конфликт уникальности** (`email`/`username`, PG-код `23505`) → `ConflictException` «Пользователь с таким email или username уже существует».
 
+### Политика паролей и размеры полей
+
+Ограничения заданы **только во входных схемах** спецификации (`CreateUserRequest`, `UpdateUserRequest`, `ChangePasswordRequest`, `SignInRequestDto`); ответы (`UserResponse`/`AllUsersResponse`) намеренно без ограничений — иначе legacy-строки в БД могли бы не пройти сериализацию.
+
+| Поле | Ограничение | Причина |
+|------|-------------|---------|
+| `CreateUserRequest.password` | `minLength: 8`, `maxLength: 200` | Минимальная стойкость нового пароля + потолок для CPU-затрат bcrypt и памяти |
+| `ChangePasswordRequest.password` | `minLength: 8`, `maxLength: 200` | То же; смена пароля подчиняется той же политике, что и создание |
+| `SignInRequestDto.password` | **только** `maxLength: 200`, **без** `minLength` | Legacy-пароли (короткие/plaintext до миграции) не должны блокироваться на входе; потолок защищает от хеширования гигантских строк |
+| `SignInRequestDto.username` | `maxLength: 100` | Потолок строки на публичном login-эндпоинте |
+| `Create/UpdateUserRequest.name` | `maxLength: 100` | Разумный размер имени |
+| `Create/UpdateUserRequest.username` | `maxLength: 50` | Компактный логин |
+| `Create/UpdateUserRequest.email` | `maxLength: 254` | RFC 5321 (максимальная длина адреса) |
+
+`CreateUserRequest.password` с пустой строкой или короче 8 символов → `400 Bad Request` на Zod-пайпе. `SignInRequestDto` короткий пароль (`"old"`) принимает — решение о валидности принимает `AuthService` по хэшу.
+
 ### Контракт ошибок
 
 - **Клиентские 4xx** — часть API-контракта, отдаются как есть: `404` «Пользователь не найден», `409` конфликт уникальности, `403` защита ролей/self-delete.
@@ -118,7 +134,7 @@ export class UsersModule {}
 | `src/users/dto/create-user.dto.ts` | `UsersControllerCreateBody` (`{ name, email, username, password, role? }`) |
 | `src/users/dto/update-user.dto.ts` | `UsersControllerUpdateBody` (`{ name?, email?, username?, role? }`) |
 | `src/users/dto/change-password.dto.ts` | `UsersControllerChangePasswordBody` (`{ password }`) |
-| `src/users/dto/find-all-users-query.dto.ts` | `UsersControllerFindAllQueryParams` + `.extend({ page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional() })` (findAll) |
+| `src/users/dto/find-all-users-query.dto.ts` | `UsersControllerFindAllQueryParams` + `.extend({ page: z.coerce.number().int().min(1).max(100000).optional(), limit: z.coerce.number().int().min(1).max(100).optional() })` (findAll) |
 | `src/users/dto/user-response.dto.ts` | `UsersControllerCreateResponse` (create/findOne/update) |
 | `src/users/dto/user-list-response.dto.ts` | `UsersControllerFindAllResponse` (findAll) |
 

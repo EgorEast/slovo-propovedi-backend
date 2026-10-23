@@ -315,6 +315,19 @@ describe('SermonService', () => {
         BadRequestException,
       );
     });
+
+    it('accepts up to 40 tokens', () => {
+      const search = Array.from({ length: 40 }, (_, i) => `word${i}`).join(' ');
+      expect(() => buildSearchTsQuery(search)).not.toThrow();
+    });
+
+    it('fails fast above 40 tokens instead of truncating the query', () => {
+      const search = Array.from({ length: 41 }, (_, i) => `word${i}`).join(' ');
+      expect(() => buildSearchTsQuery(search)).toThrow(
+        'Search query is too complex',
+      );
+      expect(() => buildSearchTsQuery(search)).toThrow(BadRequestException);
+    });
   });
 
   describe('buildSearchVectorExpression (single source of truth for weights)', () => {

@@ -103,6 +103,8 @@ await sectionRepository.createQueryBuilder()
 | `src/section/dto/all-sections-response.dto.ts` | findAll |
 | `src/section/dto/status-section-response.dto.ts` | reorder/update/remove |
 
+> ✅ Входные схемы `CreateSectionDto`/`UpdateSectionDto` ограничены: `title` ≤ 300, `description` ≤ 10000, `itemsRows` — целое `0..100` (в ответах ограничений нет — legacy-строки должны сериализоваться). `playlistsIds` в update — ≤ 1000 элементов; `reorder`-массивы `ids`/`playlistIds` — ≤ 1000. Полная таблица лимитов — [`../contracts/rest-api.md`](../contracts/rest-api.md).
+
 ## Связанные документы
 
 - [README.md](./README.md) — индекс модулей

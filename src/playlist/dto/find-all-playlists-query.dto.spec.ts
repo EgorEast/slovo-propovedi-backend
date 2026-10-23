@@ -35,6 +35,20 @@ describe('FindAllPlaylistsQueryDto (offset pagination)', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects a search query above the schema maximum', () => {
+    const result = FindAllPlaylistsQueryDto.schema.safeParse({
+      search: 'a'.repeat(201),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a page above the schema maximum', () => {
+    const result = FindAllPlaylistsQueryDto.schema.safeParse({
+      page: '100001',
+    });
+    expect(result.success).toBe(false);
+  });
+
   describe('sort/order direction defaults', () => {
     it('resolves sort to date and order to desc when both are absent', () => {
       const result = FindAllPlaylistsQueryDto.schema.safeParse({});

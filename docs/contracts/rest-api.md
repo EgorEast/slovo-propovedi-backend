@@ -40,6 +40,34 @@
 
 > ⚠️ **Порядок выката при удалении эндпоинтов.** Если из спецификации удалён маршрут, SDK админки (`slovo-propovedi-admin`) может продолжать его вызывать. Сначала регенерируется и обновляется фронтенд, затем деплоится backend-релиз — иначе UI получит `404`.
 
+## Ограничения входных payload'ов
+
+Все ограничения размера (строки, массивы, страницы) заданы **только на входных схемах** — request body и query/path-параметрах. **Response-схемы намеренно не ограничиваются**: в БД могут лежать legacy-строки, не проходящие новые лимиты, и `maxLength`/`maxItems` в ответе превратил бы публичное чтение в `500` при сериализации. Принцип: **граница парсит вход, но не переписывает исторические данные**.
+
+| Поле (вход) | Ограничение | Причина |
+|-------------|-------------|---------|
+| `password` (create-user, change-password) | `minLength: 8`, `maxLength: 200` | Минимальная стойкость нового пароля; потолок для bcrypt |
+| `SignInRequestDto.password` | `maxLength: 200`, **без** `minLength` | Legacy-пароли не блокируются на входе; потолок — защита от CPU-waste хеширования |
+| `SignInRequestDto.username` | `maxLength: 100` | Потолок строки на публичном login |
+| `name` | `maxLength: 100` | Разумный размер имени |
+| `username` | `maxLength: 50` | Компактный логин |
+| `email` | `maxLength: 254` | RFC 5321 |
+| `title` (sermon/playlist/section, feature-flag) | `maxLength: 300` (feature-flag — 200) | Длиннее реальных заголовков не бывает |
+| `description` (sermon/playlist/section) | `maxLength: 10000` | Long-form контент |
+| `artist` | `maxLength: 200` | Имя автора/проповедника |
+| `book` | `maxLength: 100` | Название книги/главы |
+| `artwork` | `maxLength: 2048` | URL обложки |
+| `textFileUrl`, `audioUrl` | `format: uri`, `maxLength: 2048`, `pattern: ^https?://[^/]+/files/.+$`, nullable | URL собственного хранилища: любой https?://host, но путь начинается с `/files/` (bucket). Host **не** закреплён — переживает смену `MINIO_PUBLIC_URI` |
+| `youtubeUrl` | `format: uri`, `maxLength: 2048`, nullable | Внешняя ссылка, без требования `/files/` |
+| `urls[]` (invidious replace) | `maxItems: 100`, элемент `maxLength: 2048` | Список инстансов; каждый адрес — строка |
+| `playlistsIds`, `sermonsIds`, `sectionsIds`, `ids`, `sermonIds`, `playlistIds` | `maxItems: 1000` | Потолок массовых reorder/bulk-операций |
+| `search` (sermons/playlists) | `minLength: 1`, `maxLength: 200` | Потолок входа в FTS/tsquery (дополнительно — кап 40 токенов в сервисе) |
+| `page` (sermons/playlists/users) | `minimum: 1`, `maximum: 100000` | OFFSET-пагинация: защита от гигантского `OFFSET` |
+| `limit`, `take` | максимум 100 | Уже существовало |
+| `itemsRows` (section create/update) | `integer`, `minimum: 0`, `maximum: 100` | Колонка `integer`; исключает дробные значения (было `number`) |
+
+Паттерн `audioUrl`/`textFileUrl` повторяет приёмку `MinioService.extractFileNameFromUrl`: путь обязан начинаться с сегмента `files` (bucket). Регэксп намеренно не фиксирует конкретный домен: сохранённые URL должны продолжать валидироваться после смены публичного адреса MinIO.
+
 ## Карта реализации эндпоинтов (sermons + playlists + users + files + feature-flags)
 
 Ниже — эндпоинты, реализованные в контроллерах. **Чтения контента публичны** (без аутентификации — доступны и роли `user`, и анонимам): `findAll`/`findOne` у sermons/sections/playlists и файловая выдача по имени (`GET /files/:fileName`). **Write-эндпоинты** (`POST|PATCH|DELETE` контента), `GET /files` (инвентарь хранилища), orphans-роуты (`GET /files/orphans`, `POST /files/orphans/cleanup`) и `DELETE /files/:fileName` используют `AuthGuard` + `RolesGuard` (`src/auth/guard/roles.guard.ts`) с `@Roles(...)` — доступ только admin/moderator. **У users — все 6 эндпоинтов под `RolesGuard` (admin-only, нет публичных чтений).** **У feature-flags управление — admin-only, а `GET /feature-flags/me` — с опциональной аутентификацией (`OptionalAuthGuard`)**: валидный токен → эффективные флаги пользователя; без токена — глобальные состояния (`200`); невалидный/просроченный токен → `401` (клиент обновит токен и повторит запрос). Методы контроллера — из `src/sermon/sermon.controller.ts`, `src/playlist/playlist.controller.ts`, `src/section/section.controller.ts`, `src/users/users.controller.ts`, `src/invidious-instances/invidious-instances.controller.ts`, `src/feature-flags/feature-flags.controller.ts`, `src/app.controller.ts`; методы сервиса — см. модульные документы.

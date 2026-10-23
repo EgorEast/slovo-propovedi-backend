@@ -114,12 +114,23 @@ const buildRankExpression = (): string =>
 // (благода → благодать). The result is safe to hand to to_tsquery — it
 // contains no tsquery syntax characters by construction. Input with no word
 // characters at all (e.g. "&&&") fails fast.
+// Sanitized tokens are ANDed into one tsquery; each token becomes a lexeme
+// lookup, so an unbounded token count is CPU amplification even when the raw
+// string is short (e.g. 200 one-character words). The spec bounds the input to
+// 200 characters; this cap bounds pathological many-token queries on top of
+// that. Rejecting (not truncating) keeps the parsed query faithful to what the
+// caller asked for — a silently truncated query would return misleading hits.
+const SEARCH_MAX_TOKENS = 40;
+
 const buildSearchTsQuery = (search: string): string => {
   const tokens = search.match(/[\p{L}\p{N}]+/gu) ?? [];
   if (!tokens.length) {
     throw new BadRequestException(
       'search must contain at least one word character',
     );
+  }
+  if (tokens.length > SEARCH_MAX_TOKENS) {
+    throw new BadRequestException('Search query is too complex');
   }
   return tokens.map((token) => `${token}:*`).join(' & ');
 };

@@ -96,9 +96,12 @@
 `buildSearchTsQuery(search)` — **чистая функция на границе**, одна для обоих путей:
 
 ```ts
+const SEARCH_MAX_TOKENS = 40;
+
 const buildSearchTsQuery = (search: string): string => {
   const tokens = search.match(/[\p{L}\p{N}]+/gu) ?? [];
   if (!tokens.length) throw new BadRequestException('search must contain at least one word character');
+  if (tokens.length > SEARCH_MAX_TOKENS) throw new BadRequestException('Search query is too complex');
   return tokens.map((token) => `${token}:*`).join(' & ');
 };
 ```
@@ -106,6 +109,7 @@ const buildSearchTsQuery = (search: string): string => {
 - Оставляет только «словные» символы (буквы/цифры, включая кириллицу) — синтаксис tsquery (`&`, `|`, `!`, `(`, `)`, `:`, `*`, `<`, `>`) в SQL не проходит.
 - Каждый токен получает `:*` (частичное слово) и соединяется `&` (AND, порядок слов не важен).
 - Пустой результат после санитизации (`"&&&"`) → `BadRequestException` (fail fast).
+- **Потолок токенов — defense-in-depth.** Спека ограничивает `search` 200 символами (`maxLength`), но 200 символов могут дать ~100 односимвольных слов; каждое слово — отдельная лексемная проверка в `to_tsquery`, то есть CPU-амплификация. Больше 40 санитизированных токенов → `400 Bad Request` `Search query is too complex`. Запрос **не усекается** молча: усечённый tsquery вернул бы не те совпадения, поэтому fail fast.
 
 ### Условие и ранжирование (общие для обоих путей)
 
@@ -181,11 +185,13 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 |------|-------|
 | `src/sermon/dto/create-sermon.dto.ts` | `SermonControllerCreateBody` + `.superRefine(...)` — cross-field правило «глава-диапазон» |
 | `src/sermon/dto/update-sermon.dto.ts` | `SermonControllerUpdateBody` + `.superRefine(...)` — то же правило |
-| `src/sermon/dto/find-all-sermons-query.dto.ts` | extends query + `.extend({ take: z.coerce.number().int().min(1).max(100).optional(), search: z.string().trim().min(1).optional(), cursor: z.string().min(1).optional(), page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional(), sort: z.enum(['date','title','artist','playlist']).optional(), order: z.enum(['asc','desc']).optional() })` + `.superRefine(...)` — валидный uuid-курсор без search + взаимоисключение `page`/`limit` с `take`/`cursor` + взаимоисключение `sort`/`order` с `take`/`cursor` + `.transform(...)` — резолв направленных дефолтов `sort`/`order` |
+| `src/sermon/dto/find-all-sermons-query.dto.ts` | extends query + `.extend({ take: z.coerce.number().int().min(1).max(100).optional(), search: z.string().trim().min(1).max(200).optional(), cursor: z.string().min(1).optional(), page: z.coerce.number().int().min(1).max(100000).optional(), limit: z.coerce.number().int().min(1).max(100).optional(), sort: z.enum(['date','title','artist','playlist']).optional(), order: z.enum(['asc','desc']).optional() })` + `.superRefine(...)` — валидный uuid-курсор без search + взаимоисключение `page`/`limit` с `take`/`cursor` + взаимоисключение `sort`/`order` с `take`/`cursor` + `.transform(...)` — резолв направленных дефолтов `sort`/`order` |
 | `src/sermon/dto/sermon-response.dto.ts` | create/findOne |
 | `src/sermon/dto/all-sermons-response.dto.ts` | findAll |
 | `src/sermon/dto/distinct-values-response.dto.ts` | distinct-values |
 | `src/sermon/dto/status-sermon-response.dto.ts` | update/remove |
+
+> ✅ Входные схемы `create`/`update` ограничены: `title` ≤ 300, `description` ≤ 10000, `artist` ≤ 200, `book` ≤ 100, `artwork` ≤ 2048, `playlistsIds` ≤ 1000. `textFileUrl`/`audioUrl` — `format: uri`, ≤ 2048 и путь начинается с `/files/` (любой host; nullable сохранён), `youtubeUrl` — просто URL ≤ 2048. Ответы ограничений не несут (legacy-строки должны сериализоваться). Полная таблица — [`../contracts/rest-api.md`](../contracts/rest-api.md).
 
 > ✅ **Cross-field правило «глава-диапазон»** (OpenAPI 0.13.0): `chapter` — `integer | [integer, integer] | null`; `verse` — `integer | [integer, integer] | (integer | [integer, integer])[] | null` (список разрозненных отрезков, например `[[9,18],20]`). Диапазон глав (`chapter: [3, 4]`) обязан сочетаться с диапазоном стихов (`verse: [16, 2]`) или отсутствием стиха (`verse: null`) — одиночный стих (`verse: 16`) и список отрезков (`verse: [[9,18],20]`) не могут быть привязаны к диапазону глав (отрезки имеют смысл только внутри одной главы). Оба DTO (`create`/`update`) навешивают `.superRefine(...)` на сгенерированную схему: `Array.isArray(chapter) && verse !== undefined && verse !== null && !isVerseRange(verse)` → ошибка `'verse must be a two-integer range or null when chapter is a range'` по пути `verse`. `chapter`/`verse` — **необязательные** ключи (book-only ссылка валидна): отсутствующий ключ в `create` нормализуется в `null` на границе сервиса, в `update` — означает «не менять поле». Правило продублировано в сервисе: `update()` проверяет **эффективные** значения (присутствующий ключ, иначе сохранённое) — дыра «cross-request» (PATCH меняет стих, не трогая главу) закрыта на сервисном уровне. **Неоднозначность на проводе:** массив из ровно двух целых чисел всегда трактуется как диапазон — список отрезков из двух одиночных стихов неотличим от диапазона, поэтому клиенты оборачивают одиночные стихи как `[n,n]` (`[[9,9],[20,20]]`). Сгенерированная схема не переписывается — правило добавляется поверх (см. [`../validation-pipeline.md`](../validation-pipeline.md)).
 

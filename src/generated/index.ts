@@ -126,11 +126,25 @@ export const AppControllerRemoveFileResponse = zod.strictObject({
 /**
  * @summary Создать раздел
  */
+export const sectionControllerCreateBodyTitleMax = 300;
+
+export const sectionControllerCreateBodyDescriptionMax = 10000;
+
+export const sectionControllerCreateBodyItemsRowsMin = 0;
+export const sectionControllerCreateBodyItemsRowsMax = 100;
+
 export const SectionControllerCreateBody = zod.strictObject({
-  title: zod.string(),
-  description: zod.string().nullable(),
+  title: zod.string().max(sectionControllerCreateBodyTitleMax),
+  description: zod
+    .string()
+    .max(sectionControllerCreateBodyDescriptionMax)
+    .nullable(),
   itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
-  itemsRows: zod.number().nullable(),
+  itemsRows: zod
+    .int()
+    .min(sectionControllerCreateBodyItemsRowsMin)
+    .max(sectionControllerCreateBodyItemsRowsMax)
+    .nullable(),
   transform: zod.enum(['high', 'middle', 'short']),
   isDescriptionTitleOnSlideLarge: zod.boolean().optional(),
   whereIsSlideTitleLocated: zod
@@ -386,8 +400,10 @@ export const SectionControllerFindAllResponse = zod.strictObject({
  * Принимает список id разделов в новом порядке и обновляет позиции
  * @summary Изменить порядок разделов
  */
+export const reorderSectionsBodyIdsMax = 1000;
+
 export const ReorderSectionsBody = zod.strictObject({
-  ids: zod.array(zod.uuid()),
+  ids: zod.array(zod.uuid()).max(reorderSectionsBodyIdsMax),
 });
 
 export const ReorderSectionsResponse = zod.strictObject({
@@ -522,12 +538,30 @@ export const SectionControllerUpdateParams = zod.strictObject({
   id: zod.uuid(),
 });
 
+export const sectionControllerUpdateBodyTitleMax = 300;
+
+export const sectionControllerUpdateBodyDescriptionMax = 10000;
+
+export const sectionControllerUpdateBodyPlaylistsIdsMax = 1000;
+
+export const sectionControllerUpdateBodyItemsRowsMin = 0;
+export const sectionControllerUpdateBodyItemsRowsMax = 100;
+
 export const SectionControllerUpdateBody = zod.strictObject({
-  title: zod.string(),
-  description: zod.string().nullable(),
-  playlistsIds: zod.array(zod.string()),
+  title: zod.string().max(sectionControllerUpdateBodyTitleMax),
+  description: zod
+    .string()
+    .max(sectionControllerUpdateBodyDescriptionMax)
+    .nullable(),
+  playlistsIds: zod
+    .array(zod.string())
+    .max(sectionControllerUpdateBodyPlaylistsIdsMax),
   itemsSize: zod.enum(['small', 'middle', 'large', 'xLarge']),
-  itemsRows: zod.number().nullable(),
+  itemsRows: zod
+    .int()
+    .min(sectionControllerUpdateBodyItemsRowsMin)
+    .max(sectionControllerUpdateBodyItemsRowsMax)
+    .nullable(),
   transform: zod.enum(['high', 'middle', 'short']),
   isDescriptionTitleOnSlideLarge: zod.boolean(),
   whereIsSlideTitleLocated: zod
@@ -671,8 +705,12 @@ export const ReorderPlaylistsInSectionParams = zod.strictObject({
   id: zod.uuid(),
 });
 
+export const reorderPlaylistsInSectionBodyPlaylistIdsMax = 1000;
+
 export const ReorderPlaylistsInSectionBody = zod.strictObject({
-  playlistIds: zod.array(zod.uuid()),
+  playlistIds: zod
+    .array(zod.uuid())
+    .max(reorderPlaylistsInSectionBodyPlaylistIdsMax),
 });
 
 export const ReorderPlaylistsInSectionResponse = zod.strictObject({
@@ -682,12 +720,31 @@ export const ReorderPlaylistsInSectionResponse = zod.strictObject({
 /**
  * @summary Создать плейлист
  */
+export const playlistControllerCreateBodyTitleMax = 300;
+
+export const playlistControllerCreateBodyDescriptionMax = 10000;
+
+export const playlistControllerCreateBodyArtworkMax = 2048;
+
+export const playlistControllerCreateBodySermonsIdsMax = 1000;
+
+export const playlistControllerCreateBodySectionsIdsMax = 1000;
+
 export const PlaylistControllerCreateBody = zod.strictObject({
-  title: zod.string(),
-  description: zod.string().nullable(),
-  artwork: zod.string(),
-  sermonsIds: zod.array(zod.string()).optional(),
-  sectionsIds: zod.array(zod.string()).optional(),
+  title: zod.string().max(playlistControllerCreateBodyTitleMax),
+  description: zod
+    .string()
+    .max(playlistControllerCreateBodyDescriptionMax)
+    .nullable(),
+  artwork: zod.string().max(playlistControllerCreateBodyArtworkMax),
+  sermonsIds: zod
+    .array(zod.string())
+    .max(playlistControllerCreateBodySermonsIdsMax)
+    .optional(),
+  sectionsIds: zod
+    .array(zod.string())
+    .max(playlistControllerCreateBodySectionsIdsMax)
+    .optional(),
 });
 
 export const playlistControllerCreateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
@@ -883,6 +940,9 @@ export const PlaylistControllerCreateResponse = zod.strictObject({
 /**
  * @summary Получить все плейлисты
  */
+export const playlistControllerFindAllQuerySearchMax = 200;
+
+export const playlistControllerFindAllQueryPageMax = 100000;
 
 export const playlistControllerFindAllQueryLimitMax = 100;
 
@@ -893,11 +953,13 @@ export const PlaylistControllerFindAllQueryParams = zod.strictObject({
   search: zod
     .string()
     .min(1)
+    .max(playlistControllerFindAllQuerySearchMax)
     .optional()
     .describe('Поисковый запрос по названию и описанию'),
   page: zod
     .int()
     .min(1)
+    .max(playlistControllerFindAllQueryPageMax)
     .optional()
     .describe('Номер страницы для оффсетной пагинации'),
   limit: zod
@@ -1329,12 +1391,30 @@ export const PlaylistControllerUpdateParams = zod.strictObject({
   id: zod.uuid(),
 });
 
+export const playlistControllerUpdateBodyTitleMax = 300;
+
+export const playlistControllerUpdateBodyDescriptionMax = 10000;
+
+export const playlistControllerUpdateBodyArtworkMax = 2048;
+
+export const playlistControllerUpdateBodySermonsIdsMax = 1000;
+
+export const playlistControllerUpdateBodySectionsIdsMax = 1000;
+
 export const PlaylistControllerUpdateBody = zod.strictObject({
-  title: zod.string(),
-  description: zod.string().nullable(),
-  artwork: zod.string(),
-  sermonsIds: zod.array(zod.string()),
-  sectionsIds: zod.array(zod.string()).optional(),
+  title: zod.string().max(playlistControllerUpdateBodyTitleMax),
+  description: zod
+    .string()
+    .max(playlistControllerUpdateBodyDescriptionMax)
+    .nullable(),
+  artwork: zod.string().max(playlistControllerUpdateBodyArtworkMax),
+  sermonsIds: zod
+    .array(zod.string())
+    .max(playlistControllerUpdateBodySermonsIdsMax),
+  sectionsIds: zod
+    .array(zod.string())
+    .max(playlistControllerUpdateBodySectionsIdsMax)
+    .optional(),
 });
 
 export const playlistControllerUpdateResponseSectionsItemIsDescriptionTitleOnSlideLargeDefault = false;
@@ -1546,8 +1626,12 @@ export const ReorderSermonsInPlaylistParams = zod.strictObject({
   id: zod.uuid(),
 });
 
+export const reorderSermonsInPlaylistBodySermonIdsMax = 1000;
+
 export const ReorderSermonsInPlaylistBody = zod.strictObject({
-  sermonIds: zod.array(zod.uuid()),
+  sermonIds: zod
+    .array(zod.uuid())
+    .max(reorderSermonsInPlaylistBodySermonIdsMax),
 });
 
 export const ReorderSermonsInPlaylistResponse = zod.strictObject({
@@ -1557,6 +1641,28 @@ export const ReorderSermonsInPlaylistResponse = zod.strictObject({
 /**
  * @summary Создать новую проповедь
  */
+export const sermonControllerCreateBodyTitleMax = 300;
+
+export const sermonControllerCreateBodyDescriptionMax = 10000;
+
+export const sermonControllerCreateBodyTextFileUrlMax = 2048;
+
+export const sermonControllerCreateBodyTextFileUrlRegExp = new RegExp(
+  '^https?://[^/]+/files/.+$',
+);
+export const sermonControllerCreateBodyAudioUrlMax = 2048;
+
+export const sermonControllerCreateBodyAudioUrlRegExp = new RegExp(
+  '^https?://[^/]+/files/.+$',
+);
+export const sermonControllerCreateBodyYoutubeUrlMax = 2048;
+
+export const sermonControllerCreateBodyArtistMax = 200;
+
+export const sermonControllerCreateBodyArtworkMax = 2048;
+
+export const sermonControllerCreateBodyBookMax = 100;
+
 export const sermonControllerCreateBodyChapterTwoMin = 2;
 export const sermonControllerCreateBodyChapterTwoMax = 2;
 
@@ -1566,15 +1672,28 @@ export const sermonControllerCreateBodyVerseTwoMax = 2;
 export const sermonControllerCreateBodyVerseThreeItemTwoMin = 2;
 export const sermonControllerCreateBodyVerseThreeItemTwoMax = 2;
 
+export const sermonControllerCreateBodyPlaylistsIdsMax = 1000;
+
 export const SermonControllerCreateBody = zod.strictObject({
-  title: zod.string(),
-  description: zod.string().nullable(),
-  textFileUrl: zod.string().nullable(),
-  audioUrl: zod.string().nullable(),
-  youtubeUrl: zod.string().nullable(),
-  artist: zod.string(),
-  artwork: zod.string(),
-  book: zod.string().nullable(),
+  title: zod.string().max(sermonControllerCreateBodyTitleMax),
+  description: zod
+    .string()
+    .max(sermonControllerCreateBodyDescriptionMax)
+    .nullable(),
+  textFileUrl: zod
+    .url()
+    .max(sermonControllerCreateBodyTextFileUrlMax)
+    .regex(sermonControllerCreateBodyTextFileUrlRegExp)
+    .nullable(),
+  audioUrl: zod
+    .url()
+    .max(sermonControllerCreateBodyAudioUrlMax)
+    .regex(sermonControllerCreateBodyAudioUrlRegExp)
+    .nullable(),
+  youtubeUrl: zod.url().max(sermonControllerCreateBodyYoutubeUrlMax).nullable(),
+  artist: zod.string().max(sermonControllerCreateBodyArtistMax),
+  artwork: zod.string().max(sermonControllerCreateBodyArtworkMax),
+  book: zod.string().max(sermonControllerCreateBodyBookMax).nullable(),
   chapter: zod
     .union([
       zod.int(),
@@ -1609,7 +1728,10 @@ export const SermonControllerCreateBody = zod.strictObject({
     .describe(
       'Стих или стихи проповеди. Массив из двух целых чисел трактуется как диапазон от–до; массив, содержащий кортежи или смесь целых и кортежей, трактуется как список разрозненных отрезков (например [9,18] — диапазон, [[9,18],20] — отрезок 9–18 и стих 20).',
     ),
-  playlistsIds: zod.array(zod.string()).optional(),
+  playlistsIds: zod
+    .array(zod.string())
+    .max(sermonControllerCreateBodyPlaylistsIdsMax)
+    .optional(),
 });
 
 export const sermonControllerCreateResponseChapterTwoMin = 2;
@@ -1868,6 +1990,10 @@ export const SermonControllerCreateResponse = zod.strictObject({
  */
 export const sermonControllerFindAllQueryTakeMax = 100;
 
+export const sermonControllerFindAllQuerySearchMax = 200;
+
+export const sermonControllerFindAllQueryPageMax = 100000;
+
 export const sermonControllerFindAllQueryLimitMax = 100;
 
 export const sermonControllerFindAllQuerySortDefault = `date`;
@@ -1879,11 +2005,13 @@ export const SermonControllerFindAllQueryParams = zod.strictObject({
   search: zod
     .string()
     .min(1)
+    .max(sermonControllerFindAllQuerySearchMax)
     .optional()
     .describe('Поисковый запрос по названию, проповеднику, книге и описанию'),
   page: zod
     .int()
     .min(1)
+    .max(sermonControllerFindAllQueryPageMax)
     .optional()
     .describe(
       'Номер страницы для оффсетной пагинации; взаимоисключителен с take и cursor (одновременное использование → 400)',
@@ -2446,6 +2574,28 @@ export const SermonControllerUpdateParams = zod.strictObject({
   id: zod.uuid(),
 });
 
+export const sermonControllerUpdateBodyTitleMax = 300;
+
+export const sermonControllerUpdateBodyDescriptionMax = 10000;
+
+export const sermonControllerUpdateBodyTextFileUrlMax = 2048;
+
+export const sermonControllerUpdateBodyTextFileUrlRegExp = new RegExp(
+  '^https?://[^/]+/files/.+$',
+);
+export const sermonControllerUpdateBodyAudioUrlMax = 2048;
+
+export const sermonControllerUpdateBodyAudioUrlRegExp = new RegExp(
+  '^https?://[^/]+/files/.+$',
+);
+export const sermonControllerUpdateBodyYoutubeUrlMax = 2048;
+
+export const sermonControllerUpdateBodyArtistMax = 200;
+
+export const sermonControllerUpdateBodyArtworkMax = 2048;
+
+export const sermonControllerUpdateBodyBookMax = 100;
+
 export const sermonControllerUpdateBodyChapterTwoMin = 2;
 export const sermonControllerUpdateBodyChapterTwoMax = 2;
 
@@ -2455,15 +2605,28 @@ export const sermonControllerUpdateBodyVerseTwoMax = 2;
 export const sermonControllerUpdateBodyVerseThreeItemTwoMin = 2;
 export const sermonControllerUpdateBodyVerseThreeItemTwoMax = 2;
 
+export const sermonControllerUpdateBodyPlaylistsIdsMax = 1000;
+
 export const SermonControllerUpdateBody = zod.strictObject({
-  title: zod.string(),
-  description: zod.string().nullable(),
-  textFileUrl: zod.string().nullable(),
-  audioUrl: zod.string().nullable(),
-  youtubeUrl: zod.string().nullable(),
-  artist: zod.string(),
-  artwork: zod.string(),
-  book: zod.string().nullable(),
+  title: zod.string().max(sermonControllerUpdateBodyTitleMax),
+  description: zod
+    .string()
+    .max(sermonControllerUpdateBodyDescriptionMax)
+    .nullable(),
+  textFileUrl: zod
+    .url()
+    .max(sermonControllerUpdateBodyTextFileUrlMax)
+    .regex(sermonControllerUpdateBodyTextFileUrlRegExp)
+    .nullable(),
+  audioUrl: zod
+    .url()
+    .max(sermonControllerUpdateBodyAudioUrlMax)
+    .regex(sermonControllerUpdateBodyAudioUrlRegExp)
+    .nullable(),
+  youtubeUrl: zod.url().max(sermonControllerUpdateBodyYoutubeUrlMax).nullable(),
+  artist: zod.string().max(sermonControllerUpdateBodyArtistMax),
+  artwork: zod.string().max(sermonControllerUpdateBodyArtworkMax),
+  book: zod.string().max(sermonControllerUpdateBodyBookMax).nullable(),
   chapter: zod
     .union([
       zod.int(),
@@ -2498,7 +2661,9 @@ export const SermonControllerUpdateBody = zod.strictObject({
     .describe(
       'Стих или стихи проповеди. Массив из двух целых чисел трактуется как диапазон от–до; массив, содержащий кортежи или смесь целых и кортежей, трактуется как список разрозненных отрезков (например [9,18] — диапазон, [[9,18],20] — отрезок 9–18 и стих 20).',
     ),
-  playlistsIds: zod.array(zod.string()),
+  playlistsIds: zod
+    .array(zod.string())
+    .max(sermonControllerUpdateBodyPlaylistsIdsMax),
 });
 
 export const SermonControllerUpdateResponse = zod.strictObject({
@@ -2520,9 +2685,16 @@ export const SermonControllerRemoveResponse = zod.strictObject({
  * Возвращает JWT токен для дальнейших запросов
  * @summary Вход в систему
  */
+export const authControllerSignInBodyUsernameMax = 100;
+
+export const authControllerSignInBodyPasswordMax = 200;
+
 export const AuthControllerSignInBody = zod.strictObject({
-  username: zod.string().describe('Имя пользователя для входа'),
-  password: zod.string(),
+  username: zod
+    .string()
+    .max(authControllerSignInBodyUsernameMax)
+    .describe('Имя пользователя для входа'),
+  password: zod.string().max(authControllerSignInBodyPasswordMax),
 });
 
 export const AuthControllerSignInResponse = zod.strictObject({
@@ -2575,12 +2747,15 @@ export const AuthControllerGetProfileResponse = zod.strictObject({
     .describe('Роль пользователя в системе'),
 });
 
+export const usersControllerFindAllQueryPageMax = 100000;
+
 export const usersControllerFindAllQueryLimitMax = 100;
 
 export const UsersControllerFindAllQueryParams = zod.strictObject({
   page: zod
     .int()
     .min(1)
+    .max(usersControllerFindAllQueryPageMax)
     .optional()
     .describe('Номер страницы для оффсетной пагинации'),
   limit: zod
@@ -2608,11 +2783,23 @@ export const UsersControllerFindAllResponse = zod.strictObject({
   count: zod.int(),
 });
 
+export const usersControllerCreateBodyNameMax = 100;
+
+export const usersControllerCreateBodyEmailMax = 254;
+
+export const usersControllerCreateBodyUsernameMax = 50;
+
+export const usersControllerCreateBodyPasswordMin = 8;
+export const usersControllerCreateBodyPasswordMax = 200;
+
 export const UsersControllerCreateBody = zod.strictObject({
-  name: zod.string(),
-  email: zod.string(),
-  username: zod.string(),
-  password: zod.string(),
+  name: zod.string().max(usersControllerCreateBodyNameMax),
+  email: zod.string().max(usersControllerCreateBodyEmailMax),
+  username: zod.string().max(usersControllerCreateBodyUsernameMax),
+  password: zod
+    .string()
+    .min(usersControllerCreateBodyPasswordMin)
+    .max(usersControllerCreateBodyPasswordMax),
   role: zod
     .enum(['admin', 'moderator', 'user'])
     .optional()
@@ -2647,10 +2834,16 @@ export const UsersControllerUpdateParams = zod.strictObject({
   id: zod.uuid(),
 });
 
+export const usersControllerUpdateBodyNameMax = 100;
+
+export const usersControllerUpdateBodyEmailMax = 254;
+
+export const usersControllerUpdateBodyUsernameMax = 50;
+
 export const UsersControllerUpdateBody = zod.strictObject({
-  name: zod.string().optional(),
-  email: zod.string().optional(),
-  username: zod.string().optional(),
+  name: zod.string().max(usersControllerUpdateBodyNameMax).optional(),
+  email: zod.string().max(usersControllerUpdateBodyEmailMax).optional(),
+  username: zod.string().max(usersControllerUpdateBodyUsernameMax).optional(),
   role: zod
     .enum(['admin', 'moderator', 'user'])
     .optional()
@@ -2677,8 +2870,14 @@ export const UsersControllerChangePasswordParams = zod.strictObject({
   id: zod.uuid(),
 });
 
+export const usersControllerChangePasswordBodyPasswordMin = 8;
+export const usersControllerChangePasswordBodyPasswordMax = 200;
+
 export const UsersControllerChangePasswordBody = zod.strictObject({
-  password: zod.string(),
+  password: zod
+    .string()
+    .min(usersControllerChangePasswordBodyPasswordMin)
+    .max(usersControllerChangePasswordBodyPasswordMax),
 });
 
 export const UsersControllerChangePasswordResponse = zod.void();
@@ -2701,9 +2900,14 @@ export const InvidiousInstancesControllerFindAllResponse = zod.array(
  * Полностью заменяет сохранённый список: отсутствующие в запросе адреса удаляются, новые добавляются в порядке массива. Дубликаты запрещены, каждый адрес должен начинаться с https://. Доступно только администраторам.
  * @summary Заменить список Invidious-инстансов (полная замена)
  */
+export const invidiousInstancesControllerReplaceBodyUrlsItemMax = 2048;
+
+export const invidiousInstancesControllerReplaceBodyUrlsMax = 100;
+
 export const InvidiousInstancesControllerReplaceBody = zod.strictObject({
   urls: zod
-    .array(zod.string())
+    .array(zod.string().max(invidiousInstancesControllerReplaceBodyUrlsItemMax))
+    .max(invidiousInstancesControllerReplaceBodyUrlsMax)
     .describe(
       'Полные https-адреса инстансов; порядок соответствует порядку в UI, дубликаты запрещены',
     ),
@@ -2761,16 +2965,20 @@ export const FeatureFlagsControllerFindAllResponse = zod.strictObject({
  * Создаёт флаг в выключенном состоянии (enabled=false). Ключ — lowercase kebab-case (^[a-z][a-z0-9-]*$), уникален. Доступно только администраторам.
  * @summary Создать фича-флаг
  */
+export const featureFlagsControllerCreateBodyKeyMax = 100;
+
 export const featureFlagsControllerCreateBodyKeyRegExp = new RegExp(
   '^[a-z][a-z0-9-]*$',
 );
+export const featureFlagsControllerCreateBodyTitleMax = 200;
 
 export const FeatureFlagsControllerCreateBody = zod.strictObject({
   key: zod
     .string()
+    .max(featureFlagsControllerCreateBodyKeyMax)
     .regex(featureFlagsControllerCreateBodyKeyRegExp)
     .describe('Уникальный ключ флага (lowercase kebab-case)'),
-  title: zod.string().min(1),
+  title: zod.string().min(1).max(featureFlagsControllerCreateBodyTitleMax),
 });
 
 export const FeatureFlagsControllerCreateResponse = zod.strictObject({
@@ -2792,13 +3000,24 @@ export const FeatureFlagsControllerUpdateParams = zod.strictObject({
   id: zod.uuid(),
 });
 
+export const featureFlagsControllerUpdateBodyKeyMax = 100;
+
 export const featureFlagsControllerUpdateBodyKeyRegExp = new RegExp(
   '^[a-z][a-z0-9-]*$',
 );
+export const featureFlagsControllerUpdateBodyTitleMax = 200;
 
 export const FeatureFlagsControllerUpdateBody = zod.strictObject({
-  key: zod.string().regex(featureFlagsControllerUpdateBodyKeyRegExp).optional(),
-  title: zod.string().min(1).optional(),
+  key: zod
+    .string()
+    .max(featureFlagsControllerUpdateBodyKeyMax)
+    .regex(featureFlagsControllerUpdateBodyKeyRegExp)
+    .optional(),
+  title: zod
+    .string()
+    .min(1)
+    .max(featureFlagsControllerUpdateBodyTitleMax)
+    .optional(),
   enabled: zod.boolean().optional(),
 });
 

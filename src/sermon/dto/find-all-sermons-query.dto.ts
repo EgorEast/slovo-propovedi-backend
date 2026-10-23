@@ -1,6 +1,10 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { SermonControllerFindAllQueryParams } from '../../generated';
+import {
+  SermonControllerFindAllQueryParams,
+  sermonControllerFindAllQueryPageMax,
+  sermonControllerFindAllQuerySearchMax,
+} from '../../generated';
 import { SortOrder } from 'src/shared/sort';
 
 // Sermon list sort keys — the values documented in the spec and enforced by
@@ -26,9 +30,19 @@ export type SermonSort = 'date' | 'title' | 'artist' | 'playlist';
 // .transform below, so the service only ever sees a resolved combination.
 const FindAllSermonsQuerySchema = SermonControllerFindAllQueryParams.extend({
   take: z.coerce.number().int().min(1).max(100).optional(),
-  search: z.string().trim().min(1).optional(),
+  search: z
+    .string()
+    .trim()
+    .min(1)
+    .max(sermonControllerFindAllQuerySearchMax)
+    .optional(),
   cursor: z.string().min(1).optional(),
-  page: z.coerce.number().int().min(1).optional(),
+  page: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(sermonControllerFindAllQueryPageMax)
+    .optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
   sort: z.enum(['date', 'title', 'artist', 'playlist']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
