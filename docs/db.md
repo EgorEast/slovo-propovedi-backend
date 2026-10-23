@@ -16,7 +16,7 @@
 | `port` | `POSTGRES_PORT` (def `5432`) | в проде — `6432`; валидируется как integer |
 | `username` / `password` / `database` | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | подключение |
 | `synchronize` | `false` | DDL не идёт через пулер |
-| `installExtensions` | `false` | `CREATE EXTENSION uuid-ossp` — только в bootstrap.sql |
+| `installExtensions` | `false` | расширения не создаются рантаймом; схема и функции — из `sql/bootstrap.sql` |
 | `poolSize` | `5` | маленький клиентский пул (PgBouncer уже пулит) |
 | `entities` | `src/**/*.entity.{js,ts}` + `node_modules/nestjs-admin/**/*.entity.js` | glob-автозагрузка сущностей |
 
@@ -71,6 +71,7 @@
 | `book` | varchar | nullable |
 | `chapter` | json | nullable (`number \| number[]`) — одиночная глава или диапазон `[start, end]` |
 | `verse` | json | nullable (`number \| number[] \| (number \| number[])[]`) — стих, диапазон или список отрезков `[[9,18],20]` |
+| `created_at` | timestamptz | NOT NULL, default `now()` — дата добавления; ключ `sort=date` и keyset-курсора |
 
 Связь: `@OneToMany(() => PlaylistSermonJoinEntity, join => join.sermon, { cascade: true })` → `playlistJoins`.
 
@@ -84,6 +85,7 @@
 | `title` | varchar | NOT NULL |
 | `description` | varchar | NOT NULL |
 | `artwork` | varchar | NOT NULL |
+| `created_at` | timestamptz | NOT NULL, default `now()` — дата добавления; ключ `sort=date` |
 
 Связи: `@OneToMany → SectionPlaylistJoinEntity` (`sectionJoins`, cascade), `@OneToMany → PlaylistSermonJoinEntity` (`sermonJoins`, cascade).
 
@@ -201,6 +203,7 @@
   book               └────────────────────────────────┘
   chapter                        ▲
   verse                           │ 1:N
+  created_at                      │
                                   │
  playlist ────────────────────────┘
  ──────────────
@@ -208,6 +211,7 @@
   title
   description
   artwork
+  created_at
                                   ▲
                                   │ 1:N
   ┌─────────────────────────────────────┐
@@ -242,7 +246,7 @@
 
 | Файл | Что делает |
 |------|------------|
-| `sql/bootstrap.sql` | **свежая БД**: `CREATE EXTENSION "uuid-ossp"`, таблицы `user`, `revoked_refresh_token`, `invidious_instance`, `feature_flag` + `feature_flag_override`, `sermon`, `section`, `playlist`, join-таблицы `playlist_sermons_sermon` + `section_playlists_playlist` (суррогатный `id` PK + UNIQUE FK-пара + `position`), PK, UNIQUE (`user.email`, `user.username`, `revoked_refresh_token.token_hash`, `invidious_instance.url`, `feature_flag.key`, `feature_flag_override`(`flag_id`,`user_id`), join-пары), 5 btree-индексов на FK-колонках (включая `ix_feature_flag_override_user` на `feature_flag_override.user_id`), FK с `ON DELETE/UPDATE CASCADE` (включая `revoked_refresh_token.user_id → user(id)` и обе FK `feature_flag_override`), btree-индекс `idx_section_position` на `section.position` (глобальное упорядочивание разделов), сид флагов `read`/`study`. Исторически соответствует выходу TypeORM `synchronize` 0.3.17 (плюс hand-maintained имена констрейнтов). |
+| `sql/bootstrap.sql` | **свежая БД** (требует **PostgreSQL 18+**): таблицы `user`, `revoked_refresh_token`, `invidious_instance`, `feature_flag` + `feature_flag_override`, `sermon`, `section`, `playlist`, join-таблицы `playlist_sermons_sermon` + `section_playlists_playlist` (суррогатный `id` PK + UNIQUE FK-пара + `position`), PK, UNIQUE (`user.email`, `user.username`, `revoked_refresh_token.token_hash`, `invidious_instance.url`, `feature_flag.key`, `feature_flag_override`(`flag_id`,`user_id`), join-пары), 5 btree-индексов на FK-колонках (включая `ix_feature_flag_override_user` на `feature_flag_override.user_id`), FK с `ON DELETE/UPDATE CASCADE` (включая `revoked_refresh_token.user_id → user(id)` и обе FK `feature_flag_override`), btree-индекс `idx_section_position` на `section.position` (глобальное упорядочивание разделов), сид флагов `read`/`study`; uuid-PK default — нативный `uuidv7()` (time-ordered, без расширения `uuid-ossp`), а `sermon.created_at`/`playlist.created_at` — `timestamptz DEFAULT now() NOT NULL`. Исторически соответствует выходу TypeORM `synchronize` 0.3.17 (плюс hand-maintained имена констрейнтов). |
 | `sql/migrate-add-username.sql` | **существующие БД** (2026-08-06): `ADD COLUMN IF NOT EXISTS username`, backfill NULL→`'admin'` (совпадает с playbook-var `slovo_admin_user_username`), `SET NOT NULL`, пересоздание UNIQUE `UQ_78a916df40e02a9deb1c4b75edb`. Идемпотентен. |
 | `sql/migrations/001_add_positions.sql` | **существующие БД** (2026-08-07): `ADD COLUMN IF NOT EXISTS position` на `section`, `playlist_sermons_sermon`, `section_playlists_playlist`; конвертация join-таблиц с составного PK на суррогатный `id` (DO-блоки, идемпотентно); backfill позиций через `ROW_NUMBER()` (guard `WHERE position = 0`); индекс `idx_section_position`. Идемпотентен. |
 | `sql/migrations/002_add_user_roles.sql` | **существующие БД** (2026-08-14): `ADD COLUMN IF NOT EXISTS role` на `user`; backfill `NULL → 'admin'` (все прежние аккаунты были неявными админами); `SET DEFAULT 'user'` (least privilege для новых); `SET NOT NULL`; CHECK `user_role_check` (DO-блок, идемпотентно). Идемпотентен. |
@@ -256,6 +260,8 @@
 | `sql/migrations/010_feature_flag_override_created_at.sql` | **существующие БД** (2026-10-10): `ADD COLUMN IF NOT EXISTS created_at` (`timestamp with time zone NOT NULL DEFAULT now()`) на `feature_flag_override`. Дополняет 009: колонка нужна `GET /feature-flags/:id/overrides` (`FeatureFlagOverride.createdAt`), но была вписана правкой 009 на месте, поэтому БД, где 009 уже отработала до этого, `CREATE TABLE IF NOT EXISTS` её не получит. Идемпотентен (`ADD COLUMN IF NOT EXISTS`; на fresh-bootstrap БД — no-op). Revert: `ALTER TABLE feature_flag_override DROP COLUMN IF EXISTS created_at;`. |
 | `sql/migrations/011_add_token_version.sql` | **существующие БД** (2026-10-23): `ADD COLUMN IF NOT EXISTS token_version integer DEFAULT 0 NOT NULL` на `user` — версия сессии для отзыва access/refresh-токенов при смене пароля и немедленной проверки удалённого/пониженного пользователя. **Применять до деплоя соответствующего тега**: код читает колонку на каждом аутентифицированном запросе, а схема меняется только вручную (`synchronize: false`). Идемпотентен (на fresh-bootstrap БД — no-op). Revert: `ALTER TABLE "user" DROP COLUMN IF EXISTS token_version;`. |
 | `sql/migrations/012_rehash_plaintext_passwords.sql` | **существующие БД** (2026-10-23): `CREATE EXTENSION IF NOT EXISTS pgcrypto` + `UPDATE "user" SET password = crypt(password, gen_salt('bf', 10))` для строк, чей `password` **не** начинается с `$2a$`/`$2b$`/`$2y$` — legacy-plaintext переводится в bcrypt cost 10 без смены самих кредов. Код логина больше не имеет plaintext-ветки и отвечает `401` на не-bcrypt-хэш, поэтому **миграцию применять до деплоя тега**. Идемпотентна (bcrypt-строки не трогаются). `token_version` не меняется — сессии переживают rehash. Требует `pgcrypto` (суперпользователь или trusted extension); fallback без `pgcrypto` — заменить plaintext на неиспользуемый валидный bcrypt-хэш и принудительно сбросить пароли (инструкция в шапке файла). Revert невозможен — plaintext уничтожается. |
+| `sql/migrations/013_add_created_at.sql` | **существующие БД** (2026-10-23): `ADD COLUMN IF NOT EXISTS created_at` (`timestamp with time zone NOT NULL DEFAULT now()`) на `sermon` и `playlist` — дата добавления, ключ сортировки `sort=date` и keyset-курсора. На PostgreSQL 11+ `ADD COLUMN ... DEFAULT now() NOT NULL` — metadata-only (без перезаписи таблицы), но все существующие строки получают **один общий placeholder**; реальные даты восстанавливаются `scripts/backfill-created-at.mjs` (dry-run по умолчанию). Идемпотентен (`ADD COLUMN IF NOT EXISTS`; на fresh-bootstrap БД — no-op). **Применять до деплоя тега**: код читает `created_at` в каждом ответе sermon/playlist. Revert: `ALTER TABLE sermon DROP COLUMN IF EXISTS created_at; ALTER TABLE playlist DROP COLUMN IF EXISTS created_at;`. |
+| `sql/migrations/014_uuid_v7_defaults.sql` | **существующие БД** (2026-10-23): `ALTER COLUMN id SET DEFAULT uuidv7()` для девяти uuid-PK (все таблицы с uuid-PK вместо `uuid_generate_v4()`); UUIDv7 time-ordered — новые строки дописываются в конец btree, а id-tiebreaker в `sort=date` совпадает с порядком вставки. Требует **PostgreSQL 18+**: precheck `to_regprocedure('uuidv7()')` падает fail-fast на старом кластере (без частичных изменений). Идемпотентен (`SET DEFAULT` меняет только каталог). Revert требует расширения `uuid-ossp` + `CREATE EXTENSION` (см. шапку файла). |
 
 Команды применения (как DB-owner):
 
@@ -276,11 +282,17 @@ psql -h <host> -U <user> -d <db> -f sql/migrations/009_feature_flags.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/010_feature_flag_override_created_at.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/011_add_token_version.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/012_rehash_plaintext_passwords.sql
+psql -h <host> -U <user> -d <db> -f sql/migrations/013_add_created_at.sql
+psql -h <host> -U <user> -d <db> -f sql/migrations/014_uuid_v7_defaults.sql
 ```
 
 > ⚠️ **Миграция 011 должна быть применена к прод-БД ДО деплоя тега с этим кодом** (`synchronize: false`, код читает `token_version` на каждом аутентифицированном запросе). Без колонки все guarded-роуты будут падать с `500`.
 
 > ⚠️ **Миграция 012 — тоже до деплоя**: с нового тега не-bcrypt-пароль не проходит логин. Неприменённая миграция не ломает приложение, но legacy-пользователи не смогут войти (fail-closed) и в логе появятся `Non-bcrypt credential hash encountered`. Если `pgcrypto` включить нельзя, используйте fallback из шапки миграции (неиспользуемый bcrypt-хэш + принудительный сброс паролей).
+
+> ⚠️ **Миграция 013 — тоже до деплоя**: код сериализует `createdAt` в каждом ответе sermon/playlist; без колонки запросы упадут с `500`. После применения 013 запустите `npm run backfill-created-at` (dry-run), сверьте план и повторите с `--apply`, иначе все старые записи останутся с одинаковой датой применения миграции.
+
+> ⚠️ **Миграция 014 требует PostgreSQL 18+.** На кластере старше 18 она останавливается на precheck с явной ошибкой и ничего не меняет — это осознанный fail-fast, а не fallback на `uuid_generate_v4()`. Сначала обновите PostgreSQL, затем примените 014. Fresh-bootstrap (`sql/bootstrap.sql`) также требует PostgreSQL 18+.
 
 > ⚠️ **Нет TypeORM migration runner и нет npm-скрипта миграций.** Применение — строго ручное через `psql`. Новые изменения схемы оформлять идемпотентным SQL-файлом и синхронно отражать в `bootstrap.sql`.
 

@@ -14,7 +14,7 @@
 | [`db.md`](./db.md) | TypeORM-конфиг, карта сущностей и связей, ASCII ER-диаграмма, ручные SQL-миграции |
 | [`validation-pipeline.md`](./validation-pipeline.md) | Конвейер валидации: OpenAPI-first workflow, слои валидации (Zod-пайп / `@ZodResponse`), CI-freshness check |
 | [`debt.md`](./debt.md) | Реестр технического долга и инцидентов (срезанные углы, known-issues) |
-| [`scripts.md`](./scripts.md) | CLI-скрипты: bulk-загрузка mp3-проповедей в API (`npm run upload-sermons`), кодогенерация |
+| [`scripts.md`](./scripts.md) | CLI-скрипты: bulk-загрузка mp3-проповедей в API (`npm run upload-sermons`), бэкфилл `created_at` (`npm run backfill-created-at`), кодогенерация |
 | [`modules/README.md`](./modules/README.md) | Индекс модулей: module → endpoints → entity → doc |
 | [`modules/app.md`](./modules/app.md) | Файловое хранилище: `POST/GET /files`, orphans, `DELETE /files/:fileName` |
 | [`modules/health.md`](./modules/health.md) | `GET /health` → `{ status: 'ok' }` |
@@ -66,6 +66,7 @@
 | `orval.config.mjs` | Конфиг кодогенерации (вход — внешняя OpenAPI-спецификация) |
 | `scripts/gen-schemas.mjs` | Программный запуск Orval + prettier |
 | `scripts/upload-sermons.mjs` | Bulk-загрузка папки mp3-проповедей в API как плейлиста (см. [`scripts.md`](./scripts.md)) |
+| `scripts/backfill-created-at.mjs` | Бэкфилл `sermon.created_at`/`playlist.created_at` по mtime объектов MinIO после миграции 013 (dry-run по умолчанию; см. [`scripts.md`](./scripts.md)) |
 | `scripts/vps-deploy.sh` | Деплой на VPS: проверка playbook-инфры, сборка Docker-образа, рестарт systemd-юнита, пост-деплойная очистка (см. [`architecture.md`](./architecture.md)) |
 
 ## Связанные документы

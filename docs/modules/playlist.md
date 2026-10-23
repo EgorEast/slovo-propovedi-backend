@@ -28,6 +28,7 @@
 |------|---------|-----|------------|
 | `id` | `id` | uuid | PK |
 | `title` / `description` / `artwork` | — | varchar | NOT NULL |
+| `createdAt` | `created_at` | timestamptz | NOT NULL, default `now()` — дата добавления; ключ `sort=date`; сериализуется в ответ |
 | `sectionJoins` | relation | — | `@OneToMany → SectionPlaylistJoinEntity`, cascade |
 | `sermonJoins` | relation | — | `@OneToMany → PlaylistSermonJoinEntity`, cascade |
 
@@ -52,7 +53,7 @@
 |---------|------|----------------|
 | `page`/`limit` задан | **offset** | пагинация **родительских id** (join-свободный запрос) + отдельный дешёвый `getCount` + гидрация страницы через `WHERE id IN (...)` + восстановление порядка в памяти |
 | `search` задан (без `page`/`limit`) | **поиск** | QueryBuilder (`getManyAndCount`): `playlist.search_vector @@ tsquery`, порядок по релевантности |
-| ни то, ни другое | **полная выборка** | `findAndCount` для дефолта `date`/`desc` (поведение без изменений, кроме детерминированного порядка родителя `id DESC`); иначе — тот же QueryBuilder с сортировкой вместо `rank`-порядка |
+| ни то, ни другое | **полная выборка** | `findAndCount` для дефолта `date`/`desc` (порядок родителя `createdAt DESC, id DESC`); иначе — тот же QueryBuilder с сортировкой вместо `rank`-порядка |
 
 `limit` без `page` означает первую страницу (`page = 1`); `page` без `limit` — размер страницы по умолчанию `DEFAULT_PAGE_LIMIT = 100` (максимум схемы). У плейлистов нет keyset-режима, поэтому правило взаимоисключения (как у sermons) не нужно.
 
@@ -60,22 +61,22 @@
 
 Прежний `findAndCount`-по-join-ам пагинировал **декартово произведение** глубокого графа отношений: страница из N плейлистов могла вернуть меньше N строк (или дубликаты), как только у плейлиста появлялось несколько проповедей/разделов. Поэтому offset-путь:
 
-1. **Страница родительских id** — join-свободный запрос `SELECT playlist.id` с `ORDER BY id DESC` (при поиске — `rank DESC, id DESC`) и `skip`/`take`.
+1. **Страница родительских id** — join-свободный запрос `SELECT playlist.id` с `ORDER BY date_trunc('milliseconds', created_at) DESC, id DESC` для дефолта `date`/`desc` (при поиске — `rank DESC, id DESC`; для `title`/`section` — соответствующие ключи, см. ниже) и `skip`/`take`.
 2. **Общее число** — отдельный лёгкий `getCount` (`countPlaylists`, поисковый фильтр применён при наличии) вместо `getManyAndCount` по join-размножению; значение совпадает (оба считают distinct плейлисты).
 3. **Гидрация страницы** — существующая загрузка отношений (`PLAYLIST_RELATIONS` + `PLAYLIST_ORDER`) с `WHERE id IN (страница)`.
 4. **Восстановление порядка в памяти** — `WHERE IN` теряет порядок id-страницы, поэтому гидратированные строки переупорядочиваются по порядку id-страницы. Отсутствующая строка (нарушенный FK: id-страница видела плейлист, гидрация — нет) — fail-fast с `Error`, а не молчаливое выпадение из ответа.
 
-Без `page`/`limit` поведение прежнее, но порядок родителя в полной выборке теперь **детерминированный `id DESC`**. Это видимое изменение зафиксировано в спецификации 0.15.0.
+Без `page`/`limit` порядок родителя в полной выборке — **`createdAt DESC, id DESC`** для дефолта `date`/`desc` (детерминированный tiebreak по `id`).
 
 ### Сортировка (`sort`/`order`)
 
 `sort` ∈ {`date`, `title`, `section`}, `order` ∈ {`asc`, `desc`}. Значения по умолчанию **направленные**: `sort=date` → `order=desc`; для алфавитных сортировок (`title`/`section`) отсутствующий `order` → `asc`. Направление резолвится в DTO (`.transform`, читает **резолвленный** `sort`, поэтому отсутствующий `sort` даёт `date`/`desc`); сервис хранит то же правило (`order ?? (sort === 'date' ? 'desc' : 'asc')`) как fallback для прямых вызовов. Keyset-режима у плейлистов нет, поэтому правила взаимоисключения (как у sermons) не требуется.
 
-`ORDER BY` (tiebreak — `playlist.id DESC`):
+`ORDER BY` (tiebreak — `playlist.id DESC`; `date` усечён до миллисекунд — единая точность с sermon-keyset):
 
 | `sort` | `ORDER BY` |
 |--------|------------|
-| `date` | `playlist.id <dir>` |
+| `date` | `date_trunc('milliseconds', playlist.created_at) <dir>, playlist.id DESC` |
 | `title` | `LOWER(playlist.title) <dir>, playlist.id DESC` |
 | `section` | `LOWER(sections.title) <dir> NULLS LAST, sectionJoins.position <dir>, playlist.id DESC` |
 
