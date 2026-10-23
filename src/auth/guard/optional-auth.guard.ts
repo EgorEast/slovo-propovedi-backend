@@ -1,22 +1,18 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { UsersService } from '../../users/users.service';
 import { AuthGuard } from './auth.guard';
 
 // Authentication is optional only for a missing token: the request proceeds
 // anonymously and `request.user` stays undefined. A token that is present but
-// fails verification — invalid, expired or legacy — answers 401 instead of
-// silently downgrading the caller to anonymous, so the client can refresh the
-// token and retry. A valid Bearer token attaches `{ id, role }` to
-// `request.user`.
+// fails verification — invalid, expired, revoked or legacy — answers 401
+// instead of silently downgrading the caller to anonymous, so the client can
+// refresh the token and retry. A valid Bearer token attaches `{ id, role }`
+// to `request.user`, with the role read from the live user row.
 @Injectable()
 export class OptionalAuthGuard extends AuthGuard implements CanActivate {
-  constructor(jwtService: JwtService) {
-    super(jwtService);
+  constructor(jwtService: JwtService, usersService: UsersService) {
+    super(jwtService, usersService);
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -31,14 +27,9 @@ export class OptionalAuthGuard extends AuthGuard implements CanActivate {
     // it outside the try so it fails loud instead of silently downgrading the
     // caller to anonymous.
     const secret = this.resolveSecret();
+    const payload = await this.verifyOrThrow(token, secret);
 
-    try {
-      request['user'] = await this.verifyToken(token, secret);
-    } catch {
-      // Invalid, expired or legacy token → 401, never a silent anonymous
-      // downgrade: the client refreshes the token and retries.
-      throw new UnauthorizedException();
-    }
+    request['user'] = await this.resolveLiveUser(payload);
 
     return true;
   }

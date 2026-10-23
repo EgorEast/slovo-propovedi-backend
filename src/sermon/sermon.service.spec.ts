@@ -1,4 +1,8 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { In } from 'typeorm';
@@ -6,7 +10,9 @@ import {
   buildSearchTsQuery,
   buildSearchVectorExpression,
   decodeCompositeCursor,
+  decodeDateCursor,
   encodeCompositeCursor,
+  encodeDateCursor,
   SermonService,
 } from './sermon.service';
 import { SermonEntity } from './entities/sermon.entity';
@@ -31,6 +37,10 @@ const RANK_EXPRESSION =
 const SEARCH_CONDITION =
   "sermon.search_vector @@ to_tsquery('russian', :tsquery)";
 
+// The exact ORDER BY sort key shared by the date sort and the keyset tuple
+// comparison — truncated to the millisecond precision of the JS cursor Date.
+const DATE_ORDER_EXPRESSION = `date_trunc('milliseconds', sermon.created_at)`;
+
 // ---------------------------------------------------------------------------
 // findAll normalized-shape characterization fixture. A small closed world that
 // exercises every shape rule the deep-join hydration produced: sermons with
@@ -51,6 +61,7 @@ const SEED_SERMONS: Array<{
   book: string | null;
   chapter: number | null;
   verse: number | number[] | null;
+  createdAt: Date;
 }> = [
   {
     id: 'sermon-1',
@@ -64,6 +75,7 @@ const SEED_SERMONS: Array<{
     book: null,
     chapter: null,
     verse: null,
+    createdAt: new Date('2026-01-05T10:00:00.000Z'),
   },
   {
     id: 'sermon-2',
@@ -77,6 +89,7 @@ const SEED_SERMONS: Array<{
     book: 'Бытие',
     chapter: 1,
     verse: [1, 2],
+    createdAt: new Date('2026-01-04T10:00:00.000Z'),
   },
   {
     id: 'sermon-3',
@@ -90,6 +103,7 @@ const SEED_SERMONS: Array<{
     book: 'Исход',
     chapter: 2,
     verse: 3,
+    createdAt: new Date('2026-01-03T10:00:00.000Z'),
   },
   {
     id: 'sermon-4',
@@ -103,6 +117,7 @@ const SEED_SERMONS: Array<{
     book: null,
     chapter: null,
     verse: null,
+    createdAt: new Date('2026-01-02T10:00:00.000Z'),
   },
   {
     id: 'sermon-5',
@@ -116,6 +131,7 @@ const SEED_SERMONS: Array<{
     book: null,
     chapter: null,
     verse: null,
+    createdAt: new Date('2026-01-01T10:00:00.000Z'),
   },
 ];
 
@@ -124,19 +140,28 @@ const SEED_PLAYLISTS: Array<{
   title: string;
   description: string;
   artwork: string;
+  createdAt: Date;
 }> = [
   {
     id: 'playlist-1',
     title: 'Плейлист 1',
     description: 'Описание 1',
     artwork: 'art-1',
+    createdAt: new Date('2025-12-31T10:00:00.000Z'),
   },
-  { id: 'playlist-2', title: 'Плейлист 2', description: '', artwork: 'art-2' },
+  {
+    id: 'playlist-2',
+    title: 'Плейлист 2',
+    description: '',
+    artwork: 'art-2',
+    createdAt: new Date('2025-12-30T10:00:00.000Z'),
+  },
   {
     id: 'playlist-3',
     title: 'Плейлист 3',
     description: 'Описание 3',
     artwork: 'art-3',
+    createdAt: new Date('2025-12-29T10:00:00.000Z'),
   },
 ];
 
@@ -311,6 +336,19 @@ describe('SermonService', () => {
         BadRequestException,
       );
     });
+
+    it('accepts up to 40 tokens', () => {
+      const search = Array.from({ length: 40 }, (_, i) => `word${i}`).join(' ');
+      expect(() => buildSearchTsQuery(search)).not.toThrow();
+    });
+
+    it('fails fast above 40 tokens instead of truncating the query', () => {
+      const search = Array.from({ length: 41 }, (_, i) => `word${i}`).join(' ');
+      expect(() => buildSearchTsQuery(search)).toThrow(
+        'Search query is too complex',
+      );
+      expect(() => buildSearchTsQuery(search)).toThrow(BadRequestException);
+    });
   });
 
   describe('buildSearchVectorExpression (single source of truth for weights)', () => {
@@ -341,6 +379,42 @@ describe('SermonService', () => {
       expect(() => decodeCompositeCursor('!!!not-a-cursor!!!')).toThrow(
         BadRequestException,
       );
+    });
+  });
+
+  describe('date cursor (createdAt + id for date-ordered keyset pages)', () => {
+    it('round-trips the millisecond ISO timestamp and id', () => {
+      const createdAt = new Date('2026-10-23T12:34:56.789Z');
+      const cursor = encodeDateCursor(
+        createdAt,
+        '123e4567-e89b-12d3-a456-426614174000',
+      );
+
+      expect(decodeDateCursor(cursor)).toEqual({
+        createdAt: '2026-10-23T12:34:56.789Z',
+        id: '123e4567-e89b-12d3-a456-426614174000',
+      });
+    });
+
+    it('fails fast on a stale plain-uuid cursor', () => {
+      expect(() =>
+        decodeDateCursor('123e4567-e89b-12d3-a456-426614174000'),
+      ).toThrow(BadRequestException);
+    });
+
+    it('fails fast on garbage input', () => {
+      expect(() => decodeDateCursor('!!!not-a-cursor!!!')).toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('fails fast on a non-ISO createdAt', () => {
+      for (const createdAt of ['not-a-date', '2026-13-45T00:00:00Z']) {
+        const cursor = Buffer.from(
+          JSON.stringify({ createdAt, id: 'sermon-1' }),
+        ).toString('base64');
+        expect(() => decodeDateCursor(cursor)).toThrow(BadRequestException);
+      }
     });
   });
 
@@ -399,6 +473,78 @@ describe('SermonService', () => {
     return queryBuilder;
   }
 
+  // In-memory stand-in for the date-ordered page query: it applies the tuple
+  // predicate the service itself builds (the operator is read back from the
+  // generated SQL) and the direction captured from ORDER BY. This exercises the
+  // direction-dependent cursor logic against real fixtures instead of only
+  // asserting the SQL string.
+  function dateCursorPageBuilder(
+    rows: Array<{
+      id: string;
+      createdAt: Date;
+      playlistJoins: never[];
+    }>,
+  ) {
+    const pageBuilder = mockBuilder();
+    let direction: 'ASC' | 'DESC' = 'DESC';
+    let takeCount = rows.length;
+    const predicates: Array<{
+      sql: string;
+      params: { createdAt: string; id: string };
+    }> = [];
+
+    pageBuilder.orderBy.mockImplementation(
+      (expression: string, dir: 'ASC' | 'DESC') => {
+        if (expression === DATE_ORDER_EXPRESSION) {
+          direction = dir;
+        }
+        return pageBuilder;
+      },
+    );
+    pageBuilder.andWhere.mockImplementation(
+      (sql: string, params: { createdAt: string; id: string }) => {
+        predicates.push({ sql, params });
+        return pageBuilder;
+      },
+    );
+    pageBuilder.take.mockImplementation((count: number) => {
+      takeCount = count;
+      return pageBuilder;
+    });
+    pageBuilder.getMany.mockImplementation(async () => {
+      const compareRows = (
+        a: { id: string; createdAt: Date },
+        b: { id: string; createdAt: Date },
+      ): number => {
+        const byDate = a.createdAt.getTime() - b.createdAt.getTime();
+        if (byDate !== 0) {
+          return byDate;
+        }
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      };
+
+      const matches = rows.filter((row) =>
+        predicates.every(({ sql, params }) => {
+          const match = /\)\s*([<>])\s*\(:createdAt/.exec(sql);
+          if (!match) {
+            throw new Error(`unexpected date cursor predicate: ${sql}`);
+          }
+          const [, op] = match;
+          const byDate = row.createdAt.getTime() - Date.parse(params.createdAt);
+          const byId = row.id < params.id ? -1 : row.id > params.id ? 1 : 0;
+          const comparison = byDate !== 0 ? byDate : byId;
+          return op === '>' ? comparison > 0 : comparison < 0;
+        }),
+      );
+
+      const sign = direction === 'ASC' ? 1 : -1;
+      return [...matches]
+        .sort((a, b) => sign * compareRows(a, b))
+        .slice(0, takeCount);
+    });
+    return pageBuilder;
+  }
+
   describe('findAll', () => {
     // Wires the graph queries so a non-empty page comes back with no playlists
     // (assembleSermonGraph resolves every array to empty).
@@ -414,7 +560,7 @@ describe('SermonService', () => {
     }
 
     describe('full-fetch path (no take)', () => {
-      it('keeps id-DESC ordering and returns the count when search is absent', async () => {
+      it('keeps date-DESC ordering and returns the count when search is absent', async () => {
         const pageBuilder = mockBuilder();
         pageBuilder.getMany.mockResolvedValue([]);
         pageBuilder.getCount.mockResolvedValue(5);
@@ -422,7 +568,14 @@ describe('SermonService', () => {
 
         const result = await service.findAll();
 
-        expect(pageBuilder.orderBy).toHaveBeenCalledWith('sermon.id', 'DESC');
+        expect(pageBuilder.orderBy).toHaveBeenCalledWith(
+          DATE_ORDER_EXPRESSION,
+          'DESC',
+        );
+        expect(pageBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sermon.id',
+          'DESC',
+        );
         expect(pageBuilder.where).not.toHaveBeenCalled();
         expect(pageBuilder.addSelect).not.toHaveBeenCalled();
         expect(pageBuilder.getCount).toHaveBeenCalledTimes(1);
@@ -486,20 +639,47 @@ describe('SermonService', () => {
     });
 
     describe('keyset path (take supplied)', () => {
-      it('keeps id-DESC order, the id cursor and getMany when search is absent', async () => {
+      it('orders and paginates by the truncated created_at tuple, then builds a date cursor', async () => {
+        const sermonA = {
+          id: 'aaaaaaaa-0000-0000-0000-000000000001',
+          createdAt: new Date('2026-10-23T12:00:00.000Z'),
+          playlistJoins: [],
+        };
+        const sermonB = {
+          id: 'bbbbbbbb-0000-0000-0000-000000000002',
+          createdAt: new Date('2026-10-23T11:00:00.000Z'),
+          playlistJoins: [],
+        };
+        const sermonC = {
+          id: 'cccccccc-0000-0000-0000-000000000003',
+          createdAt: new Date('2026-10-23T10:00:00.000Z'),
+          playlistJoins: [],
+        };
         const pageBuilder = mockBuilder();
-        pageBuilder.getMany.mockResolvedValue([]);
+        // take=2 → three rows fetched; the third only proves another page exists.
+        pageBuilder.getMany.mockResolvedValue([sermonA, sermonB, sermonC]);
         sermonRepository.createQueryBuilder.mockReturnValue(pageBuilder);
         mockEmptyGraphQueries();
-        const cursor = '123e4567-e89b-12d3-a456-426614174000';
+        const cursor = encodeDateCursor(
+          new Date('2026-10-23T13:00:00.000Z'),
+          '123e4567-e89b-12d3-a456-426614174000',
+        );
 
-        await service.findAll(2, cursor);
+        const result = await service.findAll(2, cursor);
 
-        expect(pageBuilder.orderBy).toHaveBeenCalledWith('sermon.id', 'DESC');
+        expect(pageBuilder.orderBy).toHaveBeenCalledWith(
+          DATE_ORDER_EXPRESSION,
+          'DESC',
+        );
+        expect(pageBuilder.addOrderBy).toHaveBeenCalledWith(
+          'sermon.id',
+          'DESC',
+        );
         expect(pageBuilder.andWhere).toHaveBeenCalledWith(
-          'sermon.id < :cursor',
+          `(${DATE_ORDER_EXPRESSION}, sermon.id) < (:createdAt::timestamptz, :id)`,
           {
-            cursor,
+            createdAt: '2026-10-23T13:00:00.000Z',
+            id: '123e4567-e89b-12d3-a456-426614174000',
           },
         );
         expect(pageBuilder.addSelect).not.toHaveBeenCalled();
@@ -507,20 +687,90 @@ describe('SermonService', () => {
         expect(pageBuilder.getMany).toHaveBeenCalled();
         expect(pageBuilder.getRawAndEntities).not.toHaveBeenCalled();
         expect(pageBuilder.getCount).not.toHaveBeenCalled();
+        expect(result.sermons.map((s) => s.id)).toEqual([
+          sermonA.id,
+          sermonB.id,
+        ]);
+        expect(result.nextCursor).toBe(
+          encodeDateCursor(sermonB.createdAt, sermonB.id),
+        );
+      });
+
+      it('pages both directions across a shared-millisecond cursor without skipping or duplicating rows', async () => {
+        // All three rows share one millisecond, so only the id tiebreaker
+        // separates them — exactly the case where a wrong cursor operator or a
+        // lost timestamp precision would skip a row at the page boundary.
+        const sharedInstant = new Date('2026-10-23T12:00:00.000Z');
+        const sermonA = {
+          id: 'aaaaaaaa-0000-0000-0000-000000000001',
+          createdAt: sharedInstant,
+          playlistJoins: [],
+        };
+        const sermonB = {
+          id: 'bbbbbbbb-0000-0000-0000-000000000002',
+          createdAt: sharedInstant,
+          playlistJoins: [],
+        };
+        const sermonC = {
+          id: 'cccccccc-0000-0000-0000-000000000003',
+          createdAt: sharedInstant,
+          playlistJoins: [],
+        };
+        const rows = [sermonA, sermonB, sermonC];
+        mockEmptyGraphQueries();
+
+        const paginations: Array<{
+          order: 'asc' | 'desc';
+          expected: string[];
+        }> = [
+          { order: 'desc', expected: [sermonC.id, sermonB.id, sermonA.id] },
+          { order: 'asc', expected: [sermonA.id, sermonB.id, sermonC.id] },
+        ];
+
+        for (const { order, expected } of paginations) {
+          const seen: string[] = [];
+          let cursor: string | undefined;
+
+          for (let page = 0; page < rows.length; page++) {
+            sermonRepository.createQueryBuilder.mockReturnValue(
+              dateCursorPageBuilder(rows),
+            );
+            const result = await service.findAll(
+              1,
+              cursor,
+              undefined,
+              undefined,
+              undefined,
+              'date',
+              order,
+            );
+            seen.push(...result.sermons.map((sermon) => sermon.id));
+            if (!result.nextCursor) {
+              break;
+            }
+            cursor = result.nextCursor;
+          }
+
+          expect(seen).toEqual(expected);
+          expect(new Set(seen).size).toBe(rows.length);
+        }
       });
 
       it('filters by FTS, orders by relevance and builds a composite next cursor when search is present', async () => {
         const pageBuilder = mockBuilder();
         const sermonA = {
           id: 'aaaaaaaa-0000-0000-0000-000000000001',
+          createdAt: new Date('2026-10-23T12:00:00.000Z'),
           playlistJoins: [],
         };
         const sermonB = {
           id: 'bbbbbbbb-0000-0000-0000-000000000002',
+          createdAt: new Date('2026-10-23T11:00:00.000Z'),
           playlistJoins: [],
         };
         const sermonC = {
           id: 'cccccccc-0000-0000-0000-000000000003',
+          createdAt: new Date('2026-10-23T10:00:00.000Z'),
           playlistJoins: [],
         };
         pageBuilder.getRawAndEntities.mockResolvedValue({
@@ -592,10 +842,12 @@ describe('SermonService', () => {
         const pageBuilder = mockBuilder();
         const sermonA = {
           id: 'aaaaaaaa-0000-0000-0000-000000000001',
+          createdAt: new Date('2026-10-23T12:00:00.000Z'),
           playlistJoins: [],
         };
         const sermonB = {
           id: 'bbbbbbbb-0000-0000-0000-000000000002',
+          createdAt: new Date('2026-10-23T11:00:00.000Z'),
           playlistJoins: [],
         };
         pageBuilder.getRawAndEntities.mockResolvedValue({
@@ -689,8 +941,16 @@ describe('SermonService', () => {
       });
 
       it('returns the total count and a null nextCursor in offset mode', async () => {
-        const sermonA = { id: 'sermon-a', playlistJoins: [] };
-        const sermonB = { id: 'sermon-b', playlistJoins: [] };
+        const sermonA = {
+          id: 'sermon-a',
+          createdAt: new Date('2026-10-23T12:00:00.000Z'),
+          playlistJoins: [],
+        };
+        const sermonB = {
+          id: 'sermon-b',
+          createdAt: new Date('2026-10-23T11:00:00.000Z'),
+          playlistJoins: [],
+        };
         const pageBuilder = mockBuilder();
         pageBuilder.getMany.mockResolvedValue([sermonA, sermonB]);
         pageBuilder.getCount.mockResolvedValue(5);
@@ -789,7 +1049,7 @@ describe('SermonService', () => {
         );
       });
 
-      it('orders by id ASC for an explicit asc direction on the default date sort', async () => {
+      it('orders by created_at ASC then id ASC for an explicit asc direction on the default date sort', async () => {
         const pageBuilder = mockBuilder();
         pageBuilder.getCount.mockResolvedValue(5);
         sermonRepository.createQueryBuilder.mockReturnValue(pageBuilder);
@@ -804,8 +1064,11 @@ describe('SermonService', () => {
           'asc',
         );
 
-        expect(pageBuilder.orderBy).toHaveBeenCalledWith('sermon.id', 'ASC');
-        expect(pageBuilder.addOrderBy).not.toHaveBeenCalled();
+        expect(pageBuilder.orderBy).toHaveBeenCalledWith(
+          DATE_ORDER_EXPRESSION,
+          'ASC',
+        );
+        expect(pageBuilder.addOrderBy).toHaveBeenCalledWith('sermon.id', 'ASC');
       });
 
       it('orders by LOWER(playlist.title) ASC NULLS LAST, join position, then id DESC for sort=playlist (plain joins, no row multiplication)', async () => {
@@ -914,8 +1177,16 @@ describe('SermonService', () => {
       });
 
       it('pages parent ids via GROUP BY for sort=playlist, hydrates by id and re-orders in memory', async () => {
-        const sermon3 = { id: 'sermon-3', playlistJoins: [] };
-        const sermon2 = { id: 'sermon-2', playlistJoins: [] };
+        const sermon3 = {
+          id: 'sermon-3',
+          createdAt: new Date('2026-01-03T10:00:00.000Z'),
+          playlistJoins: [],
+        };
+        const sermon2 = {
+          id: 'sermon-2',
+          createdAt: new Date('2026-01-04T10:00:00.000Z'),
+          playlistJoins: [],
+        };
         const idBuilder = mockBuilder();
         idBuilder.getRawMany.mockResolvedValue([
           { id: 'sermon-3' },
@@ -992,20 +1263,20 @@ describe('SermonService', () => {
           { id: 'sermon-1', playlistJoins: [] },
         ]);
         mockEmptyGraphQueries();
+        const loggerSpy = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation(() => undefined);
 
-        await expect(
-          service.findAll(
-            undefined,
-            undefined,
-            undefined,
-            1,
-            20,
-            'playlist',
-            'asc',
-          ),
-        ).rejects.toThrow(
+        const error = await service
+          .findAll(undefined, undefined, undefined, 1, 20, 'playlist', 'asc')
+          .catch((caught) => caught);
+
+        expect(error).toBeInstanceOf(InternalServerErrorException);
+        expect(error.message).toBe('Internal server error');
+        expect(loggerSpy.mock.calls[0][0]).toContain(
           'Sermon "sermon-missing" missing from hydration query',
         );
+        loggerSpy.mockRestore();
       });
     });
   });
@@ -1112,6 +1383,7 @@ describe('SermonService', () => {
         artist: '',
         artwork: '',
         playlists: [],
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
       });
 
       await service.create({ title: 'Тест', description: null } as never);
@@ -1133,6 +1405,7 @@ describe('SermonService', () => {
         artist: '',
         artwork: '',
         playlists: [],
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
       });
 
       await service.create({ title: 'Тест', description: 'Описание' } as never);
@@ -1340,6 +1613,7 @@ describe('SermonService', () => {
         )
           .sort((a, b) => a.position - b.position)
           .map((join) => expectedNestedSermon(join.sermonId, join.position)),
+        createdAt: playlist.createdAt.toISOString(),
       };
     };
 
@@ -1362,6 +1636,7 @@ describe('SermonService', () => {
         )
           .sort((a, b) => a.position - b.position)
           .map((join) => expectedPlaylist(join.playlistId)),
+        createdAt: sermon.createdAt.toISOString(),
       };
     };
 
@@ -1563,9 +1838,18 @@ describe('SermonService', () => {
         sections: [],
       });
 
-      await expect(service.findAll()).rejects.toThrow(
+      const loggerSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+
+      const error = await service.findAll().catch((caught) => caught);
+
+      expect(error).toBeInstanceOf(InternalServerErrorException);
+      expect(error.message).toBe('Internal server error');
+      expect(loggerSpy.mock.calls[0][0]).toContain(
         'Playlist "playlist-missing" of sermon "sermon-2" not found',
       );
+      loggerSpy.mockRestore();
     });
 
     it('orders every join query by position ASC with an id ASC tiebreaker', async () => {

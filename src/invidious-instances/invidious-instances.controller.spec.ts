@@ -7,6 +7,7 @@ import { AuthGuard } from '../auth/guard/auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/user-role.enum';
+import { UsersService } from '../users/users.service';
 
 describe('InvidiousInstancesController', () => {
   let controller: InvidiousInstancesController;
@@ -21,6 +22,7 @@ describe('InvidiousInstancesController', () => {
         { provide: InvidiousInstancesService, useValue: service },
         // AuthGuard (referenced by @UseGuards) needs a JwtService to construct.
         { provide: JwtService, useValue: {} },
+        { provide: UsersService, useValue: {} },
       ],
     }).compile();
 

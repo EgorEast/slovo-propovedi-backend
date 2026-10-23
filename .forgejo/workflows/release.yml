@@ -137,8 +137,14 @@ jobs:
           MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
           MINIO_MAIN_PORT_IN: ${{ vars.MINIO_MAIN_PORT_IN }}
           MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          # The tag is forwarded to the remote shell below. Keep it in the
+          # environment (never inline `${{ github.ref_name }}` into the command)
+          # so a crafted ref name cannot inject shell syntax.
+          DEPLOY_TAG: ${{ github.ref_name }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no"
+          # Host keys are pinned by the ssh-keyscan TOFU step above; accept-new
+          # still records unknown hosts but fails on a changed (mismatched) key.
+          SSH_OPTS="-o StrictHostKeyChecking=accept-new"
           SSH_TARGET="$VPS_SSH_USER@$VPS_HOST"
 
           # Step 1: Sync source code to VPS
@@ -182,8 +188,10 @@ jobs:
           # Step 4: Run deploy script (NO secrets passed — env file already written).
           # Shared infra (Traefik, Docker, slovo user, buildx, postgres/minio) is
           # owned by the slovo-propovedi playbook; the script only verifies it.
+          # The tag is shell-quoted for the remote shell (single literal value).
+          DEPLOY_TAG_REMOTE=$(printf '%q' "$DEPLOY_TAG")
           ssh $SSH_OPTS "$SSH_TARGET" \
-            "DEPLOY_TAG='${{ github.ref_name }}' \
+            "DEPLOY_TAG=$DEPLOY_TAG_REMOTE \
              BACKEND_API_HOSTNAME='$BACKEND_API_HOSTNAME' \
              INTERNAL_PORT='$INTERNAL_PORT' \
              TRAEFIK_NETWORK='$TRAEFIK_NETWORK' \

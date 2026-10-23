@@ -127,7 +127,7 @@ await repository.createQueryBuilder()
 | Клиент | zod v4 (`variant: 'full'`) |
 | `strict` | все контексты `true` (param/query/header/body/response) |
 | Команда | `npm run gen:schemas` |
-| Реализация | `scripts/gen-schemas.mjs` — вызывает orval программно (обход бага Node 22 / orval CLI), затем prettier по выходному файлу |
+| Реализация | `scripts/gen-schemas.mjs` — вызывает orval программно (обход бага Node / orval CLI), затем prettier по выходному файлу |
 
 Правила:
 

@@ -28,4 +28,9 @@ export class User {
 
   @Column({ name: 'role', type: 'varchar', default: UserRole.User })
   role: UserRole;
+
+  // Bumped whenever the password changes; tokens signed with an older version
+  // are rejected, so a password change revokes every outstanding session.
+  @Column({ name: 'token_version', type: 'integer', default: 0 })
+  tokenVersion: number;
 }

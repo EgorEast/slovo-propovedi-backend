@@ -1,8 +1,8 @@
 import {
   BadRequestException,
   HttpException,
-  HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
@@ -22,6 +22,7 @@ import {
 import { buildSearchTsQuery, SermonService } from 'src/sermon/sermon.service';
 import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
 import { SortOrder } from 'src/shared/sort';
+import { toInternalServerError } from 'src/shared/internal-error';
 
 // TypeORM 1.0 dropped the string-array form of `relations`; the object form
 // below encodes the same nested relation graph.
@@ -36,9 +37,11 @@ const PLAYLIST_RELATIONS = {
 
 // DB-level ordering for every relation path the normalize function exposes —
 // sermon and section joins are both ordered by position, so no in-memory
-// re-sorting is needed. The parent playlist rows are ordered by id DESC so
-// the plain list is deterministic, matching the offset-mode id-page order.
+// re-sorting is needed. The parent playlist rows are ordered by createdAt
+// (property name — TypeORM order keys are entity properties, not columns),
+// then id DESC as the deterministic tiebreaker (the same pair as sort=date).
 const PLAYLIST_ORDER = {
+  createdAt: 'DESC',
   id: 'DESC',
   sermonJoins: { position: 'ASC' },
   sectionJoins: { position: 'ASC' },
@@ -104,6 +107,8 @@ const buildPlaylistRankExpression = (): string =>
 
 @Injectable()
 export class PlaylistService {
+  private readonly logger = new Logger(PlaylistService.name);
+
   constructor(
     private sermonService: SermonService,
     @InjectRepository(PlaylistEntity)
@@ -192,11 +197,7 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:createPlaylist ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'createPlaylist', error);
     }
   }
 
@@ -228,10 +229,10 @@ export class PlaylistService {
       }
 
       if (!tsquery) {
-        // The default sort (date, desc) keeps the byte-for-byte pre-search
-        // implementation (findAndCount with the deep relation graph and the
-        // DB-level join ordering); every other sort goes through the same
-        // QueryBuilder the search path uses, with sort-driven parent orders.
+        // The default sort (date, desc) keeps the findAndCount path with the
+        // deep relation graph and the DB-level join ordering; every other sort
+        // goes through the same QueryBuilder the search path uses, with
+        // sort-driven parent orders.
         if (sort === 'date' && direction === 'desc') {
           const [playlists, count] = await this.playlistRepository.findAndCount(
             {
@@ -276,17 +277,15 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findAllPlaylistItems ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findAllPlaylistItems', error);
     }
   }
 
   // ORDER BY expressions for the non-search sort keys. The direction is the
   // resolved default from the DTO (asc for title/section, desc for date);
-  // the tiebreak is always id DESC so equal titles stay deterministic.
+  // the tiebreak is always id DESC so equal keys stay deterministic. date
+  // orders by created_at truncated to milliseconds (the same precision the
+  // sermon keyset cursor uses) with the id tiebreaker.
   // section bases the order on the LOWEST-position section title with
   // NULLS LAST (playlists without sections stay at the end in both
   // directions) and then the join position within that section.
@@ -314,7 +313,10 @@ export class PlaylistService {
           ['playlist.id', 'DESC'],
         ];
       case 'date':
-        return [['playlist.id', dir]];
+        return [
+          [`date_trunc('milliseconds', playlist.created_at)`, dir],
+          ['playlist.id', 'DESC'],
+        ];
     }
   }
 
@@ -334,10 +336,10 @@ export class PlaylistService {
     const dir = direction === 'asc' ? 'ASC' : 'DESC';
 
     // 1. Page the parent ids only — a join-free query ordered by the sort
-    // keys (rank DESC, id DESC under search; id DESC for the default date
-    // sort). The section sort joins section joins but groups by playlist id,
-    // so a playlist in several sections still occupies exactly one page row
-    // (the lowest-position section title decides its place).
+    // keys (rank DESC, id DESC under search; created_at DESC, id DESC for the
+    // default date sort). The section sort joins section joins but groups by
+    // playlist id, so a playlist in several sections still occupies exactly
+    // one page row (the lowest-position section title decides its place).
     const idQueryBuilder =
       this.playlistRepository.createQueryBuilder('playlist');
     idQueryBuilder.select('playlist.id', 'id');
@@ -361,7 +363,9 @@ export class PlaylistService {
         .orderBy('LOWER(playlist.title)', dir)
         .addOrderBy('playlist.id', 'DESC');
     } else {
-      idQueryBuilder.orderBy('playlist.id', dir);
+      idQueryBuilder
+        .orderBy(`date_trunc('milliseconds', playlist.created_at)`, dir)
+        .addOrderBy('playlist.id', 'DESC');
     }
     idQueryBuilder
       .skip((effectivePage - 1) * effectiveLimit)
@@ -466,11 +470,7 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findByIds playlist ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findByIds playlist', error);
     }
   }
 
@@ -486,11 +486,7 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:findOnePlaylistItem ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'findOnePlaylistItem', error);
     }
   }
 
@@ -544,11 +540,7 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:update ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'update', error);
     }
   }
 
@@ -560,11 +552,7 @@ export class PlaylistService {
       if (error instanceof HttpException) {
         throw error;
       }
-      throw new HttpException(
-        'from:remove ' +
-          (error instanceof Error ? error.message : String(error)),
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw toInternalServerError(this.logger, 'remove', error);
     }
   }
 
@@ -764,6 +752,7 @@ export class PlaylistService {
           title: pj.playlist.title,
         })),
       })),
+      createdAt: p.createdAt.toISOString(),
     };
   }
 }

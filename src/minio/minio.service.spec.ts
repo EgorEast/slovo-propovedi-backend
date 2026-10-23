@@ -35,6 +35,18 @@ describe('MinioService', () => {
     expect(service).toBeDefined();
   });
 
+  it('fails fast when MINIO_PUBLIC_URI is not set', () => {
+    const config = {
+      get: jest.fn((key: string) =>
+        key === 'MINIO_PUBLIC_URI' ? undefined : mockConfig[key],
+      ),
+    };
+
+    expect(() => new MinioService(config as unknown as ConfigService)).toThrow(
+      'MINIO_PUBLIC_URI is not set',
+    );
+  });
+
   describe('removeObjectByUrl', () => {
     function mockClientRemoveObject() {
       const client = (
@@ -212,14 +224,44 @@ describe('MinioService', () => {
     });
   });
 
+  describe('uploadFile', () => {
+    it('normalizes the extension to lowercase before storing', async () => {
+      const putObject = jest.fn().mockResolvedValue(undefined);
+      (
+        service as unknown as {
+          minioClient: { putObject: jest.Mock };
+        }
+      ).minioClient.putObject = putObject;
+
+      const fileName = await service.uploadFile({
+        originalname: 'Sermon.MP3',
+        buffer: Buffer.from('audio'),
+        size: 5,
+      } as Express.Multer.File);
+
+      expect(fileName).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.mp3$/,
+      );
+      expect(putObject).toHaveBeenCalledWith(
+        'files',
+        fileName,
+        expect.any(Buffer),
+        5,
+        { 'Content-Type': 'audio/mp3' },
+      );
+    });
+  });
+
   describe('getContentType', () => {
-    it('maps image and audio extensions to correct MIME types', () => {
+    it('maps image, audio and document extensions to correct MIME types', () => {
       expect(service.getContentType('.jpeg')).toBe('image/jpeg');
       expect(service.getContentType('.jpg')).toBe('image/jpeg');
       expect(service.getContentType('.png')).toBe('image/png');
       expect(service.getContentType('.webp')).toBe('image/webp');
       expect(service.getContentType('.mp3')).toBe('audio/mp3');
       expect(service.getContentType('.m4a')).toBe('audio/mp4');
+      expect(service.getContentType('.pdf')).toBe('application/pdf');
+      expect(service.getContentType('.fb2')).toBe('application/xml');
     });
 
     it('falls back to application/octet-stream for unknown extensions', () => {

@@ -6,7 +6,7 @@ import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended'
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'eslint.config.mjs'],
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'eslint.config.mjs', '.opencode/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

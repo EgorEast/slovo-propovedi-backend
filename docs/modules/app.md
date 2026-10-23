@@ -1,6 +1,6 @@
 # Модуль `app` — файловое хранилище
 
-Корневой модуль (`src/app.module.ts`) регистрирует всё приложение; контроллер `AppController` (`src/app.controller.ts`, без префикса) отвечает за **файлы**: загрузку в MinIO и выдачу URL. Бизнес-логика хранилища — в [`minio.md`](./minio.md); сам контроллер — тонкий: валидирует расширение, вызывает `MinioService`, декорирует ответ `@ZodResponse`.
+Корневой модуль (`src/app.module.ts`) регистрирует всё приложение; контроллер `AppController` (`src/app.controller.ts`, без префикса) отвечает за **файлы**: загрузку в MinIO и выдачу URL. Бизнес-логика хранилища — в [`minio.md`](./minio.md); сам контроллер — тонкий: ограничивает загрузку на уровне interceptor'а, вызывает `MinioService`, декорирует ответ `@ZodResponse`.
 
 **Слой:** backend (module `app`)
 **Статус:** актуально
@@ -13,8 +13,7 @@
 | `GET /files` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `GetFilesResponseDto` | `listImages` → MinIO | список изображений для обложек (cover-reuse), каждый с флагом `used` |
 | `GET /files/orphans` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `OrphanedFilesResponseDto` | `listOrphans` → MinIO | список осиротевших медиа-объектов (не привязаны к проповедям/плейлистам); query `limit?` (default 500, max 5000) |
 | `POST /files/orphans/cleanup` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `CleanupOrphansResponseDto` | `listFilesWithUsage` + `removeObjectByName` → MinIO | идемпотентная очистка **только** осиротевших аудио/текстовых объектов (`.mp3/.m4a/.pdf/.fb2`) |
-| `GET /files/:fileName` | публичный | `FileResponseDto` | `getFileUrl` | статический (non-expiring) URL **deprecated** |
-| `GET /files/:fileName/stream-url` | публичный | `StreamUrlResponseDto` | `getPresignedFileUrl` | time-limited presigned URL |
+| `GET /files/:fileName` | публичный | `FileResponseDto` | `getFileUrl` | статический (non-expiring) URL; bucket public-read |
 | `DELETE /files/:fileName` | ✅ `AuthGuard` + `RolesGuard` (admin, moderator) | `StatusFileResponseDto` | `removeObjectByName` → MinIO | удаление изображения или **неиспользуемого** аудио/текста; `409`, если объект используется (обложка / проповедь) |
 
 > ⚠️ **Порядок маршрутов важен.** Статические сегменты объявлены **до** параметрических: `GET /files`/`GET /files/orphans` — до `GET /files/:fileName`, иначе `files`/`orphans` были бы проглочены как `:fileName` (Express матчит роуты по порядку).
@@ -26,15 +25,21 @@
 @Roles(UserRole.Admin, UserRole.Moderator)
 @UseGuards(AuthGuard, RolesGuard)
 @ZodResponse({ type: FileResponseDto })
-@UseInterceptors(FileInterceptor('file'))
+@UseInterceptors(
+  FileInterceptor('file', {
+    limits: { fileSize: MAX_UPLOAD_BYTES },
+    fileFilter: mediaFileFilter,
+  }),
+)
 async uploadFile(@UploadedFile('file') file: FileUploadDto): Promise<FileResponseDto>
 ```
 
-- Multipart-поле `file`, перехватывается `FileInterceptor('file')`.
-- **Allow-list расширений** проверяется в контроллере **до** попадания файла в хранилище:
-  `.jpeg .jpg .png .webp .mp3 .pdf .fb2`. Иное расширение → `BadRequestException` («Недопустимый тип файла…»).
-- Параметр аннотирован `FileUploadDto` (`createZodDto(z.any())`) — passthrough для `Express.Multer.File`, нужен только чтобы удовлетворить strict-пайп (см. [`../conventions.md`](../conventions.md)).
+- Multipart-поле `file`, перехватывается `FileInterceptor('file')` с опциями (`src/app/upload-file-filter.ts`).
+- **Лимит размера — 100 MB** (`MAX_UPLOAD_BYTES = 100 * 1024 * 1024`). Multer использует **memory storage**: тело целиком лежит в Node-heap, поэтому лимит обязателен — иначе одиночная многогигабайтная загрузка исчерпывает heap контейнера. Превышение Multer (`LIMIT_FILE_SIZE`) обрабатывает scoped-фильтр `MulterExceptionFilter` (`src/app/multer-exception.filter.ts`) → `413 Payload Too Large` с лимитом в MB; прочие ошибки Multer → `400 Bad Request`, не-multer ошибки идут через стандартную обработку Nest.
+- **Allow-list расширений** проверяется в `fileFilter` **до буферизации тела** — как только разобраны заголовки multipart-части. Список — `MEDIA_EXTENSIONS` из `src/shared/media.ts` (единый источник истины с classification бакета): `.jpeg .jpg .png .webp .mp3 .m4a .pdf .fb2`. Иное расширение → `BadRequestException` («Недопустимый тип файла…»), в контроллере дублирующей проверки нет. Регистр расширения не важен: `SERMON.MP3` проходит, а `uploadFile` сохраняет расширение в нижнем регистре.
+- Параметр аннотирован `FileUploadDto` (`createZodDto(z.any())`) — passthrough для `Express.Multer.File`, нужен только чтобы удовлетворить strict-пайп (см. [`../conventions.md`](../conventions.md)). Guard-clause «файл не приложен» остаётся в контроллере.
 - Вызывает `minioService.uploadFile(multerFile)` (имя файла = `randomUUID() + ext`), затем `getFileUrl` → `{ fileName, fileUrl }`.
+- **Reverse proxy:** body limit на edge (Traefik/nginx) должен быть **не меньше** 100 MB, иначе прокси отклонит легитимную загрузку раньше backend'а. Настройка живёт в `slovo-propovedi-playbook`.
 
 ## `GET /files` — список изображений (cover-reuse)
 
@@ -77,7 +82,7 @@ async cleanupOrphanedFiles(): Promise<CleanupOrphansResponseDto>
 
 - Та же классификация, что в `GET /files/orphans`, но удаляются **только** осиротевшие аудио/текстовые объекты (`removeObjectByName`, best-effort). **Изображения не удаляются никогда** — обложками управляют вручную из каталога.
 - Очистка намеренно сканирует **весь** bucket через `listFilesWithUsage(referenced)` (без капа): чтобы удалить *все* осиротевшие аудио/текст, нужно перечислить весь bucket. Это редкая admin-операция, а не read-путь, поэтому ограничение `limit` к ней не применяется (read-эндпоинт выше ограничен).
-- Ошибка удаления отдельного объекта не роняет запрос: объект попадает в `failed` с `reason`, остальные продолжают удаляться. Ответ `{ deleted: string[], failed: { fileName, reason }[] }`. Идемпотентен: повторный вызов не найдёт уже удалённых объектов (S3 DeleteObject идемпотентен).
+- Ошибка удаления отдельного объекта не роняет запрос: объект попадает в `failed` с `reason`, остальные продолжают удаляться. `reason` — admin-only диагностика, усечённая до первой строки и 200 символов, чтобы не отдавать в UI сырой текст MinIO/драйвера и не раздувать ответ. Ответ `{ deleted: string[], failed: { fileName, reason }[] }`. Идемпотентен: повторный вызов не найдёт уже удалённых объектов (S3 DeleteObject идемпотентен).
 
 ## `DELETE /files/:fileName` — удаление файла
 
@@ -103,20 +108,10 @@ async getFile(@Param() params: FileNameParamDto)
 ```
 
 - Возвращает `{ fileName, fileUrl }`, где `fileUrl = ${MINIO_PUBLIC_URI}/files/<name>`.
-- **Deprecated** (JSDoc в коде): статический URL не истекает, а bucket приватный по умолчанию. Предпочтителен `stream-url`.
+- Bucket `files` — **public-read by design** (`applyPublicReadPolicy`): статические URL и есть механизм доступа к сохранённым медиа. Аутентификация нужна только для записи, листинга и удаления; presigned/`stream-url` эндпоинтов больше нет.
+- `:fileName` валидируется `FileNameParamDto` строго как `randomUUID() + <media extension>` (regex выводится из `MEDIA_EXTENSIONS`, до 255 символов). Произвольные строки, path traversal (`../`) и URL-encoded трюки отклоняются `400` до обращения к хранилищу.
 
-## `GET /files/:fileName/stream-url` — presigned URL
-
-```ts
-@Get('files/:fileName/stream-url')
-@ZodResponse({ type: StreamUrlResponseDto })
-async getStreamUrl(@Param() params: FileNameParamDto)
-```
-
-- Вызывает `minioService.getPresignedFileUrl(fileName)` → `{ url }` (time-limited, по умолчанию 3600 с).
-- Аудио/видео отдаётся напрямую из MinIO, а не проксируется через backend (проксирование держало бы буферы в Node heap).
-
-> ✅ Публичный `GET /files/:fileName*` — **только** для чтения уже сохранённых объектов через публичный bucket URL; список и загрузка защищены.
+> ✅ Публичный `GET /files/:fileName` — **только** для чтения уже сохранённых объектов через публичный bucket URL; список, загрузка и удаление защищены.
 
 ## DTO
 
@@ -129,14 +124,14 @@ async getStreamUrl(@Param() params: FileNameParamDto)
 | `src/app/dto/orphaned-files-response.dto.ts` | `AppControllerGetOrphanedFilesResponse` (`{ orphaned[], count }`) |
 | `src/app/dto/cleanup-orphans-response.dto.ts` | `AppControllerCleanupOrphanedFilesResponse` (`{ deleted[], failed[] }`) |
 | `src/app/dto/status-file-response.dto.ts` | `AppControllerRemoveFileResponse` (`{ status }`) |
-| `src/app/dto/stream-url-response.dto.ts` | `AppControllerGetStreamUrlResponse` (`{ url }`) |
+| `src/shared/dto/file-name-param.dto.ts` | `AppControllerGetFileParams` + `.extend({ fileName: z.string().max(255).regex(STORED_FILE_NAME_PATTERN) })` — общий param для `GET`/`DELETE /files/:fileName` |
 
-Все DTO — наследники `createZodDto(...)` от сгенерированных схем (`generated/index.ts`).
+Все DTO — наследники `createZodDto(...)` от сгенерированных схем (`generated/index.ts`); upload-валидация (`MAX_UPLOAD_BYTES`, `mediaFileFilter`) живёт в `src/app/upload-file-filter.ts`.
 
 ## Связанные документы
 
 - [README.md](./README.md) — индекс модулей
-- [minio.md](./minio.md) — `MinioService`: bucket `files`, upload, presign, public-read
+- [minio.md](./minio.md) — `MinioService`: bucket `files`, upload, public-read, статические URL
 - [shared.md](./shared.md) — `FileNameParamDto`
 - [../architecture.md](../architecture.md) — bootstrap, CORS, глобальные механизмы
 - [../contracts/rest-api.md](../contracts/rest-api.md) — контракт `AppController*`

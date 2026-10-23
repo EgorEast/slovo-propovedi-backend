@@ -157,6 +157,18 @@ describe('FindAllSermonsQueryDto (offset vs keyset exclusivity)', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects a search query above the schema maximum', () => {
+    const result = FindAllSermonsQueryDto.schema.safeParse({
+      search: 'a'.repeat(201),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a page above the schema maximum', () => {
+    const result = FindAllSermonsQueryDto.schema.safeParse({ page: '100001' });
+    expect(result.success).toBe(false);
+  });
+
   describe('sort/order (offset and full-fetch only)', () => {
     it('accepts sort with the offset mode and keeps the client value', () => {
       const result = FindAllSermonsQueryDto.schema.safeParse({
