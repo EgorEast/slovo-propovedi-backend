@@ -36,6 +36,41 @@ describe('Sermon DTO input bounds', () => {
     expect(result.success).toBe(false);
   });
 
+  it.each(['javascript:alert(1)', 'data:text/html,<script>1</script>'])(
+    'rejects a dangerous youtubeUrl scheme %p',
+    (youtubeUrl) => {
+      const create = CreateSermonDto.schema.safeParse({
+        ...baseBody,
+        youtubeUrl,
+      });
+      const update = UpdateSermonDto.schema.safeParse({
+        ...baseBody,
+        youtubeUrl,
+      });
+      expect(create.success).toBe(false);
+      expect(update.success).toBe(false);
+    },
+  );
+
+  it.each(['javascript:alert(1)', 'data:image/svg+xml,<svg/>', 'cover.png'])(
+    'rejects a non-http(s) artwork %p',
+    (artwork) => {
+      const result = CreateSermonDto.schema.safeParse({ ...baseBody, artwork });
+      expect(result.success).toBe(false);
+    },
+  );
+
+  it('accepts an https youtubeUrl and an empty or https artwork', () => {
+    for (const artwork of ['', 'https://minio.example.com/files/a.png']) {
+      const result = CreateSermonDto.schema.safeParse({
+        ...baseBody,
+        youtubeUrl: 'https://www.youtube.com/watch?v=abc',
+        artwork,
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
   it('rejects a non-URL audioUrl', () => {
     const result = CreateSermonDto.schema.safeParse({
       ...baseBody,

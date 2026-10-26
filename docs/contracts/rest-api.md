@@ -59,9 +59,9 @@
 | `description` (sermon/playlist/section) | `maxLength: 10000` | Long-form контент |
 | `artist` | `maxLength: 200` | Имя автора/проповедника |
 | `book` | `maxLength: 100` | Название книги/главы |
-| `artwork` | `maxLength: 2048` | URL обложки |
+| `artwork` (sermon/playlist create/update) | `maxLength: 2048`, `pattern: ^(https?://.*)?$` | URL обложки или пустая строка; `javascript:`/`data:` отклоняются (stored XSS) |
 | `textFileUrl`, `audioUrl` | `format: uri`, `maxLength: 2048`, `pattern: ^https?://[^/]+/files/.+$`, nullable | URL собственного хранилища: любой https?://host, но путь начинается с `/files/` (bucket). Host **не** закреплён — переживает смену `MINIO_PUBLIC_URI` |
-| `youtubeUrl` | `format: uri`, `maxLength: 2048`, nullable | Внешняя ссылка, без требования `/files/` |
+| `youtubeUrl` | `format: uri`, `maxLength: 2048`, `pattern: ^https?://.+$`, nullable | Внешняя ссылка, без требования `/files/`; только http(s) — `z.url()` сам по себе пропускает `javascript:`/`data:` |
 | `urls[]` (invidious replace) | `maxItems: 100`, элемент `maxLength: 2048` | Список инстансов; каждый адрес — строка |
 | `playlistsIds`, `sermonsIds`, `sectionsIds`, `ids`, `sermonIds`, `playlistIds` | `maxItems: 1000` | Потолок массовых reorder/bulk-операций |
 | `search` (sermons/playlists) | `minLength: 1`, `maxLength: 200` | Потолок входа в FTS/tsquery (дополнительно — кап 40 токенов в сервисе) |

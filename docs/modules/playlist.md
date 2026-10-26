@@ -181,8 +181,8 @@ await joinRepository.createQueryBuilder()
 
 | Файл | Схема |
 |------|-------|
-| `src/playlist/dto/create-playlist.dto.ts` | `{ title, description, artwork, sermonsIds?, sectionsIds? }` |
-| `src/playlist/dto/update-playlist.dto.ts` | `{ title, description, artwork, sermonsIds, sectionsIds? }` |
+| `src/playlist/dto/create-playlist.dto.ts` | `{ title, description, artwork, sermonsIds?, sectionsIds? }` — `artwork`: пустая строка или `http(s)://`-URL (`javascript:`/`data:` отклоняются) |
+| `src/playlist/dto/update-playlist.dto.ts` | `{ title, description, artwork, sermonsIds, sectionsIds? }` — то же ограничение `artwork` |
 | `src/playlist/dto/find-all-playlists-query.dto.ts` | extends query + `.extend({ search: z.string().trim().min(1).max(200).optional(), page: z.coerce.number().int().min(1).max(100000).optional(), limit: z.coerce.number().int().min(1).max(100).optional(), sort: z.enum(['date','title','section']).optional(), order: z.enum(['asc','desc']).optional() })` + `.transform(...)` — резолв направленных дефолтов `sort`/`order` |
 | `src/playlist/dto/reorder-sermons-in-playlist.dto.ts` | `{ sermonIds: uuid[] }` |
 | `src/playlist/dto/playlist-response.dto.ts` | create/findOne |
