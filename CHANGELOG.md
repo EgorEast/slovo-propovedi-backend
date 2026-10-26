@@ -2,6 +2,21 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.16.1] - 2026-10-26
+
+### Bug Fixes
+- reject non-http(s) youtubeUrl and artwork
+- guard sermon file cleanup and stop serving fb2 as XML
+- override vulnerable body-parser and multer
+
+### Maintenance
+- drop pinned package versions from the dependency debt entry
+- regenerate schemas from the published spec
+- add .omc/state to gitignore
+- pin VPS host key from the VPS_SSH_KNOWN_HOSTS secret
+- update devdependencies (non-major)
+- update dependency @nestjs/swagger to v12.0.4
+
 ## [0.16.0] - 2026-10-23
 
 ### Features
