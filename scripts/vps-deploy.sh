@@ -10,7 +10,8 @@ set -euo pipefail
 # Usage:   DEPLOY_TAG=abc1234 BACKEND_API_HOSTNAME=api.example.com \
 #          INTERNAL_PORT=3000 TRAEFIK_NETWORK=traefik \
 #          POSTGRES_NETWORK=slovo-postgres MINIO_NETWORK=slovo-minio \
-#          TRAEFIK_SERVICE=slovo-traefik.service bash vps-deploy.sh
+#          TRAEFIK_SERVICE=slovo-traefik.service BUILDX_BUILDER=slovo-constrained \
+#          bash vps-deploy.sh
 #
 # Scope: this script owns ONLY the slovo-backend container and its own
 # `slovo-backend` Docker network. All shared infrastructure — Docker, the
@@ -46,7 +47,8 @@ BASE_PATH=/slovo/backend
 SRC_DIR=/slovo/backend/container-src
 ENV_FILE="$BASE_PATH/env"
 LABELS_FILE="$BASE_PATH/labels"
-BUILDER=slovo-constrained
+# buildx builder name — playbook-owned, passed from the Forgejo org variable.
+BUILDER="${BUILDX_BUILDER:?ERROR: BUILDX_BUILDER is required (Forgejo org variable)}"
 MEMORY=1g
 STOP_GRACE=30
 

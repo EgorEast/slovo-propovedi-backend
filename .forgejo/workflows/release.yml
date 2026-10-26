@@ -80,6 +80,7 @@ jobs:
           POSTGRES_NETWORK: ${{ vars.POSTGRES_NETWORK }}
           MINIO_NETWORK: ${{ vars.MINIO_NETWORK }}
           TRAEFIK_SERVICE: ${{ vars.TRAEFIK_SERVICE }}
+          BUILDX_BUILDER: ${{ vars.BUILDX_BUILDER }}
         run: |
           missing=0
           for var in VPS_HOST VPS_SSH_USER VPS_SSH_PRIVATE_KEY VPS_SSH_KNOWN_HOSTS \
@@ -91,7 +92,7 @@ jobs:
                      POSTGRES_HOST POSTGRES_PORT POSTGRES_USER POSTGRES_DB \
                      MINIO_ENDPOINT MINIO_MAIN_PORT_IN \
                      INTERNAL_PORT TRAEFIK_NETWORK POSTGRES_NETWORK \
-                     MINIO_NETWORK TRAEFIK_SERVICE; do
+                     MINIO_NETWORK TRAEFIK_SERVICE BUILDX_BUILDER; do
             if [ -z "${!var:-}" ]; then
               echo "::error::$var is not set — configure it as a Forgejo org/repo variable or secret."
               missing=1
@@ -137,6 +138,7 @@ jobs:
           POSTGRES_NETWORK: ${{ vars.POSTGRES_NETWORK }}
           MINIO_NETWORK: ${{ vars.MINIO_NETWORK }}
           TRAEFIK_SERVICE: ${{ vars.TRAEFIK_SERVICE }}
+          BUILDX_BUILDER: ${{ vars.BUILDX_BUILDER }}
           POSTGRES_HOST: ${{ vars.POSTGRES_HOST }}
           POSTGRES_PORT: ${{ vars.POSTGRES_PORT }}
           POSTGRES_USER: ${{ vars.POSTGRES_USER }}
@@ -205,6 +207,7 @@ jobs:
              POSTGRES_NETWORK='$POSTGRES_NETWORK' \
              MINIO_NETWORK='$MINIO_NETWORK' \
              TRAEFIK_SERVICE='$TRAEFIK_SERVICE' \
+             BUILDX_BUILDER='$BUILDX_BUILDER' \
              bash /tmp/vps-deploy.sh"
 
       - name: Smoke test — GET /health
