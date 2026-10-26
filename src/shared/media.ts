@@ -10,11 +10,13 @@ export const IMAGE_EXTENSIONS: readonly string[] = [
   '.webp',
 ];
 
+export const AUDIO_EXTENSIONS: readonly string[] = ['.mp3', '.m4a'];
+
+export const TEXT_EXTENSIONS: readonly string[] = ['.pdf', '.fb2'];
+
 export const AUDIO_TEXT_EXTENSIONS: readonly string[] = [
-  '.mp3',
-  '.m4a',
-  '.pdf',
-  '.fb2',
+  ...AUDIO_EXTENSIONS,
+  ...TEXT_EXTENSIONS,
 ];
 
 export const MEDIA_EXTENSIONS: readonly string[] = [

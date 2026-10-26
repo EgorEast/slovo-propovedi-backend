@@ -5,7 +5,7 @@
  * REST API сервиса «Слово.Проповеди».
  * Позволяет управлять проповедями, плейлистами, разделами, загружать файлы и работать с пользователями.
  *
- * OpenAPI spec version: 0.23.0
+ * OpenAPI spec version: 0.23.1
  */
 import * as zod from 'zod';
 
@@ -726,6 +726,9 @@ export const playlistControllerCreateBodyDescriptionMax = 10000;
 
 export const playlistControllerCreateBodyArtworkMax = 2048;
 
+export const playlistControllerCreateBodyArtworkRegExp = new RegExp(
+  '^(https?://.*)?$',
+);
 export const playlistControllerCreateBodySermonsIdsMax = 1000;
 
 export const playlistControllerCreateBodySectionsIdsMax = 1000;
@@ -736,7 +739,13 @@ export const PlaylistControllerCreateBody = zod.strictObject({
     .string()
     .max(playlistControllerCreateBodyDescriptionMax)
     .nullable(),
-  artwork: zod.string().max(playlistControllerCreateBodyArtworkMax),
+  artwork: zod
+    .string()
+    .max(playlistControllerCreateBodyArtworkMax)
+    .regex(playlistControllerCreateBodyArtworkRegExp)
+    .describe(
+      'Пустая строка или http(s)-ссылка на обложку — прочие схемы (`javascript:`, `data:`) отклоняются.',
+    ),
   sermonsIds: zod
     .array(zod.string())
     .max(playlistControllerCreateBodySermonsIdsMax)
@@ -1406,6 +1415,9 @@ export const playlistControllerUpdateBodyDescriptionMax = 10000;
 
 export const playlistControllerUpdateBodyArtworkMax = 2048;
 
+export const playlistControllerUpdateBodyArtworkRegExp = new RegExp(
+  '^(https?://.*)?$',
+);
 export const playlistControllerUpdateBodySermonsIdsMax = 1000;
 
 export const playlistControllerUpdateBodySectionsIdsMax = 1000;
@@ -1416,7 +1428,13 @@ export const PlaylistControllerUpdateBody = zod.strictObject({
     .string()
     .max(playlistControllerUpdateBodyDescriptionMax)
     .nullable(),
-  artwork: zod.string().max(playlistControllerUpdateBodyArtworkMax),
+  artwork: zod
+    .string()
+    .max(playlistControllerUpdateBodyArtworkMax)
+    .regex(playlistControllerUpdateBodyArtworkRegExp)
+    .describe(
+      'Пустая строка или http(s)-ссылка на обложку — прочие схемы (`javascript:`, `data:`) отклоняются.',
+    ),
   sermonsIds: zod
     .array(zod.string())
     .max(playlistControllerUpdateBodySermonsIdsMax),
@@ -1669,10 +1687,16 @@ export const sermonControllerCreateBodyAudioUrlRegExp = new RegExp(
 );
 export const sermonControllerCreateBodyYoutubeUrlMax = 2048;
 
+export const sermonControllerCreateBodyYoutubeUrlRegExp = new RegExp(
+  '^https?://.+$',
+);
 export const sermonControllerCreateBodyArtistMax = 200;
 
 export const sermonControllerCreateBodyArtworkMax = 2048;
 
+export const sermonControllerCreateBodyArtworkRegExp = new RegExp(
+  '^(https?://.*)?$',
+);
 export const sermonControllerCreateBodyBookMax = 100;
 
 export const sermonControllerCreateBodyChapterTwoMin = 2;
@@ -1702,9 +1726,22 @@ export const SermonControllerCreateBody = zod.strictObject({
     .max(sermonControllerCreateBodyAudioUrlMax)
     .regex(sermonControllerCreateBodyAudioUrlRegExp)
     .nullable(),
-  youtubeUrl: zod.url().max(sermonControllerCreateBodyYoutubeUrlMax).nullable(),
+  youtubeUrl: zod
+    .url()
+    .max(sermonControllerCreateBodyYoutubeUrlMax)
+    .regex(sermonControllerCreateBodyYoutubeUrlRegExp)
+    .nullable()
+    .describe(
+      'Только http(s)-ссылки — схемы `javascript:`/`data:` отклоняются (защита от XSS).',
+    ),
   artist: zod.string().max(sermonControllerCreateBodyArtistMax),
-  artwork: zod.string().max(sermonControllerCreateBodyArtworkMax),
+  artwork: zod
+    .string()
+    .max(sermonControllerCreateBodyArtworkMax)
+    .regex(sermonControllerCreateBodyArtworkRegExp)
+    .describe(
+      'Пустая строка или http(s)-ссылка на обложку — прочие схемы (`javascript:`, `data:`) отклоняются.',
+    ),
   book: zod.string().max(sermonControllerCreateBodyBookMax).nullable(),
   chapter: zod
     .union([
@@ -2625,10 +2662,16 @@ export const sermonControllerUpdateBodyAudioUrlRegExp = new RegExp(
 );
 export const sermonControllerUpdateBodyYoutubeUrlMax = 2048;
 
+export const sermonControllerUpdateBodyYoutubeUrlRegExp = new RegExp(
+  '^https?://.+$',
+);
 export const sermonControllerUpdateBodyArtistMax = 200;
 
 export const sermonControllerUpdateBodyArtworkMax = 2048;
 
+export const sermonControllerUpdateBodyArtworkRegExp = new RegExp(
+  '^(https?://.*)?$',
+);
 export const sermonControllerUpdateBodyBookMax = 100;
 
 export const sermonControllerUpdateBodyChapterTwoMin = 2;
@@ -2658,9 +2701,22 @@ export const SermonControllerUpdateBody = zod.strictObject({
     .max(sermonControllerUpdateBodyAudioUrlMax)
     .regex(sermonControllerUpdateBodyAudioUrlRegExp)
     .nullable(),
-  youtubeUrl: zod.url().max(sermonControllerUpdateBodyYoutubeUrlMax).nullable(),
+  youtubeUrl: zod
+    .url()
+    .max(sermonControllerUpdateBodyYoutubeUrlMax)
+    .regex(sermonControllerUpdateBodyYoutubeUrlRegExp)
+    .nullable()
+    .describe(
+      'Только http(s)-ссылки — схемы `javascript:`/`data:` отклоняются (защита от XSS).',
+    ),
   artist: zod.string().max(sermonControllerUpdateBodyArtistMax),
-  artwork: zod.string().max(sermonControllerUpdateBodyArtworkMax),
+  artwork: zod
+    .string()
+    .max(sermonControllerUpdateBodyArtworkMax)
+    .regex(sermonControllerUpdateBodyArtworkRegExp)
+    .describe(
+      'Пустая строка или http(s)-ссылка на обложку — прочие схемы (`javascript:`, `data:`) отклоняются.',
+    ),
   book: zod.string().max(sermonControllerUpdateBodyBookMax).nullable(),
   chapter: zod
     .union([

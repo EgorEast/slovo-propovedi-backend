@@ -247,7 +247,7 @@ describe('SermonService', () => {
   let playlistSermonJoinRepository: { createQueryBuilder: jest.Mock };
   let sectionPlaylistJoinRepository: { createQueryBuilder: jest.Mock };
   let sectionRepository: { find: jest.Mock };
-  let minioService: { removeObjectByUrl: jest.Mock };
+  let minioService: { removeObjectByName: jest.Mock };
 
   beforeEach(async () => {
     sermonRepository = {
@@ -263,7 +263,7 @@ describe('SermonService', () => {
     playlistSermonJoinRepository = { createQueryBuilder: jest.fn() };
     sectionPlaylistJoinRepository = { createQueryBuilder: jest.fn() };
     sectionRepository = { find: jest.fn() };
-    minioService = { removeObjectByUrl: jest.fn() };
+    minioService = { removeObjectByName: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -1936,47 +1936,90 @@ describe('SermonService', () => {
     });
   });
 
-  describe('remove (best-effort audio cleanup)', () => {
-    it('deletes the DB row and removes the audio file only after a successful deletion', async () => {
-      sermonRepository.findOne = jest.fn().mockResolvedValue({
-        id: 's-1',
-        audioUrl: 'https://minio.example.com/files/audio-1.mp3',
-      });
+  describe('remove (best-effort file cleanup)', () => {
+    const AUDIO = '3f2504e0-4f89-41d3-9a0c-0305e82c3301.mp3';
+    const TEXT = '3f2504e0-4f89-41d3-9a0c-0305e82c3302.fb2';
+    const COVER = '3f2504e0-4f89-41d3-9a0c-0305e82c3303.png';
+    const url = (name: string) => `https://minio.example.com/files/${name}`;
+
+    function arrange(
+      sermon: Record<string, unknown> | null,
+      remaining: Record<string, unknown>[] = [],
+      playlists: Record<string, unknown>[] = [],
+    ) {
+      sermonRepository.findOne = jest.fn().mockResolvedValue(sermon);
       sermonRepository.delete = jest.fn().mockResolvedValue({ affected: 1 });
-      minioService.removeObjectByUrl.mockResolvedValue(undefined);
+      sermonRepository.find = jest.fn().mockResolvedValue(remaining);
+      playlistRepository.find = jest.fn().mockResolvedValue(playlists);
+      minioService.removeObjectByName.mockResolvedValue(undefined);
+    }
+
+    it('deletes the DB row, then removes unreferenced audio and text objects', async () => {
+      arrange({ id: 's-1', audioUrl: url(AUDIO), textFileUrl: url(TEXT) });
 
       const result = await service.remove('s-1');
 
       expect(sermonRepository.delete).toHaveBeenCalledWith('s-1');
-      expect(minioService.removeObjectByUrl).toHaveBeenCalledWith(
-        'https://minio.example.com/files/audio-1.mp3',
-      );
-      // The DB row must be deleted before the file cleanup runs.
+      expect(minioService.removeObjectByName).toHaveBeenCalledWith(AUDIO);
+      expect(minioService.removeObjectByName).toHaveBeenCalledWith(TEXT);
+      // The DB row must be deleted before the references are loaded.
       expect(sermonRepository.delete.mock.invocationCallOrder[0]).toBeLessThan(
-        minioService.removeObjectByUrl.mock.invocationCallOrder[0],
+        sermonRepository.find.mock.invocationCallOrder[0],
       );
       expect(result).toEqual({ status: 'success' });
     });
 
-    it('skips file cleanup when the sermon has no audio file', async () => {
-      sermonRepository.findOne = jest.fn().mockResolvedValue({
-        id: 's-1',
-        audioUrl: null,
-      });
-      sermonRepository.delete = jest.fn().mockResolvedValue({ affected: 1 });
+    it('keeps an object another sermon still references', async () => {
+      arrange({ id: 's-1', audioUrl: url(AUDIO) }, [
+        { audioUrl: `https://other-host/files/${AUDIO}` },
+      ]);
 
       await service.remove('s-1');
 
-      expect(minioService.removeObjectByUrl).not.toHaveBeenCalled();
+      expect(minioService.removeObjectByName).not.toHaveBeenCalled();
+    });
+
+    it('keeps an object used as artwork elsewhere', async () => {
+      arrange(
+        { id: 's-1', textFileUrl: url(TEXT) },
+        [],
+        [{ artwork: url(TEXT) }],
+      );
+
+      await service.remove('s-1');
+
+      expect(minioService.removeObjectByName).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['an image behind audioUrl', { audioUrl: url(COVER) }],
+      ['a text file behind audioUrl', { audioUrl: url(TEXT) }],
+      ['audio behind textFileUrl', { textFileUrl: url(AUDIO) }],
+      ['a non-uploaded name', { audioUrl: url('podcast/ep1.mp3') }],
+      ['a URL outside the bucket', { audioUrl: 'https://x.test/other/a.mp3' }],
+    ])('never deletes %s', async (_label, fields) => {
+      arrange({ id: 's-1', ...fields });
+
+      const result = await service.remove('s-1');
+
+      expect(minioService.removeObjectByName).not.toHaveBeenCalled();
+      expect(result).toEqual({ status: 'success' });
+    });
+
+    it('skips file cleanup when the sermon has no files', async () => {
+      arrange({ id: 's-1', audioUrl: null, textFileUrl: null });
+
+      await service.remove('s-1');
+
+      expect(sermonRepository.find).not.toHaveBeenCalled();
+      expect(minioService.removeObjectByName).not.toHaveBeenCalled();
     });
 
     it('never fails the request when file cleanup throws', async () => {
-      sermonRepository.findOne = jest.fn().mockResolvedValue({
-        id: 's-1',
-        audioUrl: 'https://minio.example.com/files/audio-1.mp3',
-      });
-      sermonRepository.delete = jest.fn().mockResolvedValue({ affected: 1 });
-      minioService.removeObjectByUrl.mockRejectedValue(new Error('MinIO down'));
+      arrange({ id: 's-1', audioUrl: url(AUDIO) });
+      minioService.removeObjectByName.mockRejectedValue(
+        new Error('MinIO down'),
+      );
 
       const result = await service.remove('s-1');
 
@@ -1985,12 +2028,11 @@ describe('SermonService', () => {
     });
 
     it('does not touch storage when the sermon row does not exist', async () => {
-      sermonRepository.findOne = jest.fn().mockResolvedValue(null);
-      sermonRepository.delete = jest.fn().mockResolvedValue({ affected: 0 });
+      arrange(null);
 
       const result = await service.remove('s-1');
 
-      expect(minioService.removeObjectByUrl).not.toHaveBeenCalled();
+      expect(minioService.removeObjectByName).not.toHaveBeenCalled();
       expect(result).toEqual({ status: 'success' });
     });
   });

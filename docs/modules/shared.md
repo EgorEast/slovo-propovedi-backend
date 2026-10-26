@@ -40,7 +40,7 @@ export class FileNameParamDto extends createZodDto(FileNameParamSchema) {}
 
 ### `media.ts` (`src/shared/media.ts`)
 
-Единый источник истины таксономии медиа: `IMAGE_EXTENSIONS`, `AUDIO_TEXT_EXTENSIONS`, `MEDIA_EXTENSIONS`, `getFileExtension()`, `STORED_FILE_NAME_PATTERN`. Из него выводятся upload allow-list (`src/app/upload-file-filter.ts`), classification бакета (`MinioService`) и валидация `:fileName` — добавили формат в одном месте, обновились все три.
+Единый источник истины таксономии медиа: `IMAGE_EXTENSIONS`, `AUDIO_EXTENSIONS`, `TEXT_EXTENSIONS`, `AUDIO_TEXT_EXTENSIONS` (объединение двух предыдущих), `MEDIA_EXTENSIONS`, `getFileExtension()`, `STORED_FILE_NAME_PATTERN`. Из него выводятся upload allow-list (`src/app/upload-file-filter.ts`), classification бакета (`MinioService`) и валидация `:fileName` — добавили формат в одном месте, обновились все три.
 
 ### `internal-error.ts` (`src/shared/internal-error.ts`)
 

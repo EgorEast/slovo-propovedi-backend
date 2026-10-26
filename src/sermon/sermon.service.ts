@@ -23,7 +23,17 @@ import {
   StatusSermonResponse,
   UpdateSermon,
 } from './interfaces/interface';
-import { MinioService } from 'src/minio/minio.service';
+import { MinioService, ReferencedFileNames } from 'src/minio/minio.service';
+import {
+  collectReferencedFileNames,
+  isReferencedAnywhere,
+} from 'src/minio/referenced-files';
+import {
+  AUDIO_EXTENSIONS,
+  getFileExtension,
+  STORED_FILE_NAME_PATTERN,
+  TEXT_EXTENSIONS,
+} from 'src/shared/media';
 import { DEFAULT_PAGE_LIMIT } from 'src/shared/pagination';
 import { SortOrder } from 'src/shared/sort';
 import { toInternalServerError } from 'src/shared/internal-error';
@@ -949,11 +959,35 @@ export class SermonService {
       // the source of truth and always succeeds; file cleanup is best-effort.
       const sermon = await this.sermonRepository.findOne({ where: { id } });
       await this.sermonRepository.delete(id);
+
+      const candidates: { fileUrl: string; extensions: readonly string[] }[] =
+        [];
       if (sermon?.audioUrl) {
-        await this.removeFileBestEffort(sermon.audioUrl);
+        candidates.push({
+          fileUrl: sermon.audioUrl,
+          extensions: AUDIO_EXTENSIONS,
+        });
       }
       if (sermon?.textFileUrl) {
-        await this.removeFileBestEffort(sermon.textFileUrl);
+        candidates.push({
+          fileUrl: sermon.textFileUrl,
+          extensions: TEXT_EXTENSIONS,
+        });
+      }
+      if (!candidates.length) {
+        return { status: 'success' };
+      }
+
+      // References are loaded AFTER the row is deleted, so they cover only the
+      // remaining sermons/playlists: a file another row still points to must
+      // survive (audioUrl is free-form, so two sermons may share one object).
+      const referenced = await this.loadReferencedFileNames();
+      for (const candidate of candidates) {
+        await this.removeFileBestEffort(
+          candidate.fileUrl,
+          candidate.extensions,
+          referenced,
+        );
       }
       return { status: 'success' };
     } catch (error) {
@@ -964,12 +998,46 @@ export class SermonService {
     }
   }
 
+  private async loadReferencedFileNames(): Promise<ReferencedFileNames> {
+    const [sermons, playlists] = await Promise.all([
+      this.sermonRepository.find({
+        select: { audioUrl: true, textFileUrl: true, artwork: true },
+      }),
+      this.playlistRepository.find({ select: { artwork: true } }),
+    ]);
+    return collectReferencedFileNames(sermons, playlists);
+  }
+
   // Best-effort cleanup of a stored file (audio or text) after the DB row is
-  // gone. Any failure (missing file, MinIO down, malformed URL) is logged and
-  // swallowed — the HTTP request must never fail because of file cleanup.
-  private async removeFileBestEffort(fileUrl: string): Promise<void> {
+  // gone. The stored URL is client-supplied, so the object is deleted only when
+  // it is one of OUR uploads of the expected kind (`<uuid>.<ext>` with an
+  // audio extension for audioUrl, text for textFileUrl) and no other sermon or
+  // playlist still references it — otherwise a crafted URL could wipe another
+  // sermon's audio or a cover image. Any failure is logged and swallowed — the
+  // HTTP request must never fail because of file cleanup.
+  private async removeFileBestEffort(
+    fileUrl: string,
+    allowedExtensions: readonly string[],
+    referenced: ReferencedFileNames,
+  ): Promise<void> {
     try {
-      await this.minioService.removeObjectByUrl(fileUrl);
+      const fileName = MinioService.extractFileNameFromUrl(fileUrl);
+      if (
+        !STORED_FILE_NAME_PATTERN.test(fileName) ||
+        !allowedExtensions.includes(getFileExtension(fileName))
+      ) {
+        this.logger.warn(
+          `Skipped removing "${fileUrl}" after sermon deletion: not a stored file of the expected type`,
+        );
+        return;
+      }
+      if (isReferencedAnywhere(fileName, referenced)) {
+        this.logger.log(
+          `Kept "${fileName}" after sermon deletion: still referenced elsewhere`,
+        );
+        return;
+      }
+      await this.minioService.removeObjectByName(fileName);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(

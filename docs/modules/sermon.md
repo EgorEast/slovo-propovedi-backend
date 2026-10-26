@@ -185,7 +185,15 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 ## `remove`
 
-Удаляет строку из БД, затем (best-effort) чистит аудио- и текстовый файлы из MinIO через `MinioService.removeObjectByUrl(audioUrl)` / `removeObjectByUrl(textFileUrl)`. URL читаются до удаления строки (пока запись ещё существует). Любой сбой очистки — файл не найден, невалидный/чужой URL, MinIO недоступен — логируется как `WARN` и не валит HTTP-запрос: БД остаётся источником истины. Ответ: `{ status: 'success' }`.
+Удаляет строку из БД, затем (best-effort) чистит аудио- и текстовый файлы из MinIO через `MinioService.removeObjectByName`. URL читаются до удаления строки (пока запись ещё существует).
+
+`audioUrl`/`textFileUrl` приходят от клиента (схема проверяет только префикс пути `/files/`, host любой), поэтому перед удалением объекта действуют защитные проверки — иначе модератор мог бы прописать в проповедь ссылку на чужое аудио или обложку и удалением проповеди стереть этот файл:
+
+- имя объекта (`extractFileNameFromUrl`) должно совпадать с `STORED_FILE_NAME_PATTERN` (`<uuid>.<ext>` — только наши загрузки);
+- расширение должно соответствовать полю: `audioUrl` → `AUDIO_EXTENSIONS` (`.mp3/.m4a`), `textFileUrl` → `TEXT_EXTENSIONS` (`.pdf/.fb2`) — обложку через эти поля не удалить;
+- объект не должен упоминаться ни в одной оставшейся проповеди или плейлисте (любая из колонок `audioUrl`/`textFileUrl`/`artwork`): referenced-наборы строятся через общий `collectReferencedFileNames` **после** удаления строки.
+
+Не прошедший проверку объект остаётся в bucket (в лог пишется причина) — позже его подберёт orphans-cleanup, если он действительно ни к чему не привязан. Любой сбой очистки — файл не найден, невалидный/чужой URL, MinIO недоступен — логируется как `WARN` и не валит HTTP-запрос: БД остаётся источником истины. Ответ: `{ status: 'success' }`.
 
 ## DTO
 
@@ -199,7 +207,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 | `src/sermon/dto/distinct-values-response.dto.ts` | distinct-values |
 | `src/sermon/dto/status-sermon-response.dto.ts` | update/remove |
 
-> ✅ Входные схемы `create`/`update` ограничены: `title` ≤ 300, `description` ≤ 10000, `artist` ≤ 200, `book` ≤ 100, `artwork` ≤ 2048, `playlistsIds` ≤ 1000. `textFileUrl`/`audioUrl` — `format: uri`, ≤ 2048 и путь начинается с `/files/` (любой host; nullable сохранён), `youtubeUrl` — просто URL ≤ 2048. Ответы ограничений не несут (legacy-строки должны сериализоваться). Полная таблица — [`../contracts/rest-api.md`](../contracts/rest-api.md).
+> ✅ Входные схемы `create`/`update` ограничены: `title` ≤ 300, `description` ≤ 10000, `artist` ≤ 200, `book` ≤ 100, `artwork` ≤ 2048 и пустая строка либо `http(s)://`-ссылка, `playlistsIds` ≤ 1000. `textFileUrl`/`audioUrl` — `format: uri`, ≤ 2048 и путь начинается с `/files/` (любой host; nullable сохранён), `youtubeUrl` — `http(s)://`-URL ≤ 2048. Схемы `javascript:`/`data:` в `youtubeUrl`/`artwork` отклоняются (защита от stored XSS: клиенты выводят эти значения в `href`/`src`). Ответы ограничений не несут (legacy-строки должны сериализоваться). Полная таблица — [`../contracts/rest-api.md`](../contracts/rest-api.md).
 
 > ✅ **Cross-field правило «глава-диапазон»** (OpenAPI 0.13.0): `chapter` — `integer | [integer, integer] | null`; `verse` — `integer | [integer, integer] | (integer | [integer, integer])[] | null` (список разрозненных отрезков, например `[[9,18],20]`). Диапазон глав (`chapter: [3, 4]`) обязан сочетаться с диапазоном стихов (`verse: [16, 2]`) или отсутствием стиха (`verse: null`) — одиночный стих (`verse: 16`) и список отрезков (`verse: [[9,18],20]`) не могут быть привязаны к диапазону глав (отрезки имеют смысл только внутри одной главы). Оба DTO (`create`/`update`) навешивают `.superRefine(...)` на сгенерированную схему: `Array.isArray(chapter) && verse !== undefined && verse !== null && !isVerseRange(verse)` → ошибка `'verse must be a two-integer range or null when chapter is a range'` по пути `verse`. `chapter`/`verse` — **необязательные** ключи (book-only ссылка валидна): отсутствующий ключ в `create` нормализуется в `null` на границе сервиса, в `update` — означает «не менять поле». Правило продублировано в сервисе: `update()` проверяет **эффективные** значения (присутствующий ключ, иначе сохранённое) — дыра «cross-request» (PATCH меняет стих, не трогая главу) закрыта на сервисном уровне. **Неоднозначность на проводе:** массив из ровно двух целых чисел всегда трактуется как диапазон — список отрезков из двух одиночных стихов неотличим от диапазона, поэтому клиенты оборачивают одиночные стихи как `[n,n]` (`[[9,9],[20,20]]`). Сгенерированная схема не переписывается — правило добавляется поверх (см. [`../validation-pipeline.md`](../validation-pipeline.md)).
 
@@ -209,7 +217,7 @@ RANK_EXPRESSION = "ts_rank('{0.1,0.2,0.4,1.0}'::float4[], sermon.search_vector, 
 
 - [README.md](./README.md) — индекс модулей
 - [playlist.md](./playlist.md) — плейлисты и join-таблица `playlist_sermons_sermon`
-- [minio.md](./minio.md) — `removeObjectByUrl` для best-effort очистки аудио/текста, `extractFileNameFromUrl`
+- [minio.md](./minio.md) — `removeObjectByName`, `extractFileNameFromUrl`, `collectReferencedFileNames`
 - [shared.md](./shared.md) — `IdParamDto`
 - [../db.md](../db.md) — сущность и связи
 - [../contracts/rest-api.md](../contracts/rest-api.md) — контракт `SermonController*`
