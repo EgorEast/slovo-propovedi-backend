@@ -139,6 +139,7 @@ export class MinioService {
       file.size,
       {
         'Content-Type': contentType,
+        ...this.getContentDisposition(fileType),
       },
     );
 
@@ -355,23 +356,20 @@ export class MinioService {
   }
 
   /**
-   * Removes an object from the default bucket by its stored file URL (e.g. a
-   * sermon's `audioUrl`). URLs whose path does not start with the default
-   * bucket throw; the host is not checked (survives public-URI domain
-   * changes). Callers decide whether to swallow the error for best-effort
-   * cleanup.
-   */
-  async removeObjectByUrl(fileUrl: string): Promise<void> {
-    const fileName = MinioService.extractFileNameFromUrl(fileUrl);
-    await this.minioClient.removeObject(MinioService.BUCKET_NAME, fileName);
-  }
-
-  /**
    * Removes an object from the default bucket by its file name. Deleting a
    * non-existent object is a no-op in MinIO (S3 DeleteObject is idempotent).
    */
   async removeObjectByName(fileName: string): Promise<void> {
     await this.minioClient.removeObject(MinioService.BUCKET_NAME, fileName);
+  }
+
+  /**
+   * `.fb2` objects are served as downloads: even with a non-XML content type,
+   * `attachment` guarantees a browser never renders an uploaded book inline on
+   * the public bucket origin. Readers that fetch() the file are unaffected.
+   */
+  getContentDisposition(fileType: string): Record<string, string> {
+    return fileType === '.fb2' ? { 'Content-Disposition': 'attachment' } : {};
   }
 
   getContentType(fileType: string): string {
@@ -398,7 +396,10 @@ export class MinioService {
         return 'application/pdf';
       }
       case '.fb2': {
-        return 'application/xml';
+        // Deliberately NOT an XML type (application/xml, *+xml): browsers
+        // render those as documents, and an XHTML-namespaced <script> inside an
+        // uploaded .fb2 would execute on the public MinIO origin.
+        return 'application/x-fictionbook';
       }
       default: {
         return 'application/octet-stream';
