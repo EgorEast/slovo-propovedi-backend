@@ -47,67 +47,39 @@ describe('MinioService', () => {
     );
   });
 
-  describe('removeObjectByUrl', () => {
-    function mockClientRemoveObject() {
-      const client = (
-        service as unknown as {
-          minioClient: { removeObject: jest.Mock };
-        }
-      ).minioClient;
-      client.removeObject = jest.fn().mockResolvedValue(undefined);
-      return client.removeObject;
-    }
-
-    it('removes the object named by the stored URL from the default bucket', async () => {
-      const removeObject = mockClientRemoveObject();
-
-      await service.removeObjectByUrl('http://localhost:9000/files/abc.mp3');
-
-      expect(removeObject).toHaveBeenCalledWith('files', 'abc.mp3');
+  describe('extractFileNameFromUrl', () => {
+    it('extracts the object name from a stored URL', () => {
+      expect(
+        MinioService.extractFileNameFromUrl(
+          'http://localhost:9000/files/abc.mp3',
+        ),
+      ).toBe('abc.mp3');
     });
 
-    it('preserves nested object names (prefixes with slashes)', async () => {
-      const removeObject = mockClientRemoveObject();
+    it('preserves nested object names (prefixes with slashes)', () => {
+      expect(
+        MinioService.extractFileNameFromUrl(
+          'http://localhost:9000/files/a/b/abc.mp3',
+        ),
+      ).toBe('a/b/abc.mp3');
+    });
 
-      await service.removeObjectByUrl(
-        'http://localhost:9000/files/a/b/abc.mp3',
+    it.each([
+      'http://localhost:9000/other/abc.mp3',
+      'http://localhost:9000/other/files/a.mp3',
+      'http://localhost:9000/files',
+    ])('throws when %p does not point into the default bucket', (url) => {
+      expect(() => MinioService.extractFileNameFromUrl(url)).toThrow(
+        'does not point to an object',
       );
-
-      expect(removeObject).toHaveBeenCalledWith('files', 'a/b/abc.mp3');
     });
 
-    it('fails fast on URLs that do not point into the default bucket', async () => {
-      mockClientRemoveObject();
-
-      await expect(
-        service.removeObjectByUrl('http://localhost:9000/other/abc.mp3'),
-      ).rejects.toThrow('does not point to an object');
-    });
-
-    it('fails fast when the bucket is not the first path segment (a foreign path must not delete from our bucket)', async () => {
-      mockClientRemoveObject();
-
-      await expect(
-        service.removeObjectByUrl('http://localhost:9000/other/files/a.mp3'),
-      ).rejects.toThrow('does not point to an object');
-    });
-
-    it('fails fast when the URL names no object (bare bucket path)', async () => {
-      mockClientRemoveObject();
-
-      await expect(
-        service.removeObjectByUrl('http://localhost:9000/files'),
-      ).rejects.toThrow('does not point to an object');
-    });
-
-    it('accepts a foreign host when the path starts with the default bucket (survives MINIO_PUBLIC_URI domain changes)', async () => {
-      const removeObject = mockClientRemoveObject();
-
-      await service.removeObjectByUrl(
-        'https://cdn.example.com/files/podcast/ep1.mp3',
-      );
-
-      expect(removeObject).toHaveBeenCalledWith('files', 'podcast/ep1.mp3');
+    it('ignores the host (survives MINIO_PUBLIC_URI domain changes)', () => {
+      expect(
+        MinioService.extractFileNameFromUrl(
+          'https://cdn.example.com/files/podcast/ep1.mp3',
+        ),
+      ).toBe('podcast/ep1.mp3');
     });
   });
 
@@ -252,6 +224,34 @@ describe('MinioService', () => {
     });
   });
 
+  describe('uploadFile (fb2)', () => {
+    it('stores .fb2 as a non-XML download so browsers never render it inline', async () => {
+      const putObject = jest.fn().mockResolvedValue(undefined);
+      (
+        service as unknown as {
+          minioClient: { putObject: jest.Mock };
+        }
+      ).minioClient.putObject = putObject;
+
+      const fileName = await service.uploadFile({
+        originalname: 'book.fb2',
+        buffer: Buffer.from('<FictionBook/>'),
+        size: 14,
+      } as Express.Multer.File);
+
+      expect(putObject).toHaveBeenCalledWith(
+        'files',
+        fileName,
+        expect.any(Buffer),
+        14,
+        {
+          'Content-Type': 'application/x-fictionbook',
+          'Content-Disposition': 'attachment',
+        },
+      );
+    });
+  });
+
   describe('getContentType', () => {
     it('maps image, audio and document extensions to correct MIME types', () => {
       expect(service.getContentType('.jpeg')).toBe('image/jpeg');
@@ -261,7 +261,7 @@ describe('MinioService', () => {
       expect(service.getContentType('.mp3')).toBe('audio/mp3');
       expect(service.getContentType('.m4a')).toBe('audio/mp4');
       expect(service.getContentType('.pdf')).toBe('application/pdf');
-      expect(service.getContentType('.fb2')).toBe('application/xml');
+      expect(service.getContentType('.fb2')).toBe('application/x-fictionbook');
     });
 
     it('falls back to application/octet-stream for unknown extensions', () => {

@@ -33,6 +33,7 @@ import { StatusFileResponseDto } from './app/dto/status-file-response.dto';
 import { FileNameParamDto } from './shared/dto/file-name-param.dto';
 import { MAX_UPLOAD_BYTES, mediaFileFilter } from './app/upload-file-filter';
 import { MulterExceptionFilter } from './app/multer-exception.filter';
+import { collectReferencedFileNames } from './minio/referenced-files';
 
 /**
  * Failure reasons are admin-only diagnostics, but raw MinIO/driver text can
@@ -239,9 +240,8 @@ export class AppController {
 
   /**
    * Extracts every referenced file name from the stored URL columns of all
-   * sermons and playlists. Malformed/foreign URLs are skipped — one bad row
-   * must not break the orphans scan; the object it points to is simply
-   * unmatched (and therefore reported as an orphan).
+   * sermons and playlists. Malformed/foreign URLs are skipped — the object
+   * they point to is simply unmatched (and therefore reported as an orphan).
    */
   private async loadReferencedFileNames(): Promise<ReferencedFileNames> {
     const [sermons, playlists] = await Promise.all([
@@ -250,32 +250,6 @@ export class AppController {
       }),
       this.playlistRepository.find({ select: { artwork: true } }),
     ]);
-
-    const audio = new Set<string>();
-    const text = new Set<string>();
-    const artwork = new Set<string>();
-    for (const sermon of sermons) {
-      this.collectExtractedName(audio, sermon.audioUrl);
-      this.collectExtractedName(text, sermon.textFileUrl);
-      this.collectExtractedName(artwork, sermon.artwork);
-    }
-    for (const playlist of playlists) {
-      this.collectExtractedName(artwork, playlist.artwork);
-    }
-    return { audio, text, artwork };
-  }
-
-  private collectExtractedName(
-    set: Set<string>,
-    fileUrl: string | undefined,
-  ): void {
-    if (!fileUrl) {
-      return;
-    }
-    try {
-      set.add(MinioService.extractFileNameFromUrl(fileUrl));
-    } catch {
-      // Skipped deliberately — see loadReferencedFileNames().
-    }
+    return collectReferencedFileNames(sermons, playlists);
   }
 }

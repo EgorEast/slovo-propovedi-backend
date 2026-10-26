@@ -53,7 +53,7 @@ async listFiles(): Promise<GetFilesResponseDto>
 
 - Защищён (`AuthGuard` + `RolesGuard`, роли admin/moderator) — инвентарь хранилища не должен быть доступен неаутентифицированным и обычным `user`.
 - Возвращает `minioService.listImages()` (до 500 изображений, newest-first) как `{ files: [...], count }`.
-- Каждый элемент обогащён флагом `used` — изображение уже привязано как обложка (artwork) проповеди или плейлиста. Набор referenced-имён строится из БД (`loadReferencedFileNames()`: колонки `sermon.audioUrl/textFileUrl/artwork` + `playlist.artwork`, имена извлекаются через `MinioService.extractFileNameFromUrl`).
+- Каждый элемент обогащён флагом `used` — изображение уже привязано как обложка (artwork) проповеди или плейлиста. Набор referenced-имён строится из БД (`loadReferencedFileNames()`: колонки `sermon.audioUrl/textFileUrl/artwork` + `playlist.artwork` передаются в общий `collectReferencedFileNames` из `src/minio/referenced-files.ts`, имена извлекаются через `MinioService.extractFileNameFromUrl`; тот же построитель использует `SermonService.remove`).
 
 ## `GET /files/orphans` — список осиротевших файлов
 

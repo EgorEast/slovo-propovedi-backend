@@ -125,7 +125,9 @@
     "nestjs-zod": {
       "@nestjs/common": "$@nestjs/common",
       "@nestjs/swagger": "$@nestjs/swagger"
-    }
+    },
+    "body-parser": "^2.4.0",
+    "multer": "^2.5.0"
   },
   "allowScripts": {
     "bcrypt@6.0.0": true,
