@@ -2,6 +2,11 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.18.0] - 2026-10-27
+
+### Features
+- serve stored objects with an immutable Cache-Control
+
 ## [0.17.0] - 2026-10-27
 
 ### Features
