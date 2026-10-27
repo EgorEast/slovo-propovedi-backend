@@ -128,6 +128,8 @@
 
 ### Files (`AppController`)
 
+> **Превью обложек (соглашение, вне OpenAPI):** для `artwork` вида `${MINIO_PUBLIC_URI}/files/<uuid>.<ext>` существует `${MINIO_PUBLIC_URI}/files/thumbs/<uuid>.webp` (WebP ≤ 640 px). Клиенты используют его для карточек и откатываются на оригинал, если превью нет — см. [minio.md](../modules/minio.md#превью-изображений-thumbs).
+
 | Эндпоинт | Guard | Метод контроллера | Метод сервиса |
 |----------|-------|-------------------|----------------|
 | `POST /files` | `AuthGuard` + `RolesGuard` (admin, moderator) | `AppController.uploadFile` (лимит 100 MB, `fileFilter` по `MEDIA_EXTENSIONS`) | `MinioService.uploadFile` |

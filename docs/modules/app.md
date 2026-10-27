@@ -20,6 +20,8 @@
 
 ## `POST /files` — загрузка
 
+> Для изображений рядом сохраняется превью `thumbs/<uuid>.webp` (WebP ≤ 640 px) — см. [minio.md](./minio.md#превью-изображений-thumbs). Ответ не меняется.
+
 ```ts
 @Post('files')
 @Roles(UserRole.Admin, UserRole.Moderator)
@@ -85,6 +87,8 @@ async cleanupOrphanedFiles(): Promise<CleanupOrphansResponseDto>
 - Ошибка удаления отдельного объекта не роняет запрос: объект попадает в `failed` с `reason`, остальные продолжают удаляться. `reason` — admin-only диагностика, усечённая до первой строки и 200 символов, чтобы не отдавать в UI сырой текст MinIO/драйвера и не раздувать ответ. Ответ `{ deleted: string[], failed: { fileName, reason }[] }`. Идемпотентен: повторный вызов не найдёт уже удалённых объектов (S3 DeleteObject идемпотентен).
 
 ## `DELETE /files/:fileName` — удаление файла
+
+> Удаление изображения удаляет и его превью `thumbs/<uuid>.webp`.
 
 ```ts
 @Delete('files/:fileName')

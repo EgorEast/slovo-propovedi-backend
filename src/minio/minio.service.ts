@@ -1,13 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import * as Minio from 'minio';
 import {
   AUDIO_TEXT_EXTENSIONS,
   getFileExtension,
+  getThumbnailName,
   IMAGE_EXTENSIONS,
   MEDIA_EXTENSIONS,
+  THUMBNAIL_PREFIX,
 } from 'src/shared/media';
+import { createThumbnail, THUMBNAIL_CONTENT_TYPE } from './thumbnail';
 
 export interface StoredFile {
   fileName: string;
@@ -38,6 +41,8 @@ export type StoredImage = StoredFile;
 @Injectable()
 export class MinioService {
   static readonly BUCKET_NAME = 'files';
+
+  private readonly logger = new Logger(MinioService.name);
 
   // Re-exported from `src/shared/media.ts` so existing consumers keep using
   // MinioService while the taxonomy itself has one definition.
@@ -143,7 +148,99 @@ export class MinioService {
       },
     );
 
+    if (MinioService.isImageFile(fileName)) {
+      await this.storeThumbnail(fileName, file.buffer);
+    }
+
     return fileName;
+  }
+
+  /**
+   * Writes the card-size preview of an image (`thumbs/<uuid>.webp`). Best
+   * effort: a failure is logged and never fails the upload — clients fall back
+   * to the original when the preview is missing.
+   * @returns whether the preview was stored.
+   */
+  async storeThumbnail(fileName: string, image: Buffer): Promise<boolean> {
+    try {
+      const thumbnail = await createThumbnail(image);
+      await this.minioClient.putObject(
+        MinioService.BUCKET_NAME,
+        getThumbnailName(fileName),
+        thumbnail,
+        thumbnail.length,
+        { 'Content-Type': THUMBNAIL_CONTENT_TYPE },
+      );
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Thumbnail for ${fileName} failed: ${message}`);
+      return false;
+    }
+  }
+
+  /**
+   * One-shot backfill: creates previews for every stored image that has none.
+   * Idempotent (existing previews are skipped), sequential to keep memory and
+   * CPU flat, never throws — meant to run in the background after boot.
+   */
+  async backfillThumbnails(): Promise<{ created: number; failed: number }> {
+    const result = { created: 0, failed: 0 };
+    try {
+      const images = await this.scanBucket({
+        extensions: MinioService.IMAGE_EXTENSIONS,
+      });
+      const existing = new Set(await this.listObjectNames(THUMBNAIL_PREFIX));
+      const missing = images
+        .map((obj) => obj.name ?? '')
+        .filter((name) => name && !existing.has(getThumbnailName(name)));
+
+      for (const fileName of missing) {
+        const image = await this.readObject(fileName).catch(() => null);
+        const stored = image
+          ? await this.storeThumbnail(fileName, image)
+          : false;
+        if (stored) result.created += 1;
+        else result.failed += 1;
+      }
+      if (missing.length > 0) {
+        this.logger.log(
+          `Thumbnail backfill: ${result.created} created, ${result.failed} failed`,
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Thumbnail backfill aborted: ${message}`);
+    }
+    return result;
+  }
+
+  private async readObject(fileName: string): Promise<Buffer> {
+    const stream = await this.minioClient.getObject(
+      MinioService.BUCKET_NAME,
+      fileName,
+    );
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
+  private listObjectNames(prefix: string): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const names: string[] = [];
+      const stream = this.minioClient.listObjectsV2(
+        MinioService.BUCKET_NAME,
+        prefix,
+        true,
+      );
+      stream.on('data', (obj) => {
+        if (obj.name) names.push(obj.name);
+      });
+      stream.on('error', reject);
+      stream.on('end', () => resolve(names));
+    });
   }
 
   async getFileUrl(fileName: string): Promise<string> {
@@ -279,6 +376,11 @@ export class MinioService {
           return;
         }
         const fileName = obj.name ?? '';
+        // Previews are derived objects, not media: they must never show up in
+        // the cover gallery, the orphans scan or the cleanup.
+        if (fileName.startsWith(THUMBNAIL_PREFIX)) {
+          return;
+        }
         if (
           extensions &&
           !extensions.includes(MinioService.getFileExtension(fileName))
@@ -361,6 +463,12 @@ export class MinioService {
    */
   async removeObjectByName(fileName: string): Promise<void> {
     await this.minioClient.removeObject(MinioService.BUCKET_NAME, fileName);
+    if (MinioService.isImageFile(fileName)) {
+      // The preview is derived data: a leftover is harmless, so best effort.
+      await this.minioClient
+        .removeObject(MinioService.BUCKET_NAME, getThumbnailName(fileName))
+        .catch(() => undefined);
+    }
   }
 
   /**

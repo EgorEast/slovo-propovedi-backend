@@ -45,3 +45,18 @@ export const STORED_FILE_NAME_PATTERN = new RegExp(
   `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(${EXTENSION_ALTERNATION})$`,
   'i',
 );
+
+/**
+ * Card-size previews of stored images live next to the originals under this
+ * prefix: `<uuid>.<ext>` → `thumbs/<uuid>.webp`. Clients derive the preview URL
+ * from the artwork URL by the same rule (and fall back to the original if the
+ * preview is missing), so the API contract stays unchanged.
+ */
+export const THUMBNAIL_PREFIX = 'thumbs/';
+
+/** Object name of the preview of a stored image (`<uuid>.<ext>`). */
+export function getThumbnailName(fileName: string): string {
+  const extension = getFileExtension(fileName);
+  const baseName = extension ? fileName.slice(0, -extension.length) : fileName;
+  return `${THUMBNAIL_PREFIX}${baseName}.webp`;
+}
