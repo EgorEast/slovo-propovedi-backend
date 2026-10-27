@@ -2,6 +2,15 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.17.0] - 2026-10-27
+
+### Features
+- store card-size WebP previews of images
+
+### Maintenance
+- fix the secret scopes listed in .env.example
+- take the buildx builder name from the BUILDX_BUILDER org variable
+
 ## [0.16.1] - 2026-10-26
 
 ### Bug Fixes
