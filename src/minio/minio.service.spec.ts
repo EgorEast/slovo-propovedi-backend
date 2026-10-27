@@ -219,7 +219,10 @@ describe('MinioService', () => {
         fileName,
         expect.any(Buffer),
         5,
-        { 'Content-Type': 'audio/mp3' },
+        {
+          'Content-Type': 'audio/mp3',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        },
       );
     });
   });
@@ -246,6 +249,7 @@ describe('MinioService', () => {
         14,
         {
           'Content-Type': 'application/x-fictionbook',
+          'Cache-Control': 'public, max-age=31536000, immutable',
           'Content-Disposition': 'attachment',
         },
       );

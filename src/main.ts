@@ -75,9 +75,12 @@ async function bootstrap() {
 
   const minioService = app.get<MinioService>(MinioService);
   await minioService.createBucketIfNotExists();
-  // Previews for images uploaded before thumbnails existed: runs in the
-  // background (never blocks or fails the boot) and is a no-op once done.
-  void minioService.backfillThumbnails();
+  // One-shot backfills for objects stored before previews and Cache-Control
+  // existed: run in the background (never block or fail the boot), previews
+  // first so the new ones already carry the header; no-ops once done.
+  void minioService
+    .backfillThumbnails()
+    .then(() => minioService.backfillCacheControl());
 
   if (process.env.DOCS_ENABLED === 'true') {
     try {

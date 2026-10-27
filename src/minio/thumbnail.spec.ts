@@ -27,7 +27,9 @@ const makeJpeg = (width: number, height: number) =>
     .toBuffer();
 
 type MockClient = {
+  copyObject: jest.Mock;
   getObject: jest.Mock;
+  statObject: jest.Mock;
   listObjectsV2: jest.Mock;
   putObject: jest.Mock;
   removeObject: jest.Mock;
@@ -36,7 +38,9 @@ type MockClient = {
 const setup = () => {
   const service = new MinioService(config);
   const client: MockClient = {
+    copyObject: jest.fn().mockResolvedValue(undefined),
     getObject: jest.fn(),
+    statObject: jest.fn(),
     listObjectsV2: jest.fn(),
     putObject: jest.fn().mockResolvedValue(undefined),
     removeObject: jest.fn().mockResolvedValue(undefined),
@@ -82,7 +86,10 @@ describe('thumbnails', () => {
       getThumbnailName(fileName),
       expect.any(Buffer),
       expect.any(Number),
-      { 'Content-Type': 'image/webp' },
+      {
+        'Cache-Control': MinioService.CACHE_CONTROL,
+        'Content-Type': 'image/webp',
+      },
     );
   });
 
@@ -143,7 +150,79 @@ describe('thumbnails', () => {
       'thumbs/todo.webp',
       expect.any(Buffer),
       expect.any(Number),
-      { 'Content-Type': 'image/webp' },
+      {
+        'Cache-Control': MinioService.CACHE_CONTROL,
+        'Content-Type': 'image/webp',
+      },
     );
+  });
+
+  describe('backfillCacheControl', () => {
+    const stat = (metaData: Record<string, string>) => ({ metaData });
+
+    it('rewrites only objects without the header, keeping their content type', async () => {
+      const { client, service } = setup();
+      client.listObjectsV2.mockImplementation(
+        (_bucket: string, prefix: string) =>
+          Readable.from(
+            prefix === 'thumbs/'
+              ? [item('thumbs/a.webp')]
+              : [item('a.jpg'), item('b.png'), item('song.mp3')],
+          ),
+      );
+      client.statObject.mockImplementation(
+        async (_bucket: string, name: string) =>
+          name === 'b.png'
+            ? stat({
+                'cache-control': MinioService.CACHE_CONTROL,
+                'content-type': 'image/png',
+              })
+            : stat({
+                'content-type': name.endsWith('.webp')
+                  ? 'image/webp'
+                  : 'image/jpeg',
+              }),
+      );
+
+      const result = await service.backfillCacheControl();
+
+      expect(result).toEqual({ failed: 0, updated: 2 });
+      const rewritten = client.copyObject.mock.calls.map(
+        ([, dest]: [unknown, { getHeaders: () => Record<string, string> }]) =>
+          dest.getHeaders(),
+      );
+      expect(rewritten).toEqual([
+        expect.objectContaining({
+          'Cache-Control': MinioService.CACHE_CONTROL,
+          'Content-Type': 'image/jpeg',
+          'X-Amz-Metadata-Directive': 'REPLACE',
+        }),
+        expect.objectContaining({ 'Content-Type': 'image/webp' }),
+      ]);
+      expect(client.statObject).not.toHaveBeenCalledWith('files', 'song.mp3');
+    });
+
+    it('processes images oldest first so the gallery order survives', async () => {
+      const { client, service } = setup();
+      const at = (name: string, time: number) =>
+        ({ lastModified: new Date(time), name, size: 1 }) as Minio.BucketItem;
+      client.listObjectsV2.mockImplementation(
+        (_bucket: string, prefix: string) =>
+          Readable.from(
+            prefix === 'thumbs/'
+              ? []
+              : [at('new.jpg', 2000), at('old.jpg', 1000)],
+          ),
+      );
+      client.statObject.mockResolvedValue(
+        stat({ 'content-type': 'image/jpeg' }),
+      );
+
+      await service.backfillCacheControl();
+
+      expect(
+        client.statObject.mock.calls.map(([, name]: [string, string]) => name),
+      ).toEqual(['old.jpg', 'new.jpg']);
+    });
   });
 });

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import * as Minio from 'minio';
+import { CopyDestinationOptions, CopySourceOptions } from 'minio';
 import {
   AUDIO_TEXT_EXTENSIONS,
   getFileExtension,
@@ -41,6 +42,13 @@ export type StoredImage = StoredFile;
 @Injectable()
 export class MinioService {
   static readonly BUCKET_NAME = 'files';
+
+  /**
+   * Stored object names are random UUIDs and a file is never overwritten in
+   * place (a replacement is a new object), so every object can be cached by
+   * browsers and CDNs forever.
+   */
+  static readonly CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
   private readonly logger = new Logger(MinioService.name);
 
@@ -144,6 +152,7 @@ export class MinioService {
       file.size,
       {
         'Content-Type': contentType,
+        'Cache-Control': MinioService.CACHE_CONTROL,
         ...this.getContentDisposition(fileType),
       },
     );
@@ -169,7 +178,10 @@ export class MinioService {
         getThumbnailName(fileName),
         thumbnail,
         thumbnail.length,
-        { 'Content-Type': THUMBNAIL_CONTENT_TYPE },
+        {
+          'Cache-Control': MinioService.CACHE_CONTROL,
+          'Content-Type': THUMBNAIL_CONTENT_TYPE,
+        },
       );
       return true;
     } catch (error) {
@@ -213,6 +225,82 @@ export class MinioService {
       this.logger.warn(`Thumbnail backfill aborted: ${message}`);
     }
     return result;
+  }
+
+  /**
+   * One-shot backfill of `Cache-Control` on images and previews stored before
+   * uploads set it. MinIO cannot change metadata in place, so each object is
+   * copied onto itself with the metadata replaced (content type and
+   * disposition are carried over). That bumps `lastModified`, so images are
+   * processed oldest-first to keep their relative "newest first" order in the
+   * cover gallery. Audio/text are left alone: rewriting gigabytes for a header
+   * is not worth it. Idempotent, sequential, never throws.
+   */
+  async backfillCacheControl(): Promise<{ updated: number; failed: number }> {
+    const result = { failed: 0, updated: 0 };
+    try {
+      const images = await this.scanBucket({
+        extensions: MinioService.IMAGE_EXTENSIONS,
+      });
+      const oldestFirst = images
+        .sort(
+          (a, b) =>
+            (a.lastModified?.getTime() ?? 0) - (b.lastModified?.getTime() ?? 0),
+        )
+        .map((obj) => obj.name ?? '')
+        .filter(Boolean);
+      const thumbnails = await this.listObjectNames(THUMBNAIL_PREFIX);
+
+      for (const name of [...oldestFirst, ...thumbnails]) {
+        try {
+          if (await this.applyCacheControl(name)) result.updated += 1;
+        } catch {
+          result.failed += 1;
+        }
+      }
+      if (result.updated > 0 || result.failed > 0) {
+        this.logger.log(
+          `Cache-Control backfill: ${result.updated} updated, ${result.failed} failed`,
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Cache-Control backfill aborted: ${message}`);
+    }
+    return result;
+  }
+
+  /** @returns whether the object had to be rewritten. */
+  private async applyCacheControl(name: string): Promise<boolean> {
+    const stat = await this.minioClient.statObject(
+      MinioService.BUCKET_NAME,
+      name,
+    );
+    const metaData: Record<string, unknown> = stat.metaData ?? {};
+    if (metaData['cache-control'] === MinioService.CACHE_CONTROL) {
+      return false;
+    }
+
+    const headers: Record<string, string> = {
+      'Cache-Control': MinioService.CACHE_CONTROL,
+    };
+    if (typeof metaData['content-type'] === 'string') {
+      headers['Content-Type'] = metaData['content-type'];
+    }
+    if (typeof metaData['content-disposition'] === 'string') {
+      headers['Content-Disposition'] = metaData['content-disposition'];
+    }
+
+    await this.minioClient.copyObject(
+      new CopySourceOptions({ Bucket: MinioService.BUCKET_NAME, Object: name }),
+      new CopyDestinationOptions({
+        Bucket: MinioService.BUCKET_NAME,
+        Headers: headers,
+        MetadataDirective: 'REPLACE',
+        Object: name,
+      }),
+    );
+    return true;
   }
 
   private async readObject(fileName: string): Promise<Buffer> {
