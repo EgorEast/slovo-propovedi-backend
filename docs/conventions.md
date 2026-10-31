@@ -160,6 +160,10 @@ psql -h <host> -U <user> -d <db> -f sql/migrations/001_add_positions.sql
 
 > ✅ Все ручные миграции **идемпотентны** (`ADD COLUMN IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`, guard'ы по `WHERE position = 0`), безопасны к повторному запуску. Новую схему-изменение следует оформлять как идемпотентный SQL-файл в `sql/` и отражать в `bootstrap.sql`.
 
+## Воркфлоу для AI-агентов
+
+Нетривиальные задачи прогоняются через воркфлоу ДО реализации: спек-уровень (новая фича, изменение API-контракта, расплывчатые требования) — пайплайн spec-kit (`/speckit.specify` → `clarify` → `plan` → `tasks` → `implement`); понятная многошаговая задача — скилл `plan-implement`; баг — `systematic-debugging`; любое изменение кода — `tdd`; всегда — `ponytail` (минимальный дифф) и `verification-before-completion` перед «готово». Скиллы лежат в `.opencode/skills/` и `.claude/skills/` (копии байт-в-байт), команды spec-kit — в `.opencode/commands/` (зеркало в `.claude/commands/`). Детали — [`AGENTS.md`](../AGENTS.md) → «Mandatory Workflows». CLI `specify` нужен только для scaffolding/обновления шаблонов — в рантайме агентам и контрибьюторам он не требуется.
+
 ## Связанные документы
 
 - [README.md](./README.md) — индекс документации backend-репозитория
