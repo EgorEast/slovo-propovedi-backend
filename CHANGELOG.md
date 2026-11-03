@@ -2,6 +2,17 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.18.1] - 2026-11-03
+
+### Maintenance
+- update nestjs
+- update devdependencies (non-major)
+- mandate plan-protocol format before plan_save
+- forgejo board mirroring and FORGEJO_TOKEN setup guide
+- gitattributes eol for opencode tools
+- forgejo taskstoissues, skills sync guard, maintenance docs
+- add TDD/plan-implement workflow skills and spec-kit agent rules
+
 ## [0.18.0] - 2026-10-27
 
 ### Features
