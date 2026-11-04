@@ -7,11 +7,17 @@ set -euo pipefail
 # Runs ON the VPS as root. Triggered by the Forgejo release workflow via SSH.
 # Replaces the former Ansible role `roles/custom/slovo-backend/`.
 #
-# Usage:   DEPLOY_TAG=abc1234 BACKEND_API_HOSTNAME=api.example.com \
+# Usage:   DEPLOY_TAG=v1.2.3 IMAGE_REF=git.lightnode.ru/slovo_propovedi/slovo-propovedi-backend \
+#          BACKEND_API_HOSTNAME=api.example.com \
 #          INTERNAL_PORT=3000 TRAEFIK_NETWORK=traefik \
 #          POSTGRES_NETWORK=slovo-postgres MINIO_NETWORK=slovo-minio \
 #          TRAEFIK_SERVICE=slovo-traefik.service BUILDX_BUILDER=slovo-constrained \
 #          bash vps-deploy.sh
+#
+# The release workflow builds the image with the shared `slovo-constrained`
+# buildx builder ON this host and pushes it to the Forgejo container registry;
+# this script only pulls the published tag. No source tree is shipped to the
+# VPS. The registry is public (public org), so the pull is anonymous.
 #
 # Scope: this script owns ONLY the slovo-backend container and its own
 # `slovo-backend` Docker network. All shared infrastructure — Docker, the
@@ -24,8 +30,14 @@ set -euo pipefail
 # =============================================================================
 
 # --- Configuration (override via env) ---
-# DEPLOY_TAG is informational only (shown in the banner and verify output).
-DEPLOY_TAG="${DEPLOY_TAG:-unknown}"
+# DEPLOY_TAG is the release tag (e.g. v1.2.3): the registry image tag to pull.
+DEPLOY_TAG="${DEPLOY_TAG:?ERROR: DEPLOY_TAG is required (release tag, passed by the release workflow)}"
+
+# Full registry image ref (no tag) — passed by the release workflow. Required,
+# no default: a renamed registry/org must fail loudly instead of pulling or
+# creating a container from a stale local image.
+IMAGE_REF="${IMAGE_REF:?ERROR: IMAGE_REF is required (full registry image ref, passed by the release workflow)}"
+IMAGE="$IMAGE_REF:$DEPLOY_TAG"
 
 # Required env — no defaults. The release workflow passes these from Forgejo
 # org variables; a missing value is a hard error (fail fast before any change).
@@ -40,14 +52,14 @@ done
 # shellcheck disable=SC2269 # self-assignments document the required-variable contract
 
 SERVICE=slovo-backend
-IMAGE=slovo-backend:latest
 CONTAINER=slovo-backend
 NETWORK=slovo-backend
 BASE_PATH=/slovo/backend
-SRC_DIR=/slovo/backend/container-src
 ENV_FILE="$BASE_PATH/env"
 LABELS_FILE="$BASE_PATH/labels"
 # buildx builder name — playbook-owned, passed from the Forgejo org variable.
+# No longer used to build here, but the post-deploy cleanup caps its cache
+# (the CI release build runs through it on this host).
 BUILDER="${BUILDX_BUILDER:?ERROR: BUILDX_BUILDER is required (Forgejo org variable)}"
 MEMORY=1g
 STOP_GRACE=30
@@ -65,7 +77,7 @@ echo "==============================================================="
 
 # --- Verify prerequisites (playbook-owned; never auto-provisioned) ---
 # This script owns ONLY the slovo-backend container and the slovo-backend
-# network (created in step 5). Everything checked below is provisioned by the
+# network (created in step 4). Everything checked below is provisioned by the
 # slovo-propovedi playbook (`just setup-all`). Anything missing fails fast with
 # a clear message instead of a half-provisioned box or a crash-looping service.
 echo ">> Verifying prerequisites..."
@@ -90,7 +102,8 @@ SLOVO_UID=$(id -u slovo)
 SLOVO_GID=$(id -g slovo)
 echo "  slovo user: OK (uid=$SLOVO_UID, gid=$SLOVO_GID)"
 
-# buildx builder (playbook slovo-buildx role)
+# buildx builder (playbook slovo-buildx role). The CI release build runs
+# through it on this host; the post-deploy cleanup caps its cache.
 docker buildx inspect "$BUILDER" >/dev/null 2>&1 \
   || fail_missing "buildx builder '$BUILDER' does not exist (playbook slovo-buildx role)."
 echo "  buildx builder: OK ($BUILDER)"
@@ -104,8 +117,8 @@ for svc in $REQUIRED_SERVICES; do
 done
 echo "  services: OK ($REQUIRED_SERVICES)"
 
-# Shared Docker networks the backend attaches to at runtime (step 7). The
-# slovo-backend network itself is this script's own and is created in step 5.
+# Shared Docker networks the backend attaches to at runtime (step 6). The
+# slovo-backend network itself is this script's own and is created in step 4.
 # shellcheck disable=SC2086 # word splitting of the space-separated list is intended
 for net in $REQUIRED_NETWORKS; do
   docker network inspect "$net" >/dev/null 2>&1 \
@@ -115,9 +128,9 @@ echo "  networks: OK ($REQUIRED_NETWORKS)"
 
 # --- 1. Create paths ---
 echo ">> Ensuring paths exist..."
-mkdir -p "$BASE_PATH" "$SRC_DIR"
-chown slovo:slovo "$BASE_PATH" "$SRC_DIR"
-chmod 0750 "$BASE_PATH" "$SRC_DIR"
+mkdir -p "$BASE_PATH"
+chown slovo:slovo "$BASE_PATH"
+chmod 0750 "$BASE_PATH"
 
 # --- 2. Verify env file (written by the release workflow) ---
 # Secrets are generated on the CI runner and streamed to $ENV_FILE over SSH
@@ -131,19 +144,7 @@ if [ ! -s "$ENV_FILE" ]; then
 fi
 echo ">> Env file: OK ($ENV_FILE)"
 
-# --- 3. Verify source code ---
-# Source code is transferred by the Forgejo workflow (tar+ssh) before this
-# script runs. The Dockerfile lives at the repository root, which is the
-# build context root after the flatten.
-echo ">> Verifying source code at $SRC_DIR..."
-if [ ! -f "$SRC_DIR/Dockerfile" ]; then
-  echo "ERROR: No source code found at $SRC_DIR."
-  echo "       The workflow should transfer the code before running this script."
-  exit 1
-fi
-chown -R slovo:slovo "$SRC_DIR"
-
-# --- 4. Write Traefik labels (reproduces playbook labels.j2) ---
+# --- 3. Write Traefik labels (reproduces playbook labels.j2) ---
 # Single API router (slovo-backend-api) pointing at the service on port
 # 3000. The backticks in the Host() rule are Traefik syntax — they must be
 # preserved literally.
@@ -163,23 +164,23 @@ echo ">> Writing Traefik labels..."
 chmod 0640 "$LABELS_FILE"
 chown slovo:slovo "$LABELS_FILE"
 
-# --- 5. Create Docker network (if missing) ---
+# --- 4. Create Docker network (if missing) ---
 echo ">> Ensuring Docker network '$NETWORK'..."
 docker network inspect "$NETWORK" >/dev/null 2>&1 \
   || docker network create "$NETWORK"
 
-# --- 6. Build Docker image ---
-echo ">> Building Docker image (this may take a minute)..."
-if ! docker buildx build \
-  --builder="$BUILDER" \
-  --load \
-  --tag="$IMAGE" \
-  "$SRC_DIR"; then
-  echo "ERROR: Docker image build failed for $IMAGE from $SRC_DIR"
+# --- 5. Pull the release image from the registry ---
+# The image was built and pushed by the release workflow through the shared
+# `slovo-constrained` builder. The org is public, so the pull is anonymous —
+# no registry credentials are stored on the VPS. The version tag stays in the
+# registry, keeping old releases redeployable for rollback.
+echo ">> Pulling image $IMAGE..."
+if ! docker pull "$IMAGE"; then
+  echo "ERROR: docker pull failed for $IMAGE (built and pushed by the release workflow?)"
   exit 1
 fi
 
-# --- 7. Write systemd unit (reproduces playbook slovo-backend.service.j2) ---
+# --- 6. Write systemd unit (reproduces playbook slovo-backend.service.j2) ---
 # The container joins 4 networks: the primary (--network) plus traefik,
 # slovo-postgres and slovo-minio via ExecStartPre network connects.
 # Runs read-only with a small writable tmpfs at /tmp and a 384m memory cap
@@ -224,13 +225,13 @@ SyslogIdentifier=slovo-backend
 WantedBy=multi-user.target
 EOF
 
-# --- 8. Reload, enable and restart ---
+# --- 7. Reload, enable and restart ---
 echo ">> Reloading systemd and restarting service..."
 systemctl daemon-reload
 systemctl enable slovo-backend.service >/dev/null 2>&1 || true
 systemctl restart slovo-backend.service
 
-# --- 9. Verify ---
+# --- 8. Verify ---
 sleep 2
 if systemctl is-active --quiet slovo-backend.service; then
   echo "[OK] slovo-backend.service is running"
@@ -242,12 +243,14 @@ else
   exit 1
 fi
 
-# --- 10. Post-deploy cleanup (non-fatal, best effort) ---
-# Runs only after step 9 confirms the new service is active (systemctl
+# --- 9. Post-deploy cleanup (non-fatal, best effort) ---
+# Runs only after step 8 confirms the new service is active (systemctl
 # is-active, not an app-level healthcheck). Bounds disk growth on the VPS
-# across repeated releases: prunes dangling images only (no --all; the
-# previous release's image becomes dangling once slovo-backend:latest is
-# retagged and is removed) and caps the buildx builder cache.
+# across repeated releases: prunes dangling images only (no --all). Old
+# release tags (v1.2.2, ...) stay on disk and in the registry on purpose —
+# they are the rollback path; the registry side is bounded by the org
+# cleanup rule. The buildx prune caps the cache of the shared builder that
+# the CI release build runs through on this host.
 # Both prunes are strictly non-fatal — with `set -e` in effect, a cleanup
 # failure must never fail a successful deployment, so errors are logged as
 # warnings and the deploy continues.
@@ -261,6 +264,6 @@ if ! docker buildx prune --builder "$BUILDER" --keep-storage 4GB --force; then
   echo "WARN: docker buildx prune failed — skipping builder cache cleanup" >&2
 fi
 
-# --- 11. Cleanup ---
+# --- 10. Cleanup ---
 rm -f /tmp/vps-deploy.sh
 echo ">> Done."

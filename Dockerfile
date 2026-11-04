@@ -61,6 +61,15 @@ USER node
 
 FROM node:24-alpine AS production
 
+# OCI source label: links the image in the Forgejo container registry back to
+# this repository's Packages tab (belt-and-suspenders alongside the
+# registry-path naming convention). No hardcoded value: the release workflow
+# injects it via --build-arg OCI_IMAGE_SOURCE="${REPOSITORY_URL}/${GITHUB_REPOSITORY}".
+# The ARG (no default) is declared in this stage scope, next to the LABEL it
+# feeds (Dockerfile limitation: one variable per LABEL instruction).
+ARG OCI_IMAGE_SOURCE
+LABEL org.opencontainers.image.source=$OCI_IMAGE_SOURCE
+
 # Copy the bundled code from the build stage to the production image
 COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
 COPY --chown=node:node --from=build /usr/src/app/dist ./dist
