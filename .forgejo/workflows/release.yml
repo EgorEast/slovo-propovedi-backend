@@ -166,6 +166,31 @@ jobs:
             | docker login "$REGISTRY_HOST" --username "$REGISTRY_USER" --password-stdin
 
           export DOCKER_HOST="ssh://$VPS_SSH_USER@$VPS_HOST"
+          # Builder records live in THIS client's local store (~/.docker/buildx),
+          # not on the daemon: a fresh job has no record of the host's
+          # pre-provisioned $BUILDX_BUILDER (playbook role `slovo-buildx`), so
+          # `--builder` would fail with "no builder found" even though its
+          # buildkit container runs on the VPS. Adopt the builder idempotently
+          # while the job's local record is missing (buildx 0.20 semantics,
+          # verified against the release source):
+          #   - container already present on the daemon -> `create` just saves
+          #     the local record and `--bootstrap` only probes the RUNNING
+          #     container (start on a running container is a no-op, nothing is
+          #     restarted) — its layer cache stays intact;
+          #   - container absent (first release / host rebuilt) -> recreated
+          #     with the EXACT `slovo-buildx` role parameters, so a CI-created
+          #     builder matches the playbook one;
+          #   - parallel jobs racing the same first create -> buildx treats a
+          #     container-name conflict ("already in use") as adopt-and-wait,
+          #     so the loser ends up on the winner's container.
+          if ! docker buildx inspect "$BUILDX_BUILDER" >/dev/null 2>&1; then
+            docker buildx create \
+              --name "$BUILDX_BUILDER" \
+              --driver docker-container \
+              --driver-opt "memory=1g" \
+              --driver-opt "cpu-quota=80000" \
+              --bootstrap >/dev/null
+          fi
           # Single-platform linux/amd64 like the former on-VPS build — the 4 GB
           # host gets no multi-arch builds.
           docker buildx build \
