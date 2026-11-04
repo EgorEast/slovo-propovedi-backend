@@ -2,6 +2,12 @@
 
 All notable changes are auto-generated from [conventional commits](https://www.conventionalcommits.org/) at release time via `npm run bump-version`.
 
+## [0.18.2] - 2026-11-04
+
+### Maintenance
+- adopt host buildx builder via idempotent buildx create
+- switch release deploy to Forgejo container registry
+
 ## [0.18.1] - 2026-11-03
 
 ### Maintenance
