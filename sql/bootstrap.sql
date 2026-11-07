@@ -92,6 +92,21 @@ CREATE TABLE feature_flag_override (
 );
 
 -- ---------------------------------------------------------------------------
+-- picture (BlurHash placeholders for uploaded cover images)
+-- ---------------------------------------------------------------------------
+-- One row per uploaded image object; populated on upload and by
+-- scripts/backfill-blurhash.mjs. `picture-path` is the MinIO object name and is
+-- UNIQUE so the service can upsert by it. Mirrors
+-- sql/migrations/016_add_picture.sql.
+CREATE TABLE picture (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    "picture-path" character varying NOT NULL,
+    blurhash character varying,
+    CONSTRAINT "PK_picture_id" PRIMARY KEY (id),
+    CONSTRAINT "UQ_picture_picture_path" UNIQUE ("picture-path")
+);
+
+-- ---------------------------------------------------------------------------
 -- sermon
 -- ---------------------------------------------------------------------------
 CREATE TABLE sermon (
