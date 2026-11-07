@@ -21,6 +21,7 @@
     "gen:schemas": "node --env-file-if-exists=.env --no-network-family-autoselection scripts/gen-schemas.mjs",
     "upload-sermons": "node scripts/upload-sermons.mjs",
     "backfill-created-at": "node --env-file-if-exists=.env scripts/backfill-created-at.mjs",
+    "backfill-blurhash": "node --env-file-if-exists=.env scripts/backfill-blurhash.mjs",
     "bump-version": "node scripts/bump-version.mjs",
     "prepare": "husky"
   },
