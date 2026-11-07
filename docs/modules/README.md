@@ -19,6 +19,7 @@
 | `playlist` | `POST /playlists`, `GET /playlists`, `GET /playlists/:id`, `PATCH /playlists/:id`, `PATCH /playlists/:id/sermons/reorder`, `DELETE /playlists/:id` | `PlaylistEntity` (`playlist`) + `PlaylistSermonJoinEntity` | [`playlist.md`](./playlist.md) |
 | `section` | `POST /section`, `GET /section`, `GET /section/:id`, `PATCH /section/reorder`, `PATCH /section/:id/playlists/reorder`, `PATCH /section/:id`, `DELETE /section/:id` | `SectionEntity` (`section`) + `SectionPlaylistJoinEntity` | [`section.md`](./section.md) |
 | `minio` | (не HTTP) | — | [`minio.md`](./minio.md) |
+| `pictures` | (не HTTP) | `PictureEntity` (`picture`) | [`pictures.md`](./pictures.md) |
 | `shared` | (не HTTP) | — | [`shared.md`](./shared.md) |
 
 > ✅ Модуль `app` (корневой контроллер) — файловое хранилище; `minio` — обёртка над MinIO, которую используют `app`, `sermon` и bootstrap. Модуль `users` — полноценный CRUD аккаунтов с ролями (`UsersController`, 6 эндпоинтов, все admin-only) + сервис для `auth`.

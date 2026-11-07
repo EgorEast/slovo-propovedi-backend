@@ -145,6 +145,8 @@ isReferencedAudioOrText(fileName: string, referenced: ReferencedFileNames): bool
 - **Невидимость:** `scanBucket` пропускает объекты с префиксом `thumbs/` — превью не попадают ни в галерею обложек (`GET /files`), ни в сканы/очистку осиротевших.
 - **Дозаполнение:** `backfillThumbnails()` запускается в фоне после `createBucketIfNotExists` на каждом старте (`main.ts`, `void` — старт не ждёт и не падает). Создаёт превью только для изображений без него (идемпотентно), последовательно — плоская нагрузка на память/CPU; итог пишет в лог, когда было что делать. Так существующие картинки получили превью при первом деплое, а пропущенные (сбой генерации) догоняются при следующем рестарте.
 
+> ✅ Для изображений `AppController.uploadFile` дополнительно считает BlurHash обложки (best-effort, `PicturesService.recordForUpload`; см. [`pictures.md`](./pictures.md)).
+
 ## `Cache-Control` объектов
 
 Имена объектов — случайные UUID, файл никогда не перезаписывается на месте (замена — новый объект), поэтому всё содержимое bucket'а можно кэшировать навсегда: `MinioService.CACHE_CONTROL = 'public, max-age=31536000, immutable'`.

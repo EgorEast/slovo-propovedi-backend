@@ -24,7 +24,7 @@
 
 ## Сущности и связи
 
-Десять сущностей загружаются по glob-шаблону. Все, кроме `InvidiousInstanceEntity`, — с uuid-PK (`@PrimaryGeneratedColumn('uuid')`); на уровне БД default — нативный `uuidv7()` (time-ordered, PostgreSQL ≥ 18; расширение `uuid-ossp` не используется). У `InvidiousInstanceEntity` PK — автоинкрементный integer.
+Одиннадцать сущностей загружаются по glob-шаблону. Все, кроме `InvidiousInstanceEntity`, — с uuid-PK (`@PrimaryGeneratedColumn('uuid')`); на уровне БД default — нативный `uuidv7()` (time-ordered, PostgreSQL ≥ 18; расширение `uuid-ossp` не используется). У `InvidiousInstanceEntity` PK — автоинкрементный integer.
 
 ### `User` — таблица `user`
 
@@ -167,6 +167,18 @@
 
 > ✅ Композитный UNIQUE `UQ_feature_flag_override_pair` гарантирует не более одной строки на пару `(flag, user)`; `setOverride` — атомарный upsert. Обе FK-колонки каскадны, поэтому удаление флага или пользователя уносит его исключения. Поиск исключений пользователя (`GET /feature-flags/me`) опирается на индекс `ix_feature_flag_override_user`(`user_id`); `created_at` служит ключом детерминированного порядка в `GET /feature-flags/:id/overrides`.
 
+### `PictureEntity` — таблица `picture`
+
+`src/pictures/entities/picture.entity.ts`. BlurHash-плейсхолдер загруженной обложки (см. [`modules/pictures.md`](./modules/pictures.md)).
+
+| Колонка | Тип | Ограничения |
+|---------|-----|-------------|
+| `id` | uuid | PK |
+| `picture-path` | varchar | NOT NULL, **UNIQUE** (`UQ_picture_picture_path`) — имя объекта в бакете `files` (`<uuid>.<ext>`) |
+| `blurhash` | varchar | nullable — BlurHash или `NULL`, пока не посчитан |
+
+> ✅ Уникальность `"picture-path"` — несущая: `PicturesService.record` делает upsert по этому имени, поэтому на один объект приходится не более одной строки.
+
 ## Карта отношений (ASCII ER)
 
 ```
@@ -256,7 +268,7 @@
 
 | Файл | Что делает |
 |------|------------|
-| `sql/bootstrap.sql` | **свежая БД** (требует **PostgreSQL 18+**): таблицы `user`, `revoked_refresh_token`, `invidious_instance`, `feature_flag` + `feature_flag_override`, `sermon`, `section`, `playlist`, join-таблицы `playlist_sermons_sermon` + `section_playlists_playlist` (суррогатный `id` PK + UNIQUE FK-пара + `position`), PK, UNIQUE (`user.email`, `user.username`, `revoked_refresh_token.token_hash`, `invidious_instance.url`, `feature_flag.key`, `feature_flag_override`(`flag_id`,`user_id`), join-пары), 5 btree-индексов на FK-колонках (включая `ix_feature_flag_override_user` на `feature_flag_override.user_id`), FK с `ON DELETE/UPDATE CASCADE` (включая `revoked_refresh_token.user_id → user(id)` и обе FK `feature_flag_override`), btree-индекс `idx_section_position` на `section.position` (глобальное упорядочивание разделов), сид флагов `read`/`study`; uuid-PK default — нативный `uuidv7()` (time-ordered, без расширения `uuid-ossp`), а `sermon.created_at`/`playlist.created_at` — `timestamptz DEFAULT now() NOT NULL`. Исторически соответствует выходу TypeORM `synchronize` 0.3.17 (плюс hand-maintained имена констрейнтов). |
+| `sql/bootstrap.sql` | **свежая БД** (требует **PostgreSQL 18+**): таблицы `user`, `revoked_refresh_token`, `invidious_instance`, `feature_flag` + `feature_flag_override`, `sermon`, `section`, `playlist`, `picture`, join-таблицы `playlist_sermons_sermon` + `section_playlists_playlist` (суррогатный `id` PK + UNIQUE FK-пара + `position`), PK, UNIQUE (`user.email`, `user.username`, `revoked_refresh_token.token_hash`, `invidious_instance.url`, `feature_flag.key`, `feature_flag_override`(`flag_id`,`user_id`), `picture."picture-path"`, join-пары), 5 btree-индексов на FK-колонках (включая `ix_feature_flag_override_user` на `feature_flag_override.user_id`), FK с `ON DELETE/UPDATE CASCADE` (включая `revoked_refresh_token.user_id → user(id)` и обе FK `feature_flag_override`), btree-индекс `idx_section_position` на `section.position` (глобальное упорядочивание разделов), сид флагов `read`/`study`; uuid-PK default — нативный `uuidv7()` (time-ordered, без расширения `uuid-ossp`), а `sermon.created_at`/`playlist.created_at` — `timestamptz DEFAULT now() NOT NULL`. Исторически соответствует выходу TypeORM `synchronize` 0.3.17 (плюс hand-maintained имена констрейнтов). |
 | `sql/migrate-add-username.sql` | **существующие БД** (2026-08-06): `ADD COLUMN IF NOT EXISTS username`, backfill NULL→`'admin'` (совпадает с playbook-var `slovo_admin_user_username`), `SET NOT NULL`, пересоздание UNIQUE `UQ_78a916df40e02a9deb1c4b75edb`. Идемпотентен. |
 | `sql/migrations/001_add_positions.sql` | **существующие БД** (2026-08-07): `ADD COLUMN IF NOT EXISTS position` на `section`, `playlist_sermons_sermon`, `section_playlists_playlist`; конвертация join-таблиц с составного PK на суррогатный `id` (DO-блоки, идемпотентно); backfill позиций через `ROW_NUMBER()` (guard `WHERE position = 0`); индекс `idx_section_position`. Идемпотентен. |
 | `sql/migrations/002_add_user_roles.sql` | **существующие БД** (2026-08-14): `ADD COLUMN IF NOT EXISTS role` на `user`; backfill `NULL → 'admin'` (все прежние аккаунты были неявными админами); `SET DEFAULT 'user'` (least privilege для новых); `SET NOT NULL`; CHECK `user_role_check` (DO-блок, идемпотентно). Идемпотентен. |
@@ -273,6 +285,7 @@
 | `sql/migrations/013_add_created_at.sql` | **существующие БД** (2026-10-23): `ADD COLUMN IF NOT EXISTS created_at` (`timestamp with time zone NOT NULL DEFAULT now()`) на `sermon` и `playlist` — дата добавления, ключ сортировки `sort=date` и keyset-курсора. На PostgreSQL 11+ `ADD COLUMN ... DEFAULT now() NOT NULL` — metadata-only (без перезаписи таблицы), но все существующие строки получают **один общий placeholder**; реальные даты восстанавливаются `scripts/backfill-created-at.mjs` (dry-run по умолчанию). Идемпотентен (`ADD COLUMN IF NOT EXISTS`; на fresh-bootstrap БД — no-op). **Применять до деплоя тега**: код читает `created_at` в каждом ответе sermon/playlist. Revert: `ALTER TABLE sermon DROP COLUMN IF EXISTS created_at; ALTER TABLE playlist DROP COLUMN IF EXISTS created_at;`. |
 | `sql/migrations/014_uuid_v7_defaults.sql` | **существующие БД** (2026-10-23): `ALTER COLUMN id SET DEFAULT uuidv7()` для девяти uuid-PK (все таблицы с uuid-PK вместо `uuid_generate_v4()`); UUIDv7 time-ordered — новые строки дописываются в конец btree, а id-tiebreaker в `sort=date` совпадает с порядком вставки. Требует **PostgreSQL 18+**: precheck `to_regprocedure('uuidv7()')` падает fail-fast на старом кластере (без частичных изменений). Идемпотентен (`SET DEFAULT` меняет только каталог). Revert требует расширения `uuid-ossp` + `CREATE EXTENSION` (см. шапку файла). |
 | `sql/migrations/015_rekey_uuid_v7.sql` | **существующие БД** (2026-10-23): полный rekey всех существующих uuid-PK на свежие `uuidv7()` с каскадным обновлением всех FK-колонок (`user` ← `revoked_refresh_token.user_id`/`feature_flag_override.user_id`; `sermon`/`playlist`/`section` ← join-таблицы; `feature_flag` ← `feature_flag_override.flag_id`; листовые таблицы — собственный PK). Выполняется **одной транзакцией** (`BEGIN … COMMIT`): либо все id становятся v7, либо не меняется ничего. **In-place revert нет** — старые id отбрасываются по определению, откат = восстановление бэкапа, снятого непосредственно перед запуском. Осознанные потери: все пользователи перелогиниваются (JWT хранит старый id), клиентские кэши/deep-link со старыми id перестают резолвиться. Идемпотентен по-таблично (guard «нет v4-id → блок пропускается»), в конце — `ANALYZE`. Требует **PostgreSQL 18+** (precheck `to_regprocedure('uuidv7()')`). Применять при остановленном приложении: ACCESS EXCLUSIVE-локи и перезапись всех строк. |
+| `sql/migrations/016_add_picture.sql` | **существующие БД** (2026-11-07): `CREATE TABLE IF NOT EXISTS picture` (uuid-PK `DEFAULT uuidv7()`, `"picture-path"` varchar NOT NULL **UNIQUE**, `blurhash` varchar nullable) — BlurHash обложек; заполняется при загрузке через `POST /files` и скриптом `npm run backfill-blurhash` (dry-run по умолчанию). Идемпотентна (`CREATE TABLE IF NOT EXISTS`, констрейнты inline; на fresh-bootstrap БД — no-op). Revert: `DROP TABLE IF EXISTS picture;`. |
 
 Команды применения (как DB-owner):
 
@@ -296,6 +309,7 @@ psql -h <host> -U <user> -d <db> -f sql/migrations/012_rehash_plaintext_password
 psql -h <host> -U <user> -d <db> -f sql/migrations/013_add_created_at.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/014_uuid_v7_defaults.sql
 psql -h <host> -U <user> -d <db> -f sql/migrations/015_rekey_uuid_v7.sql
+psql -h <host> -U <user> -d <db> -f sql/migrations/016_add_picture.sql
 ```
 
 > ⚠️ **Миграция 011 должна быть применена к прод-БД ДО деплоя тега с этим кодом** (`synchronize: false`, код читает `token_version` на каждом аутентифицированном запросе). Без колонки все guarded-роуты будут падать с `500`.
@@ -327,4 +341,5 @@ psql -h <host> -U <user> -d <db> -f sql/migrations/015_rekey_uuid_v7.sql
 - [conventions.md](./conventions.md) — паттерны сущностей, SERIALIZABLE, SQL-миграции
 - [modules/sermon.md](./modules/sermon.md) — сервис проповедей (поиск, normalize)
 - [modules/section.md](./modules/section.md) — enums разделов, reorder
+- [modules/pictures.md](./modules/pictures.md) — BlurHash обложек и таблица `picture`
 - [contracts/rest-api.md](./contracts/rest-api.md) — контракт, из которого генерируются типы
