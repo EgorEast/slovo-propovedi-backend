@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PlaylistModule } from './playlist/playlist.module';
 import { MinioModule } from './minio/minio.module';
+import { PicturesModule } from './pictures/pictures.module';
 import { ConfigModule } from '@nestjs/config';
 import { SermonModule } from './sermon/sermon.module';
 import { InvidiousInstancesModule } from './invidious-instances/invidious-instances.module';
@@ -40,6 +41,7 @@ import { PlaylistEntity } from './playlist/entities/playlist.entity';
     InvidiousInstancesModule,
     FeatureFlagsModule,
     MinioModule,
+    PicturesModule,
     // AppController needs the sermon/playlist repositories to build the
     // referenced-file sets for the orphans endpoints.
     NestTypeOrmModule.forFeature([SermonEntity, PlaylistEntity]),

@@ -34,6 +34,7 @@ import { FileNameParamDto } from './shared/dto/file-name-param.dto';
 import { MAX_UPLOAD_BYTES, mediaFileFilter } from './app/upload-file-filter';
 import { MulterExceptionFilter } from './app/multer-exception.filter';
 import { collectReferencedFileNames } from './minio/referenced-files';
+import { PicturesService } from './pictures/pictures.service';
 
 /**
  * Failure reasons are admin-only diagnostics, but raw MinIO/driver text can
@@ -52,6 +53,7 @@ function boundedFailureReason(error: unknown): string {
 export class AppController {
   constructor(
     private readonly minioService: MinioService,
+    private readonly picturesService: PicturesService,
     @InjectRepository(SermonEntity)
     private readonly sermonRepository: Repository<SermonEntity>,
     @InjectRepository(PlaylistEntity)
@@ -84,6 +86,9 @@ export class AppController {
     const multerFile = file as Express.Multer.File;
 
     const fileName = await this.minioService.uploadFile(multerFile);
+    if (MinioService.isImageFile(fileName)) {
+      await this.picturesService.recordForUpload(fileName, multerFile.buffer);
+    }
     const fileUrl = await this.minioService.getFileUrl(fileName);
     return { fileName, fileUrl } as FileResponseDto;
   }
