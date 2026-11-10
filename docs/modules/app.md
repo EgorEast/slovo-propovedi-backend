@@ -41,6 +41,7 @@ async uploadFile(@UploadedFile('file') file: FileUploadDto): Promise<FileRespons
 - **Allow-list расширений** проверяется в `fileFilter` **до буферизации тела** — как только разобраны заголовки multipart-части. Список — `MEDIA_EXTENSIONS` из `src/shared/media.ts` (единый источник истины с classification бакета): `.jpeg .jpg .png .webp .mp3 .m4a .pdf .fb2`. Иное расширение → `BadRequestException` («Недопустимый тип файла…»), в контроллере дублирующей проверки нет. Регистр расширения не важен: `SERMON.MP3` проходит, а `uploadFile` сохраняет расширение в нижнем регистре.
 - Параметр аннотирован `FileUploadDto` (`createZodDto(z.any())`) — passthrough для `Express.Multer.File`, нужен только чтобы удовлетворить strict-пайп (см. [`../conventions.md`](../conventions.md)). Guard-clause «файл не приложен» остаётся в контроллере.
 - Вызывает `minioService.uploadFile(multerFile)` (имя файла = `randomUUID() + ext`), затем `getFileUrl` → `{ fileName, fileUrl }`.
+- Для изображений (`MinioService.isImageFile(fileName)`) после сохранения объекта вызывается `PicturesService.recordForUpload(fileName, multerFile.buffer)` — считает BlurHash и сохраняет в таблицу `picture`. Best-effort: ошибка логируется, ответ `POST /files` не меняется; blurhash в ответе не возвращается (см. [pictures.md](./pictures.md)).
 - **Reverse proxy:** body limit на edge (Traefik/nginx) должен быть **не меньше** 100 MB, иначе прокси отклонит легитимную загрузку раньше backend'а. Настройка живёт в `slovo-propovedi-playbook`.
 
 ## `GET /files` — список изображений (cover-reuse)

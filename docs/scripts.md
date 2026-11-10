@@ -141,3 +141,32 @@ node --env-file-if-exists=.env scripts/backfill-created-at.mjs --help
 **Точность до миллисекунд.** Кандидаты (`mtime` и `MIN(created_at)`) усекаются до целых миллисекунд: keyset-курсор проповедей несёт `Date` миллисекундной точности, а `ORDER BY` сравнивает `date_trunc('milliseconds', created_at)`. µs-точное значение сломало бы границу страницы (пропуск/дубликат строки). См. [`modules/sermon.md`](./modules/sermon.md) — «Keyset-пагинация».
 
 Скрипт идемпотентен (mtime объектов стабильны) и не меняет ничего, кроме `created_at`. Переменные окружения — те же, что у приложения: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `MINIO_ENDPOINT`, `MINIO_MAIN_PORT_IN`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`; bucket — `files` (как `MinioService.BUCKET_NAME`). Запускать после применения миграции 013 (до деплоя тега или сразу после — на работу API это не влияет).
+
+## Скрипт бэкфилла BlurHash — `scripts/backfill-blurhash.mjs`
+
+Заполняет `picture.blurhash` для уже загруженных обложек после миграции [`016_add_picture.sql`](../sql/migrations/016_add_picture.sql): новые загрузки считаются на лету через `POST /files`, а скрипт догоняет существующий каталог. **По умолчанию — dry-run**: печатает, сколько картинок нужно посчитать, ничего не скачивает и не пишет.
+
+Запуск:
+
+```bash
+npm run backfill-blurhash            # dry-run: план без записи
+npm run backfill-blurhash -- --apply # посчитать и записать
+node --env-file-if-exists=.env scripts/backfill-blurhash.mjs --help
+```
+
+Флаги:
+
+| Флаг | Описание |
+|---|---|
+| `--apply` | скачать картинки, посчитать BlurHash и записать в `picture` (без флага — только план) |
+| `-h`, `--help` | справка (exit 0) |
+
+Что обрабатывается:
+
+- объекты бакета `files` с расширением `.jpeg/.jpg/.png/.webp`;
+- превью под префиксом `thumbs/` и файлы вне media-taxonomy пропускаются;
+- картинки, у которых `blurhash` уже заполнен, не пересчитываются.
+
+BlurHash считается так же, как при загрузке: `sharp().rotate()` (EXIF) → `ensureAlpha().raw()` → `encode(..., 4, 3)`; результат пишется upsert-ом `INSERT ... ON CONFLICT ("picture-path") DO UPDATE SET blurhash = EXCLUDED.blurhash`.
+
+Скрипт последовательный (не грузит память/CPU параллельными декодированиями) и best-effort: ошибка по объекту логируется (`❌ <object>: ...`), увеличивает `failed` и не прерывает обход. В конце — итог `total/skipped/computed/failed`. Скрипт идемпотентен (уже посчитанные пропускаются). Переменные окружения — те же, что у приложения: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `MINIO_ENDPOINT`, `MINIO_MAIN_PORT_IN`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`; bucket — `files` (как `MinioService.BUCKET_NAME`). Запускать после применения миграции 016.

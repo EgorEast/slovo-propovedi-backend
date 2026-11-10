@@ -128,8 +128,12 @@ await app.listen('3000');
 ```ts
 imports: [
   ConfigModule.forRoot({ isGlobal: true }),
+  // Generous global baseline so the public catalog (sermons, playlists,
+  // sections, files) is untouched in normal use. The auth controller
+  // overrides this with stricter per-route limits (see AuthController).
   ThrottlerModule.forRoot({
     throttlers: [{ name: 'default', ttl: minutes(1), limit: 300 }],
+    errorMessage: 'Too many requests. Please try again later.',
   }),
   HealthModule,
   SectionModule,
@@ -139,12 +143,18 @@ imports: [
   TypeOrmModule,
   SermonModule,
   InvidiousInstancesModule,
+  FeatureFlagsModule,
   MinioModule,
+  PicturesModule,
+  // AppController needs the sermon/playlist repositories to build the
+  // referenced-file sets for the orphans endpoints.
+  NestTypeOrmModule.forFeature([SermonEntity, PlaylistEntity]),
 ],
 controllers: [AppController],
 providers: [
   AppService,
   { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
+  // Throttling is the only global guard; auth authorization stays per-route.
   { provide: APP_GUARD, useClass: ThrottlerGuard },
 ],
 ```

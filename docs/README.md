@@ -14,7 +14,7 @@
 | [`db.md`](./db.md) | TypeORM-конфиг, карта сущностей и связей, ASCII ER-диаграмма, ручные SQL-миграции |
 | [`validation-pipeline.md`](./validation-pipeline.md) | Конвейер валидации: OpenAPI-first workflow, слои валидации (Zod-пайп / `@ZodResponse`), CI-freshness check |
 | [`debt.md`](./debt.md) | Реестр технического долга и инцидентов (срезанные углы, known-issues) |
-| [`scripts.md`](./scripts.md) | CLI-скрипты: bulk-загрузка mp3-проповедей в API (`npm run upload-sermons`), бэкфилл `created_at` (`npm run backfill-created-at`), кодогенерация |
+| [`scripts.md`](./scripts.md) | CLI-скрипты: bulk-загрузка mp3-проповедей в API (`npm run upload-sermons`), бэкфилл `created_at` (`npm run backfill-created-at`), бэкфилл BlurHash (`npm run backfill-blurhash`), кодогенерация |
 | [`modules/README.md`](./modules/README.md) | Индекс модулей: module → endpoints → entity → doc |
 | [`modules/app.md`](./modules/app.md) | Файловое хранилище: `POST/GET /files`, orphans, `DELETE /files/:fileName` |
 | [`modules/health.md`](./modules/health.md) | `GET /health` → `{ status: 'ok' }` |
@@ -25,6 +25,7 @@
 | [`modules/section.md`](./modules/section.md) | CRUD разделов, enums, reorder |
 | [`modules/minio.md`](./modules/minio.md) | MinIO-клиент, bucket `files`, public-read, статические URL |
 | [`modules/shared.md`](./modules/shared.md) | Общие DTO и сгенерированный `generated/index.ts` |
+| [`modules/pictures.md`](./modules/pictures.md) | BlurHash обложек: таблица `picture`, `PicturesService`, скрипт бэкфилла |
 
 > ✅ Внешний контракт REST API и конвейер кодогенерации описаны в [`contracts/rest-api.md`](./contracts/rest-api.md). Здесь — реализация backend; спецификация и сгенерированные схемы — там.
 
@@ -57,6 +58,7 @@
 | `src/playlist/` | Плейлисты: сущности, контроллер, сервис, DTO |
 | `src/section/` | Разделы: сущности, контроллер, сервис, DTO |
 | `src/minio/` | Обёртка над объектным хранилищем (data-plane клиент) |
+| `src/pictures/` | BlurHash обложек: entity `picture`, сервис, модуль (см. [`modules/pictures.md`](./modules/pictures.md)) |
 | `src/health/` | `GET /health` |
 | `src/shared/dto/` | Общие DTO (`IdParamDto`, `FileNameParamDto`) |
 | `src/generated/index.ts` | Сгенерированные Orval zod-схемы (не редактировать) |
@@ -67,6 +69,7 @@
 | `scripts/gen-schemas.mjs` | Программный запуск Orval + prettier |
 | `scripts/upload-sermons.mjs` | Bulk-загрузка папки mp3-проповедей в API как плейлиста (см. [`scripts.md`](./scripts.md)) |
 | `scripts/backfill-created-at.mjs` | Бэкфилл `sermon.created_at`/`playlist.created_at` по mtime объектов MinIO после миграции 013 (dry-run по умолчанию; см. [`scripts.md`](./scripts.md)) |
+| `scripts/backfill-blurhash.mjs` | Бэкфилл BlurHash существующих картинок из MinIO в таблицу `picture` (dry-run по умолчанию; см. [`scripts.md`](./scripts.md)) |
 | `scripts/vps-deploy.sh` | Деплой на VPS: проверка playbook-инфры, сборка Docker-образа, рестарт systemd-юнита, пост-деплойная очистка (см. [`architecture.md`](./architecture.md)) |
 
 ## Связанные документы
