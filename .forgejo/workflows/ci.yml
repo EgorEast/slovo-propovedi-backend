@@ -103,6 +103,13 @@ jobs:
     needs: [remote]
     if: always() && needs.remote.outputs.fallback == 'true'
     runs-on: ubuntu-24.04
+    # The fallback checks share the 4-GB Forgejo host with deploy jobs; running
+    # them under a concurrency group keeps a GitHub-outage fallback from
+    # overlapping a release/deploy (OOM/exit 137). First consumer of this name
+    # in the repo; add it to the release jobs when they grow heavier.
+    concurrency:
+      group: memory-heavy-jobs
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repository
